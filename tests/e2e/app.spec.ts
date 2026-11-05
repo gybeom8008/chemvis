@@ -279,7 +279,8 @@ test('phone: the legend button sits above the step bar, and electrons stay big e
   expect(bar.width).toBeGreaterThan(340);
   // Mid-charge: electrons run through the wire.
   await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.main.seek(1, 0.45));
-  const e = v.locator('circle.wire-e').first();
-  await expect(e).toBeVisible();
-  expect((await e.boundingBox())!.width).toBeGreaterThanOrEqual(7);
+  // The stage is redrawn every frame, so read the size in one go rather than through a handle.
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector('#main-viewer circle.wire-e')?.getBoundingClientRect().width ?? 0))
+    .toBeGreaterThanOrEqual(7);
 });

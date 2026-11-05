@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="AI가 짧은 대본만 쓰면 화학 반응과 물질 현상을 원자·전자 수준으로 그려 주는 웹앱" />
+    <title>chemvis 화학 반응 시각화</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='12' cy='17' r='8' fill='%23e03131'/%3E%3Ccircle cx='24' cy='10' r='5' fill='%23ddd' stroke='%23999'/%3E%3Ccircle cx='24' cy='24' r='5' fill='%23ddd' stroke='%23999'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="#/">chemvis</a>
+      <nav class="topnav">
+        <a href="#/" data-nav="tutorial">튜토리얼</a>
+        <a href="#/edit" data-nav="edit">직접 쓰기</a>
+        <a href="./ai-guide.txt" target="_blank" rel="noopener">AI 안내서</a>
+      </nav>
+    </header>
+    <div class="layout" id="layout">
+      <aside class="chapters" id="chapters" aria-label="튜토리얼 목차"></aside>
+      <main class="viewer">
+        <section id="intro" class="intro"></section>
+        <div class="stage-wrap">
+          <svg id="stage" role="img" aria-label="장면"></svg>
+        </div>
+        <div class="narration" id="narration" aria-live="polite"></div>
+        <div class="controls">
+          <button id="btn-restart" title="처음으로" aria-label="처음으로">⏮</button>
+          <button id="btn-prev" title="이전 단계 (←)" aria-label="이전 단계">◀</button>
+          <button id="btn-play" class="primary" title="재생/멈춤 (스페이스)" aria-label="재생">▶ 재생</button>
+          <button id="btn-next" title="다음 단계 (→)" aria-label="다음 단계">▶▶</button>
+          <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="단계 안에서 위치" />
+          <select id="speed" aria-label="속도">
+            <option value="0.5">0.5배</option>
+            <option value="1" selected>1배</option>
+            <option value="1.5">1.5배</option>
+            <option value="2">2배</option>
+          </select>
+          <label class="check"><input id="continuous" type="checkbox" /> 이어서 재생</label>
+        </div>
+        <div class="chips" id="chips"></div>
+        <div class="lenses">
+          <span class="lens-title">보기</span>
+          <label class="check"><input id="lens-charge" type="checkbox" /> 전하</label>
+          <label class="check"><input id="lens-attract" type="checkbox" /> 분자 사이 인력</label>
+          <label class="check"><input id="lens-numbers" type="checkbox" /> 원자 번호</label>
+        </div>
+      </main>
+      <aside class="script" id="script-panel">
+        <div class="script-head">
+          <h2>대본</h2>
+          <div class="script-actions">
+            <button id="btn-edit">고쳐 보기</button>
+            <button id="btn-apply" class="primary" hidden>적용</button>
+            <button id="btn-link">링크 복사</button>
+          </div>
+        </div>
+        <div id="script-view" class="script-view"></div>
+        <textarea id="script-edit" class="script-edit" spellcheck="false" hidden></textarea>
+        <ul id="diags" class="diags"></ul>
+        <section id="tryit" class="tryit"></section>
+      </aside>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

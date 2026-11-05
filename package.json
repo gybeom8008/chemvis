@@ -1,0 +1,21 @@
+{
+  "name": "chemvis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI가 짧은 장면 대본만 쓰면 화학 반응과 물질 현상을 원자·전자 수준으로 그려 주는 웹앱",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && cp public/ai-guide.md dist/ai-guide.txt",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
+  }
+}

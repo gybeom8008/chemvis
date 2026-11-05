@@ -331,4 +331,38 @@ step "착이온 [Cu(NH3)4]2+가 됐어요. 전자쌍은 모두 N에서 왔으니
 `),
     tryIt: `<code>NH3</code>를 <code>H2O</code>로, <code>.N</code>을 모두 <code>.O</code>로 바꿔 보세요. 물 분자도 같은 방식으로 구리 이온과 결합해요.`,
   },
+  {
+    id: 'cell',
+    part: 2,
+    title: '전지: 전자가 도선을 따라 흐를 때',
+    intro: `<p>전지는 산화와 환원을 두 전극에서 따로 일어나게 해서, 그 사이를 오가는 전자를 도선으로 흐르게 만든 장치예요. 산화 전극에서 생긴 전자가 도선을 따라 환원 전극으로 가고, 염다리의 이온이 두 용액의 전하를 맞춰요.</p>
+<ul class="legend"><li><i class="g-e"></i>전자</li><li><i class="g-ox">+2</i>산화수</li></ul>`,
+    script: s(`
+scene "다니엘 전지: 아연에서 구리로 전자가 흐를 때"
+stage cell
+lens oxidation on
+electrode left = Zn
+electrode right = Cu
+crowd H2O in left 14
+crowd H2O in right 14
+place Zn2+ in left
+place SO42- in left
+mol c = Cu2+ in right
+place Cu2+ in right
+place SO42- in right x2
+
+step "왼쪽은 아연판이 황산아연 용액에, 오른쪽은 구리판이 황산구리 용액에 잠겨 있어요. 두 판은 도선으로, 두 용액은 염다리로 이어져 있어요"
+  note left "아연판"
+  note right "구리판"
+step "아연판 표면의 아연 원자가 전자 2개를 판에 남기고 Zn2+ 이온이 되어 용액으로 나가요(산화)"
+  oxidize left
+step "판에 남은 전자 2개가 도선을 따라 구리판으로 가요. 이 전자의 흐름이 전류예요"
+  wire 2
+step "구리 이온이 구리판 표면에서 전자 2개를 얻어 구리 원자가 되고, 판의 일부가 돼요(환원)"
+  reduce c at right
+step "왼쪽 용액은 양이온이 늘고 오른쪽은 줄었어요. 염다리의 Cl-가 왼쪽으로, K+가 오른쪽으로 들어가 전하를 맞춰요"
+  bridge Cl- K+ x2
+`),
+    tryIt: `<code>wire 2</code>를 <code>wire 1</code>로 바꾸면 환원 전극에 전자가 모자란다는 오류가 나요. 구리 이온 하나에는 전자 2개가 필요해요.`,
+  },
 ];

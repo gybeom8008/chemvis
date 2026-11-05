@@ -21,6 +21,8 @@ export interface Atom {
   face?: number;
   /** While electrons are in flight: slots left empty by unpaired electrons that just left (atoms with no bonds). */
   skip?: number;
+  /** Part of a metal electrode: its outer electrons belong to the metal as a whole, so no dots are drawn. */
+  lattice?: boolean;
 }
 
 export interface Bond {
@@ -63,6 +65,8 @@ export interface World {
   crystals: Map<string, string[]>;
   lens: Lens;
   counter: number;
+  /** Electrons waiting in each electrode (electrode stage). */
+  plate: Record<string, number>;
 }
 
 export const bondKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
@@ -78,6 +82,7 @@ export function emptyWorld(): World {
     crystals: new Map(),
     lens: { charge: true, attract: false, numbers: false, oxidation: false },
     counter: 0,
+    plate: {},
   };
 }
 
@@ -92,6 +97,7 @@ export function cloneWorld(w: World): World {
     crystals: new Map([...w.crystals].map(([k, l]) => [k, [...l]])),
     lens: { ...w.lens },
     counter: w.counter,
+    plate: { ...w.plate },
   };
 }
 

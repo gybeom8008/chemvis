@@ -76,6 +76,10 @@ const OP_DURATION: Record<string, number> = {
   dissolve: 4.4,
   exchange: 3.6,
   leach: 5.2,
+  oxidize: 3.6,
+  wire: 3.2,
+  reduce: 3.8,
+  bridge: 3.6,
   rain: 3.6,
   heat: 2.4,
   cool: 2.4,
@@ -149,6 +153,7 @@ export function compile(src: string): CompileResult {
       trails: [],
       flows: [],
       photons: [],
+      wires: [],
       appear: new Set(),
     };
     ctx.anim = anim;
@@ -222,6 +227,8 @@ class Ctx {
         return this.crowd(cmd);
       case 'crystal':
         return this.crystal(cmd);
+      case 'electrode':
+        return this.electrode(cmd);
       case 'mol':
       case 'place':
         return this.declare(cmd, false);
@@ -569,6 +576,14 @@ class Ctx {
         return this.leach(a);
       case 'rain':
         return this.rain();
+      case 'oxidize':
+        return this.oxidize(a);
+      case 'wire':
+        return this.wireOp(a);
+      case 'reduce':
+        return this.reduce(a);
+      case 'bridge':
+        return this.bridgeOp(a);
       case 'heat':
       case 'cool':
         return this.temperature(cmd.op, a);
@@ -1624,6 +1639,171 @@ class Ctx {
   rain(): void {
     const chans = this.needSoil('rain');
     chans.forEach((ch, i) => this.A.flows.push({ path: ch, count: 14, t0: 0, t1: 1, seed: i + 11 }));
+  }
+
+  // ------------------------------------------------------------ ops: electrodes (cell stage)
+
+  needElectrode(name: string) {
+    const e = this.stage.electrodes?.[name];
+    if (!this.stage.electrodes) this.fail('전극 명령은 cell 무대에서 써요. stage cell');
+    if (!e) this.fail(`전극 '${name}'이 없어요. left(산화 전극) 또는 right(환원 전극)를 써요.`);
+    return e;
+  }
+
+  /** electrode left = Zn : a metal plate made of metal atoms. */
+  electrode(cmd: Cmd): void {
+    const [name, eq, metal] = cmd.args;
+    if (eq !== '=' || !name || !metal) this.fail('전극은 이렇게 적어요: electrode left = Zn');
+    const e = this.needElectrode(name);
+    if (!lookupMolecule(metal) || lookupMolecule(metal)!.atoms.length !== 1 || !METALS.has(lookupMolecule(metal)!.atoms[0].el)) {
+      this.fail(`'${metal}'은(는) 전극 금속으로 쓸 수 없어요. Zn, Cu, Ag 같은 금속 원자를 적어 주세요.`);
+    }
+    const r = element(lookupMolecule(metal)!.atoms[0].el).r;
+    const step = r * 2 + 2;
+    const ids: string[] = [];
+    let k = 0;
+    for (let y = e.top + r + 4; y <= e.bottom; y += step) {
+      for (const dx of [-step / 2, step / 2]) {
+        const got = this.spawn(metal, `${name}${++k}`, false, { x: e.x + dx, y });
+        for (const id of got) this.w.atoms.get(id)!.lattice = true;
+        ids.push(...got);
+      }
+    }
+    this.w.crystals.set(name, ids);
+    this.w.plate[name] = 0;
+  }
+
+  /** oxidize left : a surface atom of the plate leaves its electrons in the plate and goes into solution as an ion. */
+  oxidize(a: string[]): void {
+    const name = a[0] ?? 'left';
+    const e = this.needElectrode(name);
+    const lattice = this.w.crystals.get(name);
+    if (!lattice?.length) this.fail(`${name} 전극에 금속 원자가 없어요. electrode ${name} = Zn 처럼 먼저 놓아 주세요.`);
+    const liquidTop = this.region(e.region).y + 10;
+    const faceX = (id: string) => this.w.atoms.get(id)!.x * e.face;
+    const cands = lattice.filter((id) => this.w.atoms.get(id)!.y > liquidTop + 20);
+    if (!cands.length) this.fail('용액에 잠긴 금속 원자가 없어요.');
+    const maxFace = Math.max(...cands.map(faceX));
+    const surface = cands.filter((id) => faceX(id) > maxFace - 4);
+    const midY = (liquidTop + e.bottom) / 2;
+    surface.sort((p, q) => Math.abs(this.w.atoms.get(p)!.y - midY) - Math.abs(this.w.atoms.get(q)!.y - midY));
+    const pick = surface[0];
+    const at = this.w.atoms.get(pick)!;
+    const nOut = at.lp * 2 + at.rad;
+    if (nOut <= 0) this.fail('이 금속 원자에는 내줄 전자가 없어요.');
+    // Electrons step back into the plate.
+    const inner = { x: at.x - e.face * 34, y: at.y };
+    const mid = this.ensureMid();
+    for (let i = 0; i < nOut; i++) {
+      const p0 = add(at, { x: e.face * 4, y: (i - (nOut - 1) / 2) * 7 - 14 });
+      const c = add(lerpV(p0, inner, 0.5), { x: 0, y: -26 - 10 * i });
+      this.A.arrows.push({ kind: 'single', p0, c, p1: add(inner, { x: 0, y: -10 }), line: this.line });
+    }
+    for (const world of [mid, this.w]) {
+      const x = world.atoms.get(pick)!;
+      x.lp = 0;
+      x.rad = 0;
+    }
+    this.w.plate[name] = (this.w.plate[name] ?? 0) + nOut;
+    at.lattice = false;
+    lattice.splice(lattice.indexOf(pick), 1);
+    // The new ion drifts out into the solution, picking up a water shell if there is water around.
+    const region = this.region(e.region);
+    const start = { x: at.x, y: at.y };
+    const goal = {
+      x: clamp(at.x + e.face * this.rng.range(110, 170), region.x + 50, region.x + region.w - 50),
+      y: clamp(at.y + this.rng.range(-60, 60), region.y + 50, region.y + region.h - 50),
+    };
+    this.moveGroup([pick], start, [start, lerpV(start, goal, 0.5), goal], 0, 0.56, 1);
+    if (this.freeSolvent().length) this.hydrate([pick], 0.62, 1);
+    this.A.phase = { b0: 0.22, b1: 0.56, c0: 0.56 };
+    this.focus([pick]);
+  }
+
+  /** wire 2 : electrons run through the wire from the oxidation electrode to the reduction electrode. */
+  wireOp(a: string[]): void {
+    if (!this.stage.wire) this.fail('wire는 cell 무대에서 써요.');
+    const n = a[0] && /^\d+$/.test(a[0]) ? parseInt(a[0], 10) : this.w.plate.left ?? 0;
+    if (n <= 0) this.fail('도선으로 보낼 전자가 없어요. 먼저 oxidize left로 전자를 만들어 주세요.');
+    if ((this.w.plate.left ?? 0) < n) this.fail(`산화 전극에 전자가 ${this.w.plate.left ?? 0}개뿐이에요. ${n}개를 보낼 수 없어요.`);
+    this.w.plate.left -= n;
+    this.w.plate.right = (this.w.plate.right ?? 0) + n;
+    this.A.wires.push({ path: this.stage.wire, count: n, t0: 0.05, t1: 0.95 });
+  }
+
+  /** reduce Cu2+ at right : an ion meets the plate surface and takes electrons from it, joining the metal. */
+  reduce(a: string[]): void {
+    const at = a.indexOf('at');
+    const name = at >= 0 ? a[at + 1] : 'right';
+    const e = this.needElectrode(name);
+    const ref = a[0];
+    if (!ref) this.fail('환원은 이렇게 적어요: reduce Cu2+ at right');
+    const region = this.region(e.region);
+    const comp = this.mol(ref, (c) => inRegion(region, centerOf(this.w, c)));
+    if (comp.length !== 1) this.fail('reduce는 금속 이온 하나(Cu2+, Ag+ 등)에 써요.');
+    const ion = this.w.atoms.get(comp[0])!;
+    const q = componentCharge(this.w, comp);
+    if (q <= 0) this.fail(`${ref}는 양이온이 아니에요.`);
+    if ((this.w.plate[name] ?? 0) < q) {
+      this.fail(`${name} 전극에 전자가 ${this.w.plate[name] ?? 0}개뿐이에요. ${ref}에는 ${q}개가 필요해요. 먼저 wire로 보내 주세요.`);
+    }
+    const lattice = this.w.crystals.get(name) ?? [];
+    // Spot on the plate's working face, at the row nearest the ion.
+    const faceX = Math.max(...lattice.map((id) => this.w.atoms.get(id)!.x * e.face)) * e.face;
+    const r = element(ion.el).r;
+    const step = r * 2 + 2;
+    const rows = lattice.map((id) => this.w.atoms.get(id)!).filter((x) => Math.abs(x.x - faceX) < 4);
+    const liquidTop = region.y + 10;
+    let spotY = clamp(ion.y, liquidTop + 30, e.bottom);
+    const taken = (y: number) => [...this.w.atoms.values()].some((x) => x.lattice && Math.abs(x.x - (faceX + e.face * step)) < 4 && Math.abs(x.y - y) < step * 0.8);
+    const rowYs = rows.map((x) => x.y).filter((y) => y > liquidTop + 20).sort((p, q2) => Math.abs(p - spotY) - Math.abs(q2 - spotY));
+    spotY = rowYs.find((y) => !taken(y)) ?? spotY;
+    const spot = { x: faceX + e.face * step, y: spotY };
+    const start = { x: ion.x, y: ion.y };
+    // Its water shell stays behind.
+    this.detach(comp);
+    this.moveGroup(comp, start, [start, lerpV(start, spot, 0.6), spot], 0, 0, 0.48);
+    this.ensureMid();
+    const plateAtom = { x: faceX, y: spotY };
+    for (let i = 0; i < q; i++) {
+      const p0 = add(plateAtom, { x: 0, y: -12 + 10 * i });
+      const p1 = add(spot, { x: -e.face * (r + 4), y: -6 + 8 * i });
+      const c = add(lerpV(p0, p1, 0.5), { x: 0, y: -24 - 12 * i });
+      this.A.arrows.push({ kind: 'single', p0, c, p1, line: this.line });
+    }
+    ion.lp += Math.floor(q / 2);
+    ion.rad += q % 2;
+    ion.lattice = true;
+    this.w.plate[name] -= q;
+    lattice.push(ion.id);
+    this.A.phase = { b0: 0.5, b1: 0.8, c0: 0.8 };
+    this.focus(comp);
+  }
+
+  /** bridge Cl- K+ [x2] : salt-bridge ions move in to keep each beaker neutral (anion → left, cation → right). */
+  bridgeOp(a: string[]): void {
+    const br = this.stage.bridge;
+    if (!br) this.fail('bridge는 cell 무대에서 써요.');
+    const mult = a.find((x) => /^x\d+$/.test(x));
+    const n = mult ? parseInt(mult.slice(1), 10) : 1;
+    const [anion, cation] = a.filter((x) => !/^x\d+$/.test(x));
+    if (!anion || !cation) this.fail('염다리는 이렇게 적어요: bridge Cl- K+ x2 (음이온은 왼쪽, 양이온은 오른쪽으로)');
+    if (formulaCharge(anion) >= 0) this.fail(`${anion}은(는) 음이온이 아니에요. 첫째 자리에 음이온을 적어 주세요.`);
+    if (formulaCharge(cation) <= 0) this.fail(`${cation}은(는) 양이온이 아니에요. 둘째 자리에 양이온을 적어 주세요.`);
+    for (let k = 0; k < n; k++) {
+      for (const [f, mouth, regionName] of [
+        [anion, br.left, 'left'],
+        [cation, br.right, 'right'],
+      ] as const) {
+        const ids = this.spawn(f, this.autoName(normalizeFormula(f)), false, mouth);
+        for (const id of ids) this.A.appear.add(id);
+        const region = this.region(regionName);
+        const goal = this.freePoint(region, 40, 60) ?? randomInRegion(region, this.rng);
+        const c = centerOf(this.w, ids);
+        this.moveGroup(ids, c, this.wander(c, goal, region, 0.4), 0, 0.05, 1);
+        this.focusMol(ids);
+      }
+    }
   }
 
   temperature(op: string, a: string[]): void {

@@ -381,8 +381,9 @@ export class StageView {
     }
 
     // Non-bonding electrons: lone pairs as two dots, unpaired electrons as one.
+    // (Not for atoms inside a metal electrode: their outer electrons belong to the whole metal.)
     for (const a of atoms) {
-      if (a.lp + a.rad <= 0 || isCrowd(a)) continue;
+      if (a.lp + a.rad <= 0 || isCrowd(a) || a.lattice) continue;
       const p = pos.get(a.id)!;
       const r = element(a.el).r + 5.5;
       for (const d of electronDomains(p, this.bondDirs(a.id, p, pos, bonds), a.lp, a.rad, a.face, a.skip ?? 0)) {
@@ -415,7 +416,8 @@ export class StageView {
     // Oxidation states (small signed numbers beside the atom, clear of the charge badge).
     if (opt.lens.oxidation) {
       for (const a of atoms) {
-        if (isCrowd(a)) continue;
+        // Electrode metal is all 0; labelling every atom of the plate only adds noise.
+        if (isCrowd(a) || a.lattice) continue;
         const w = chargeWorld.atoms.has(a.id) ? chargeWorld : after;
         const wa = w.atoms.get(a.id)!;
         const ox = oxidationState(w, wa);
@@ -464,6 +466,26 @@ export class StageView {
           const tn = perp(qbezTangent(ar.p0, ar.c, ar.p1, s));
           if (ar.kind === 'pair') out.push(dot(add(p, scale(tn, 3.4)), 'e'), dot(sub(p, scale(tn, 3.4)), 'e'));
           else out.push(dot(p, 'e'));
+        }
+      }
+    }
+
+    // Electrode stage: electrons waiting in each plate, and electrons running through the wire.
+    if (tl.stage.electrodes) {
+      const plateWorld = step && step.phase && t < step.phase.b1 ? step.before : after;
+      for (const [name, e] of Object.entries(tl.stage.electrodes)) {
+        const n = Math.min(12, plateWorld.plate[name] ?? 0);
+        for (let i = 0; i < n; i++) {
+          out.push(dot({ x: e.x - 9 + (i % 2) * 18, y: e.top + 12 + Math.floor(i / 2) * 11 }, 'e'));
+        }
+      }
+      for (const wf of step?.wires ?? []) {
+        const u = clamp((t - wf.t0) / (wf.t1 - wf.t0), 0, 1);
+        const gap = Math.min(0.12, 0.6 / wf.count);
+        for (let i = 0; i < wf.count; i++) {
+          const f = clamp((u - i * gap) / (1 - (wf.count - 1) * gap), 0, 1);
+          if (f <= 0 || f >= 1) continue;
+          out.push(dot(polyAt(wf.path, f), 'e wire-e'));
         }
       }
     }
@@ -730,7 +752,7 @@ function keyOf(a: string, b: string): string {
 }
 
 function dot(p: Vec, cls: string, op = 1): string {
-  const r = cls === 'e' ? 2.9 : cls.includes('single') ? 2.6 : 2.2;
+  const r = cls.includes('wire-e') ? 5 : cls === 'e' ? 2.9 : cls.includes('single') ? 2.6 : 2.2;
   return `<circle class="${cls}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${r}" opacity="${f1(op)}"/>`;
 }
 

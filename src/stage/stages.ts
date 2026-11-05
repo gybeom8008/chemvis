@@ -31,6 +31,17 @@ export interface SiteDef {
   plate: number;
 }
 
+export interface ElectrodeDef {
+  /** Centre line of the metal plate. */
+  x: number;
+  top: number;
+  bottom: number;
+  /** The beaker (region) it stands in. */
+  region: string;
+  /** Which way the plate's working face looks (+1 right, −1 left). */
+  face: number;
+}
+
 export interface StageDef {
   name: string;
   label: string;
@@ -41,6 +52,10 @@ export interface StageDef {
   /** Regions filled with liquid water. */
   liquid: string[];
   surfaceY?: number;
+  /** Electrode stage: plates, the wire between them, and the salt-bridge mouths. */
+  electrodes?: Record<string, ElectrodeDef>;
+  wire?: Vec[];
+  bridge?: { left: Vec; right: Vec };
   /** Pore channels (soil), top to bottom. */
   channels?: Vec[][];
   plates?: Plate[];
@@ -336,7 +351,66 @@ function gas(): StageDef {
   };
 }
 
-export const STAGES: Record<string, () => StageDef> = { solution, interface: iface, soil, gas };
+// ---------------------------------------------------------------- electrochemical cell
+
+function cell(): StageDef {
+  const W = 1200;
+  const H = 760;
+  const LIQ = 300;
+  const regions: Record<string, Region> = {
+    left: rect('left', '왼쪽 용액', 74, LIQ + 14, 452, 392),
+    right: rect('right', '오른쪽 용액', 674, LIQ + 14, 452, 392),
+    top: rect('top', '위쪽', 0, 0, W, 240),
+  };
+  const electrodes: Record<string, ElectrodeDef> = {
+    left: { x: 230, top: 168, bottom: 560, region: 'left', face: 1 },
+    right: { x: 970, top: 168, bottom: 560, region: 'right', face: -1 },
+  };
+  const wire: Vec[] = [
+    { x: 230, y: 168 },
+    { x: 230, y: 70 },
+    { x: 970, y: 70 },
+    { x: 970, y: 168 },
+  ];
+  const bridge = { left: { x: 470, y: 470 }, right: { x: 730, y: 470 } };
+  const background = () => {
+    let s = '';
+    for (const x0 of [60, 660]) {
+      s += `<rect x="${x0 + 4}" y="${LIQ}" width="472" height="${720 - LIQ}" rx="10" class="bg-water"/>`;
+      s += `<path d="M${x0},230 L${x0},712 Q${x0},724 ${x0 + 12},724 L${x0 + 468},724 Q${x0 + 480},724 ${x0 + 480},712 L${x0 + 480},230" class="beaker"/>`;
+      s += `<line x1="${x0 + 4}" x2="${x0 + 476}" y1="${LIQ}" y2="${LIQ}" class="bg-surface"/>`;
+    }
+    // Salt bridge: an inverted U tube filled with salt solution.
+    s += `<path d="M470,${bridge.left.y} L470,150 Q470,120 500,120 L700,120 Q730,120 730,150 L730,${bridge.right.y}" class="bridge"/>`;
+    s += `<text x="600" y="166" class="bg-note" text-anchor="middle">염다리</text>`;
+    // Wire with a bulb in the middle.
+    s += `<polyline points="${wire.map((p) => `${p.x},${p.y}`).join(' ')}" class="wire"/>`;
+    s += `<circle cx="600" cy="70" r="20" class="bulb"/><path d="M590,76 q5,-14 10,0 q5,-14 10,0" class="filament"/>`;
+    // Plate backings (the metal atoms are drawn on top as atoms).
+    for (const e of Object.values(electrodes)) {
+      s += `<rect x="${e.x - 34}" y="${e.top}" width="68" height="${e.bottom - e.top + 24}" rx="6" class="plate"/>`;
+    }
+    s += `<text x="300" y="750" class="bg-label" text-anchor="middle">(−) 산화 전극</text>`;
+    s += `<text x="900" y="750" class="bg-label" text-anchor="middle">(+) 환원 전극</text>`;
+    return s;
+  };
+  return {
+    name: 'cell',
+    label: '전지(두 전극)',
+    width: W,
+    height: H,
+    regions,
+    defaultRegion: 'left',
+    liquid: ['left', 'right'],
+    electrodes,
+    wire,
+    bridge,
+    attractDefault: false,
+    background,
+  };
+}
+
+export const STAGES: Record<string, () => StageDef> = { solution, interface: iface, soil, gas, cell };
 
 export function getStage(name: string): StageDef | undefined {
   const f = STAGES[name];

@@ -117,6 +117,42 @@ step "풀림"
   });
 });
 
+describe('electrochemical cell', () => {
+  const cell = (wireN: number) => `
+stage cell
+electrode left = Zn
+electrode right = Cu
+mol c = Cu2+ in right
+step "산화"
+  oxidize left
+step "도선"
+  wire ${wireN}
+step "환원"
+  reduce c at right
+step "염다리"
+  bridge Cl- K+ x2
+`;
+  it('Zn plate → Zn2+, electrons through the wire, Cu2+ → Cu on the plate', () => {
+    const r = compile(cell(2));
+    expect(r.errors).toEqual([]);
+    const s = r.timeline!.steps;
+    expect(s[0].after.plate.left).toBe(2);
+    expect(s[1].after.plate.right).toBe(2);
+    const w = s[2].after;
+    expect(w.plate.right).toBe(0);
+    expect(w.atoms.get('c.Cu')!.lattice).toBe(true);
+    expect(formalCharge(w, w.atoms.get('c.Cu')!)).toBe(0);
+    const freeZn = [...w.atoms.values()].filter((a) => a.el === 'Zn' && !a.lattice);
+    expect(freeZn.length).toBe(1);
+    expect(formalCharge(w, freeZn[0])).toBe(2);
+    expect(s[3].after.atoms.size).toBe(s[2].after.atoms.size + 4);
+  });
+  it('too few electrons at the reduction electrode is an error', () => {
+    const r = compile(cell(1));
+    expect(r.errors[0].message).toContain('전자가 1개뿐');
+  });
+});
+
 describe('oxidation states', () => {
   it('water: O is −2, H is +1; chloride −1', () => {
     const r = compile('stage solution\nmol w = H2O\nmol c = Cl-\nstep "a"\n  wait\n');

@@ -917,6 +917,13 @@ code {
   border-top: 6px solid var(--electron);
 }
 
+.g-e {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--electron);
+}
+
 .g-single {
   width: 6px;
   height: 6px;
@@ -1084,6 +1091,41 @@ code {
 }
 .dative {
   fill: var(--bond);
+}
+/* electrode stage */
+.beaker {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.bridge {
+  fill: none;
+  stroke: var(--water-line);
+  stroke-width: 26;
+  stroke-linejoin: round;
+  opacity: 0.55;
+}
+.wire {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.bulb {
+  fill: #fff3bf;
+  stroke: var(--ink-2);
+  stroke-width: 2.5;
+}
+.filament {
+  fill: none;
+  stroke: #e67700;
+  stroke-width: 2;
+}
+.plate {
+  fill: var(--track);
+  stroke: var(--muted);
+  stroke-width: 1.5;
 }
 /* A bond left with one electron while electrons are moving. */
 .bond.half {

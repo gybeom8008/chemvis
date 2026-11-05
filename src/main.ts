@@ -4,6 +4,7 @@ import type { Diag } from './dsl/parser';
 import type { Timeline } from './engine/timeline';
 import { decodeHash, encodeScript } from './share';
 import { CHAPTERS, PARTS, type Chapter } from './tutorial/chapters';
+import { EXAMPLES } from './tutorial/examples';
 import { icon } from './ui/icons';
 import { Viewer, type Settings } from './ui/viewer';
 
@@ -30,6 +31,7 @@ step "설명 문장"
 
 const icons: [string, string][] = [
   ['btn-tutorial', 'book'],
+  ['btn-examples', 'examples'],
   ['btn-script', 'code'],
   ['btn-view', 'layers'],
   ['btn-link', 'link'],
@@ -164,7 +166,10 @@ function loadMain(src: string, play = false): boolean {
 }
 
 function applyEdit(): void {
-  if (loadMain(codeEdit.value, true)) setEditing(false);
+  if (!loadMain(codeEdit.value, true)) return;
+  setEditing(false);
+  // An edited example is no longer the example the address names.
+  if (location.hash.startsWith('#/x/')) history.replaceState(null, '', location.pathname + location.search);
 }
 
 $('btn-script').addEventListener('click', () => setDrawer(!document.body.classList.contains('drawer-open')));
@@ -235,10 +240,10 @@ function syncSettings(): void {
   document.querySelectorAll<HTMLInputElement>('.popover [data-cont]').forEach((i) => (i.checked = settings.continuous));
 }
 
-function bindPopover(btnId: string, popId: string): void {
+function bindPopover(btnId: string, popId: string, build: (pop: HTMLElement) => void = buildSettings): void {
   const btn = $(btnId);
   const pop = $(popId);
-  buildSettings(pop);
+  build(pop);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     pop.hidden = !pop.hidden;
@@ -253,6 +258,30 @@ function bindPopover(btnId: string, popId: string): void {
 }
 bindPopover('btn-view', 'view-pop');
 bindPopover('tut-view', 'tut-view-pop');
+
+// ------------------------------------------------------------------ examples (ready-made scenes)
+
+function buildExamples(pop: HTMLElement): void {
+  pop.innerHTML =
+    `<p class="pop-title">예시</p>` +
+    EXAMPLES.map((e) => `<button class="ex" data-ex="${e.id}"><b>${esc(e.title)}</b><span>${esc(e.summary)}</span></button>`).join('');
+  pop.querySelectorAll<HTMLButtonElement>('[data-ex]').forEach((b) =>
+    b.addEventListener('click', () => {
+      pop.hidden = true;
+      $('btn-examples').setAttribute('aria-expanded', 'false');
+      openExample(b.dataset.ex!);
+    }),
+  );
+}
+bindPopover('btn-examples', 'examples-pop', buildExamples);
+
+function openExample(id: string): void {
+  const ex = EXAMPLES.find((e) => e.id === id);
+  if (!ex) return;
+  if (location.hash !== `#/x/${id}`) history.replaceState(null, '', `#/x/${id}`);
+  if (editing) setEditing(false);
+  loadMain(ex.script, true);
+}
 
 // ------------------------------------------------------------------ tutorial popup
 
@@ -296,6 +325,7 @@ tut.player.onEndPlay = () => {
 
 function openTutorial(id?: string): void {
   const c = CHAPTERS.find((x) => x.id === id) ?? chapter;
+  main.showLegend(false);
   if (!dlg.open) {
     hashBeforeTutorial = location.hash.startsWith('#/t/') ? '' : location.hash;
     dlg.showModal();
@@ -343,6 +373,8 @@ async function route(): Promise<void> {
   const h = location.hash;
   const t = h.match(/^#\/t\/([\w-]+)/);
   if (t) return openTutorial(t[1]);
+  const x = h.match(/^#\/x\/([\w-]+)/);
+  if (x) return openExample(x[1]);
   if (h.startsWith('#z=') || h.startsWith('#s=')) {
     try {
       const src = await decodeHash(h);
@@ -396,6 +428,7 @@ const api = (v: Viewer) => ({
 window.chemvis = {
   compile,
   chapters: CHAPTERS.map((c) => c.id),
+  examples: EXAMPLES.map((e) => e.id),
   main: { ...api(main), load: (src: string) => loadMain(src) },
   tutorial: { ...api(tut), open: (id: string) => openTutorial(id), chapter: () => chapter.id },
 };

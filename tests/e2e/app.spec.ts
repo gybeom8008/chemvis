@@ -5,6 +5,7 @@ type St = { k: number; t: number; n: number; title: string | null; atEnd: boolea
 type V = { seek: (k: number, t: number) => void; state: () => St };
 type Api = {
   chapters: string[];
+  examples: string[];
   main: V & { load: (src: string) => boolean };
   tutorial: V & { open: (id: string) => void; chapter: () => string };
 };
@@ -179,3 +180,50 @@ test('attraction lines do not blink while nothing moves', async ({ page }) => {
   expect(counts.size).toBe(1);
   expect([...counts][0]).toBeGreaterThan(10);
 });
+
+test('examples open in the workspace like ready-made documents and play through', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('./?still');
+  await page.locator('#btn-examples').click();
+  const items = page.locator('#examples-pop [data-ex]');
+  const ids = await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.examples);
+  await expect(items).toHaveCount(ids.length);
+  await items.first().click();
+  await expect(page.locator('#examples-pop')).toBeHidden();
+  await expect(page).toHaveURL(new RegExp(`#/x/${ids[0]}$`));
+  await expect(page.locator('#tutorial')).not.toHaveAttribute('open', '');
+  const c = cv(page);
+  for (const id of ids) {
+    await page.evaluate((id) => (location.hash = `#/x/${id}`), id);
+    await expect.poll(async () => (await c.main.state()).title).not.toBeNull();
+    const st = await c.main.state();
+    for (let k = 0; k < st.n; k++) {
+      await page.evaluate(([k]) => (window as unknown as { chemvis: Api }).chemvis.main.seek(k, 1), [k] as const);
+      expect(await page.locator('#main-viewer circle.atom').count(), `${id} step ${k + 1}`).toBeGreaterThan(0);
+    }
+  }
+  expect(errors).toEqual([]);
+});
+
+test('the legend button lists the marks of the current scene', async ({ page }) => {
+  await page.goto('./?still');
+  const btn = page.locator('#main-viewer .legend-btn');
+  const pop = page.locator('#main-viewer .legend-pop');
+  // No scene yet: every mark is listed.
+  await btn.click();
+  await expect(pop).toBeVisible();
+  await expect(pop).toContainText('굽은 화살표');
+  await page.mouse.click(5, 300);
+  await expect(pop).toBeHidden();
+  // A water molecule: its elements and its marks, others hidden until asked for.
+  await cv(page).main.load('stage solution\nmol w = H2O at center\nstep "물"\n  wait\n');
+  await btn.click();
+  await expect(pop.locator('.lg-els li span')).toHaveText(['수소', '산소']);
+  await expect(pop.getByText('비공유 전자쌍')).toBeVisible();
+  await expect(pop.getByText('굽은 화살표', { exact: false })).toBeHidden();
+  await pop.locator('.lg-more').click();
+  await expect(pop.getByText('굽은 화살표', { exact: false })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(pop).toBeHidden();
+});
+

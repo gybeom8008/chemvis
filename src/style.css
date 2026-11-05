@@ -357,11 +357,192 @@ code {
 }
 
 .dock {
+  position: relative;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: end;
+  gap: 8px;
+  padding: 6px 16px 20px;
+}
+
+.dock-main {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: 6px 16px 20px;
+  min-width: 0;
+}
+
+.dock-side {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+}
+
+/* Legend: a round button at the bottom left, the panel opens above it. */
+.legend-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.legend-btn[aria-expanded='true'] {
+  color: var(--surface);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.popover.examples {
+  width: 340px;
+  padding: 8px;
+}
+
+.popover.examples .pop-title {
+  margin: 4px 8px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.popover.examples .ex {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 10px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.popover.examples .ex:hover,
+.popover.examples .ex:focus-visible {
+  background: var(--hover);
+}
+
+.popover.examples .ex b {
+  font-size: 14.5px;
+  font-weight: 650;
+}
+
+.popover.examples .ex span {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.legend-pop {
+  position: absolute;
+  left: 16px;
+  bottom: calc(100% - 8px);
+  z-index: 20;
+  width: min(340px, calc(100% - 32px));
+  max-height: min(62vh, 520px);
+  overflow: auto;
+  padding: 10px 14px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+}
+
+.legend-pop .lg-group {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.legend-pop .lg-group:first-child {
+  margin-top: 2px;
+}
+
+.legend-pop ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend-pop .lg-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+
+.legend-pop .lg-sw {
+  flex: none;
+  overflow: visible;
+}
+
+.legend-pop .lg-els {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.legend-pop .lg-els li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.legend-pop .lg-list li.lg-off,
+.legend-pop p.lg-off {
+  display: none;
+}
+
+.legend-pop.show-all .lg-list li.lg-off {
+  display: flex;
+  opacity: 0.45;
+}
+
+.legend-pop.show-all p.lg-off {
+  display: block;
+}
+
+.legend-pop .lg-line {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.legend-pop .lg-line.s0 {
+  stroke: var(--s0);
+}
+
+.legend-pop .lg-line.s2 {
+  stroke: var(--s2);
+}
+
+.legend-pop .lg-more {
+  margin-top: 10px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.legend-pop .lg-more:hover {
+  background: var(--hover);
 }
 
 /* Empty workspace: canvas and controls are shown, controls wait for a scene. */
@@ -1514,7 +1695,16 @@ code {
     padding: 4px 8px 0;
   }
   .dock {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 6px;
     padding: 4px 10px 14px;
+  }
+  .dock-side:empty {
+    display: none;
+  }
+  .legend-btn {
+    width: 40px;
+    height: 40px;
   }
   .caption {
     font-size: 15.5px;

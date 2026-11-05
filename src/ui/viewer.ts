@@ -7,6 +7,7 @@ import type { Timeline } from '../engine/timeline';
 import type { Lens } from '../engine/world';
 import { StageView } from '../render/view';
 import { icon } from './icons';
+import { legendHtml } from './legend';
 import { Player } from './player';
 
 export interface Settings {
@@ -32,6 +33,8 @@ export class Viewer {
   private caption: HTMLElement;
   private segs: HTMLElement;
   private playBtn: HTMLButtonElement;
+  private legendBtn: HTMLButtonElement;
+  private legendPop: HTMLElement;
 
   constructor(host: HTMLElement, settings: Settings) {
     this.settings = settings;
@@ -39,14 +42,21 @@ export class Viewer {
       <div class="viewer is-empty">
         <div class="stage-box"><svg class="stage" role="img" aria-label="장면"></svg></div>
         <div class="dock">
-          <p class="caption" aria-live="polite"><span class="count"></span><span class="text"></span></p>
-          <div class="pill">
-            <button class="icon" data-act="restart" aria-label="처음으로" title="처음으로">${icon('restart')}</button>
-            <button class="icon" data-act="prev" aria-label="이전 단계" title="이전 단계 (←)">${icon('prev')}</button>
-            <button class="icon play" data-act="play" aria-label="재생" title="재생 (스페이스)">${icon('play')}</button>
-            <button class="icon" data-act="next" aria-label="다음 단계" title="다음 단계 (→)">${icon('next')}</button>
-            <div class="segs" role="slider" aria-label="진행" tabindex="0"></div>
+          <div class="dock-side">
+            <button class="icon legend-btn" aria-label="범례" title="범례" aria-expanded="false">${icon('legend')}</button>
           </div>
+          <div class="dock-main">
+            <p class="caption" aria-live="polite"><span class="count"></span><span class="text"></span></p>
+            <div class="pill">
+              <button class="icon" data-act="restart" aria-label="처음으로" title="처음으로">${icon('restart')}</button>
+              <button class="icon" data-act="prev" aria-label="이전 단계" title="이전 단계 (←)">${icon('prev')}</button>
+              <button class="icon play" data-act="play" aria-label="재생" title="재생 (스페이스)">${icon('play')}</button>
+              <button class="icon" data-act="next" aria-label="다음 단계" title="다음 단계 (→)">${icon('next')}</button>
+              <div class="segs" role="slider" aria-label="진행" tabindex="0"></div>
+            </div>
+          </div>
+          <div class="dock-side"></div>
+          <div class="legend-pop" role="dialog" aria-label="범례" hidden></div>
         </div>
       </div>`;
     this.root = host.querySelector('.viewer')!;
@@ -54,6 +64,28 @@ export class Viewer {
     this.caption = host.querySelector('.caption')!;
     this.segs = host.querySelector('.segs')!;
     this.playBtn = host.querySelector('[data-act="play"]')!;
+    this.legendBtn = host.querySelector('.legend-btn')!;
+    this.legendPop = host.querySelector('.legend-pop')!;
+    this.legendBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.showLegend(this.legendPop.hidden !== false);
+    });
+    this.legendPop.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const more = (e.target as HTMLElement).closest('.lg-more');
+      if (!more) return;
+      const all = this.legendPop.classList.toggle('show-all');
+      more.setAttribute('aria-pressed', String(all));
+      more.textContent = all ? '이 장면에 쓰인 기호만 보기' : '이 장면에 없는 기호도 보기';
+    });
+    // Any press outside the panel closes it (some buttons stop their clicks from spreading).
+    document.addEventListener('pointerdown', (e) => {
+      const t = e.target as Node;
+      if (!this.legendPop.hidden && !this.legendPop.contains(t) && !this.legendBtn.contains(t)) this.showLegend(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.legendPop.hidden) this.showLegend(false);
+    });
 
     host.querySelectorAll<HTMLButtonElement>('[data-act]').forEach((b) =>
       b.addEventListener('click', () => {
@@ -87,9 +119,20 @@ export class Viewer {
       this.setEnabled(true);
       this.buildSegs();
       this.update();
+      if (!this.legendPop.hidden) this.showLegend(true);
       this.onLoad?.(res.timeline);
     }
     return res;
+  }
+
+  /** Open or close the legend; it is rebuilt from the current scene each time it opens. */
+  showLegend(open: boolean): void {
+    if (open) {
+      this.legendPop.innerHTML = legendHtml(this.tl, this.settings.lens);
+      this.legendPop.classList.remove('show-all');
+    }
+    this.legendPop.hidden = !open;
+    this.legendBtn.setAttribute('aria-expanded', String(open));
   }
 
   clear(): void {

@@ -1,8 +1,8 @@
 /**
- * Tutorial chapters. Each chapter introduces one kind of change, plays a
- * standard example, shows the script that produced it side by side, and
- * suggests one edit to try. The scripts double as examples for AI and as
- * the automated test set.
+ * Tutorial: the basic kinds of change, one chapter each, in the order a newcomer
+ * needs them. Each chapter says what the term means, plays a standard example,
+ * shows the script beside it, and suggests one edit to try. Scenes about one
+ * particular topic live in examples.ts instead.
  */
 export interface Chapter {
   id: string;
@@ -16,10 +16,10 @@ export interface Chapter {
 }
 
 export const PARTS = [
-  { id: 0, title: '0부 · 화면 문법' },
-  { id: 1, title: '1부 · 현상' },
-  { id: 2, title: '2부 · 반응' },
-  { id: 3, title: '3부 · 평형과 조합' },
+  { id: 0, title: '0부 · 화면 읽는 법' },
+  { id: 1, title: '1부 · 물리 변화: 물질은 그대로' },
+  { id: 2, title: '2부 · 화학 반응: 새 물질이 생김' },
+  { id: 3, title: '3부 · 반응의 에너지와 평형' },
 ];
 
 const s = (x: string) => x.replace(/^\n/, '');
@@ -30,7 +30,7 @@ export const CHAPTERS: Chapter[] = [
     id: 'atoms',
     part: 0,
     title: '원자, 결합, 전자쌍',
-    intro: `<p>물질의 변화를 원자와 전자로 보여 줘요. 물 분자 하나로 화면 표시부터 익혀요.</p>
+    intro: `<p>모든 물질은 원자로 되어 있고, 원자는 둘레의 전자를 이웃 원자와 함께 써서 결합해요. 화학 반응은 이 전자가 옮겨 가면서 결합이 생기고 없어지는 일이에요. 이 앱은 원자를 색깔 공으로, 결합을 선으로, 결합에 쓰이지 않은 전자를 점으로 그려요. 물 분자 하나로 읽는 법을 익혀요.</p>
 <ul class="legend"><li><i class="g-atom"></i>원자</li><li><i class="g-bond"></i>공유 결합(전자 2개)</li><li><i class="g-lp"></i>비공유 전자쌍</li></ul>`,
     script: s(`
 scene "물 분자 하나"
@@ -53,8 +53,8 @@ step "O 둘레의 전자를 세면 결합 2개(전자 4개)와 비공유 전자�
     id: 'arrows',
     part: 0,
     title: '굽은 화살표와 전하',
-    intro: `<p>반응에서 움직이는 것은 전자예요. 굽은 화살표의 꼬리는 전자쌍이 있던 곳, 머리는 전자쌍이 가는 곳이에요.</p>
-<ul class="legend"><li><i class="g-arrow"></i>전자쌍 이동</li><li><i class="g-charge">+</i>형식 전하</li><li><i class="g-focus"></i>이번 단계에서 움직이는 것</li></ul>`,
+    intro: `<p>반응에서 움직이는 것은 원자보다 전자예요. 굽은 화살표의 꼬리는 전자쌍이 있던 곳, 머리는 전자쌍이 가는 곳이에요. 원자가 중성일 때보다 전자를 적게 가지면 +, 많이 가지면 − 전하가 원자 옆에 표시돼요.</p>
+<ul class="legend"><li><i class="g-arrow"></i>전자쌍 이동</li><li><i class="g-charge">+</i>전하</li><li><i class="g-focus"></i>이번 단계에서 움직이는 것</li></ul>`,
     script: s(`
 scene "암모니아가 수소 이온과 결합할 때"
 stage solution
@@ -76,7 +76,7 @@ step "이제 전하 +1은 N에 표시돼요. N이 자기 전자쌍을 결합에 
     id: 'forces',
     part: 0,
     title: '분자 사이 인력과 온도',
-    intro: `<p>물 분자의 O는 조금 −, H는 조금 +를 띠어 이웃 분자끼리 서로 당겨요(수소 결합). 온도는 입자가 움직이는 빠르기예요.</p>
+    intro: `<p>분자와 분자 사이에도 약하게 서로 당기는 힘이 있어요. 물에서는 한 분자의 H와 이웃 분자의 O 사이에 생기는 인력(수소 결합)이 특히 세서, 물이 100℃가 되어야 끓고 얼음이 물에 뜨는 것도 이 인력 때문이에요. 온도는 입자들이 얼마나 빠르게 움직이는지를 나타내요.</p>
 <ul class="legend"><li><i class="g-attract"></i>분자 사이 인력</li></ul>`,
     script: s(`
 scene "물 분자들 사이의 수소 결합"
@@ -95,13 +95,12 @@ step "식히면 움직임이 다시 느려져요"
 `),
     tryIt: `보기 설정에서 <b>분자 사이 인력</b>을 끄고 켜 보세요.`,
   },
-
   // ------------------------------------------------------------------ part 1
   {
     id: 'diffusion',
     part: 1,
     title: '확산',
-    intro: `<p>입자는 늘 무작위로 움직여요. 그 결과 몰려 있던 입자가 고르게 퍼지는 것이 확산이에요.</p>
+    intro: `<p>입자는 늘 제멋대로 움직여요. 그래서 한곳에 몰려 있던 입자는 시간이 지나면 고르게 퍼지는데, 이것이 확산이에요. 향기가 방 안에 퍼지고 잉크가 물에 번지는 것이 확산이에요.</p>
 <ul class="legend"><li><i class="g-trail"></i>지나간 경로</li></ul>`,
     script: s(`
 scene "소금물 한 방울이 퍼질 때"
@@ -121,7 +120,7 @@ step "이온들이 무작위로 움직이며 물 전체로 퍼져요"
     id: 'evaporation',
     part: 1,
     title: '증발과 응결',
-    intro: `<p>수면의 물 분자가 충분히 빨리 움직이면 이웃과의 인력을 벗어나 공기로 나가요(증발). 공기 중의 분자가 액체로 내려오면 응결이에요.</p>`,
+    intro: `<p>액체 표면의 분자가 이웃과의 인력을 벗어날 만큼 빠르게 움직이면 기체가 되어 공기로 나가요. 이것이 증발이에요. 반대로 공기 중의 기체 분자가 다시 액체가 되는 것은 응결이에요. 빨래가 마르는 것은 증발, 차가운 컵 겉에 물방울이 맺히는 것은 응결이에요.</p>`,
     script: s(`
 scene "물이 증발하고 응결할 때"
 stage interface
@@ -142,10 +141,51 @@ step "공기 중의 물 분자 하나가 수면 아래로 내려와 액체에 �
     tryIt: `<code>heat water</code>를 <code>cool water</code>로 바꿔 보세요.`,
   },
   {
+    id: 'boiling',
+    part: 1,
+    title: '끓음',
+    intro: `<p>증발은 액체 표면에서만 일어나지만, 끓을 때는 액체 속에서도 분자들이 기체가 되어 기포를 만들어요. 기포는 떠올라 수면에서 터지고, 그 안의 분자는 공기로 나가요. 액체가 끓기 시작하는 온도를 끓는점이라고 해요.</p>`,
+    script: s(`
+scene "물이 끓을 때"
+stage interface
+crowd H2O in water 50
+crowd H2O in air 2
+
+step "물을 세게 가열해요. 분자들이 아주 빠르게 움직여요"
+  heat water
+step "액체 속에서 물 분자 몇 개가 기체가 되어 기포를 만들고, 기포가 떠올라요"
+  boil 3
+step "또 다른 기포가 생겨 떠올라요"
+  boil 4
+`),
+    tryIt: `<code>boil 3</code>의 숫자를 바꾸면 기포 하나에 든 물 분자 수가 달라져요(2~6).`,
+  },
+  {
+    id: 'ice',
+    part: 1,
+    title: '응고와 융해: 얼음이 얼고 녹을 때',
+    intro: `<p>액체가 고체가 되는 것을 응고(어는 것), 고체가 액체가 되는 것을 융해(녹는 것)라고 해요. 액체 물에서는 수소 결합이 쉴 새 없이 생겼다 사라지며 무질서하게 이어져 있어요. 온도가 내려가면 물 분자들이 육각형 그물로 규칙적으로 이어져 얼음이 되는데, 이 그물에 빈 공간이 많아서 얼음이 물보다 가벼워요.</p>
+<ul class="legend"><li><i class="g-attract"></i>분자 사이 인력</li></ul>`,
+    script: s(`
+scene "물이 얼고 녹을 때"
+stage solution
+lens attract on
+crowd H2O in water 40
+
+step "액체 물에서는 수소 결합(파란 점선)이 무질서하게 이어져 있어요"
+  wait
+step "온도가 내려가면 물 분자들이 육각형 그물 모양으로 규칙적으로 이어져 얼음이 돼요"
+  freeze water
+step "다시 데우면 그물이 흐트러지며 녹아요"
+  melt water
+`),
+    tryIt: `얼음 단계에서 보기 설정의 <b>분자 사이 인력</b>을 끄고 켜며 그물 모양을 비교해 보세요.`,
+  },
+  {
     id: 'dissolving',
     part: 1,
     title: '용해',
-    intro: `<p>물 분자는 Na⁺ 쪽으로 O를, Cl⁻ 쪽으로 H를 향해 모여요. 물 분자에 둘러싸인 이온이 결정에서 떨어져 나오는 것이 용해예요.</p>`,
+    intro: `<p>소금이 물에 녹는 것처럼, 한 물질이 다른 물질 속으로 고르게 흩어져 섞이는 것이 용해예요. 물 분자는 Na⁺ 쪽으로 O를, Cl⁻ 쪽으로 H를 향해 모여 이온을 둘러싸고, 둘러싸인 이온이 결정에서 떨어져 나와요. 녹아도 물질 자체는 그대로라서, 물을 증발시키면 소금이 다시 나와요.</p>`,
     script: s(`
 scene "소금이 물에 녹을 때"
 stage solution
@@ -163,10 +203,33 @@ step "다른 이온 둘도 떨어져 나와요"
     tryIt: `<code>NaCl</code>을 <code>KBr</code>로 바꿔 보세요.`,
   },
   {
+    id: 'precipitation',
+    part: 1,
+    title: '석출(침전)',
+    intro: `<p>어떤 이온 짝은 서로 당기는 힘이 물 분자와의 인력보다 세서, 물 분자를 떨치고 고체 결정을 이뤄요. 이것이 석출(침전)이에요. 맑은 용액 둘을 섞었는데 뿌옇게 흐려지며 가루가 가라앉으면 침전이 생긴 거예요. 같이 있던 다른 이온은 녹은 채로 남아요.</p>`,
+    script: s(`
+scene "은 이온과 염화 이온이 침전을 만들 때"
+stage solution
+crowd H2O in water 30
+place Ag+ in left x3
+place NO3- in left x3
+place Na+ in right x3
+place Cl- in right x3
+
+step "질산은 용액(Ag+, NO3-)과 소금물(Na+, Cl-)을 섞었어요"
+  spread Ag+ NO3- Na+ Cl- in water
+step "Ag+와 Cl-가 물 분자를 떨치고 서로 결합해 고체 염화은(AgCl) 결정을 이뤄요"
+  precipitate Ag+ Cl- x3
+step "Na+와 NO3-는 물에 녹은 채로 남아요"
+  note Na+ "녹은 채 남은 Na+"
+`),
+    tryIt: `<code>x3</code>을 <code>x2</code>로 바꾸면 Ag+와 Cl- 하나씩이 녹은 채 남아요.`,
+  },
+  {
     id: 'exchange',
     part: 1,
     title: '흡착과 이온 교환',
-    intro: `<p>점토 표면의 음전하 부위(−)에는 양이온이 흡착해 있어요. 빗물의 H⁺가 그 부위를 차지하면 원래 있던 양이온이 물속으로 나와요. 전하 합은 늘 같아야 해요.</p>`,
+    intro: `<p>흡착은 물질이 다른 물질의 표면에 달라붙어 있는 것이에요. 흙 속 점토 알갱이 표면에는 음전하 부위(−)가 있어서 Ca²⁺, K⁺ 같은 양이온이 흡착해 있어요. 빗물의 H⁺가 그 부위를 차지하면 원래 있던 양이온이 물속으로 나오는데, 이것이 이온 교환이에요. 이때 전하의 합은 늘 같아야 해요.</p>`,
     script: s(`
 scene "점토 표면의 이온 교환"
 stage soil
@@ -185,7 +248,7 @@ step "빗물의 H+ 두 개가 Ca2+ 하나를 대신해요. 떨어져 나온 Ca2+
     id: 'leaching',
     part: 1,
     title: '씻겨 내려감(용탈)',
-    intro: `<p>물에 녹아 나온 이온은 빗물과 함께 공극을 따라 아래로 내려가요. 대본의 <code>leach</code> 한 줄이 빗물 흐름, 수화, 이동을 모두 그려요.</p>`,
+    intro: `<p>물에 녹아 나온 이온은 빗물과 함께 흙 속 틈을 따라 아래로 내려가요. 이것이 용탈이에요. 비가 많이 오는 곳의 흙에서 양분이 빠져나가 땅이 척박해지는 까닭 중 하나예요.</p>`,
     script: s(`
 scene "산성비가 내린 흙에서 칼슘이 씻겨 내려갈 때"
 stage soil
@@ -201,13 +264,62 @@ step "흡착해 있는 K+는 그대로 남아요. 씻겨 내려가는 것은 물
 `),
     tryIt: `<code>to subsoil</code>을 <code>to groundwater</code>로 바꿔 보세요.`,
   },
+  {
+    id: 'membrane',
+    part: 1,
+    title: '막 수송: 통로와 펌프',
+    intro: `<p>세포막은 기름 성분(인지질) 두 층으로 되어 있어 이온이 그냥은 지나가지 못해요. 이온은 막에 박힌 단백질을 거쳐 지나가요. 농도(일정한 부피 안의 입자 수)가 높은 쪽에서 낮은 쪽으로 통로를 지나는 것은 확산이고, 에너지를 써서 반대 방향으로 옮기는 것은 능동 수송이에요.</p>`,
+    script: s(`
+scene "세포막을 지나는 이온"
+stage membrane
+protein k = channel K+ at 330
+protein p = pump at 680
+crowd H2O in outside 12
+crowd H2O in inside 12
+place K+ in inside x5
+place K+ in outside x1
+place Na+ in outside x5
+place Na+ in inside x3
 
+step "세포 안쪽에는 K+가, 바깥에는 Na+가 많아요"
+  note k "K+ 통로"
+  note p "나트륨-칼륨 펌프"
+step "K+ 하나가 통로를 지나 K+가 적은 바깥으로 나가요(확산)"
+  cross K+ via k
+step "펌프는 ATP의 에너지를 써서 Na+ 세 개를 밖으로, K+ 두 개를 안으로 옮겨요(능동 수송)"
+  pump p 3 Na+ out 2 K+ in
+`),
+    tryIt: `<code>cross K+ via k</code>를 <code>cross Na+ via k</code>로 바꾸면 'K+용 통로'라는 경고가 떠요. 통로는 지나갈 이온을 골라요.`,
+  },
+  {
+    id: 'osmosis',
+    part: 1,
+    title: '삼투',
+    intro: `<p>물 분자는 지나가고 녹아 있는 이온은 못 지나가는 막을 사이에 두면, 물은 이온이 많은 쪽으로 더 많이 건너가요. 이것이 삼투예요. 배추를 소금에 절이면 숨이 죽는 것도 세포 속 물이 소금기 많은 바깥으로 빠져나가는 삼투 때문이에요.</p>`,
+    script: s(`
+scene "물이 소금 쪽으로 건너갈 때"
+stage membrane
+protein a = channel H2O at 500
+crowd H2O in outside 22
+crowd H2O in inside 22
+place Na+ in inside x4
+place Cl- in inside x4
+
+step "막 아래쪽(안쪽)에 소금 이온이 많아요. 이온은 막을 못 지나가지만 물 분자는 물 통로로 지나가요"
+  note a "물 통로(아쿠아포린)"
+step "물 분자가 이온이 적은 위쪽에서 이온이 많은 아래쪽으로 더 많이 건너가요"
+  osmosis 4
+step "계속 건너가요. 아래쪽이 묽어질수록 건너가는 속도는 줄어들어요"
+  osmosis 4
+`),
+    tryIt: `소금 이온을 <code>in outside</code>로 옮겨 적으면 물이 위쪽으로 건너가요.`,
+  },
   // ------------------------------------------------------------------ part 2
   {
     id: 'acid-hcl',
     part: 2,
-    title: '산·염기: 양성자 이동',
-    intro: `<p>산은 H⁺를 내주고, 염기는 비공유 전자쌍으로 그 H⁺와 결합해요. HCl과 물 사이에서 화살표 두 개가 한꺼번에 움직여요.</p>`,
+    title: '산과 염기 ①: 산이 H⁺를 내줄 때',
+    intro: `<p>산은 H⁺(수소 이온)를 내주는 물질이고, 염기는 비공유 전자쌍으로 H⁺와 결합하는 물질이에요. 염화수소(HCl)가 물에 녹으면 H⁺가 물 분자로 옮겨 가 하이드로늄 이온(H₃O⁺)이 돼요. 물속에 H₃O⁺가 많을수록 산성이 강하고, 식초와 위산이 시큼한 것도 이 때문이에요.</p>`,
     script: s(`
 scene "염화수소가 물에 녹을 때"
 stage solution
@@ -227,8 +339,8 @@ step "하이드로늄 이온(H3O+)과 염화 이온(Cl-)이 생기고 물 분자
   {
     id: 'base-nh3',
     part: 2,
-    title: '산·염기: 물이 산이 될 때',
-    intro: `<p>물은 상대에 따라 산도 되고 염기도 돼요. 암모니아 옆에서는 물이 H⁺를 내주는 산이 돼요.</p>`,
+    title: '산과 염기 ②: 물이 산이 될 때',
+    intro: `<p>물은 상대에 따라 산도 되고 염기도 돼요. 암모니아처럼 H⁺와 결합하려는 성질이 강한 물질 옆에서는 물이 H⁺를 내주고 수산화 이온(OH⁻)이 남아요. 물속에 OH⁻가 많은 것이 염기성이에요. 비누와 표백제가 미끈거리는 것은 염기성 때문이에요.</p>`,
     script: s(`
 scene "암모니아가 물에서 염기로 작용할 때"
 stage solution
@@ -247,10 +359,37 @@ step "암모늄 이온(NH4+)과 수산화 이온(OH-)이 생겨요"
     tryIt: `마지막 단계에 <code>solvate all</code>을 더해 보세요.`,
   },
   {
+    id: 'neutralization',
+    part: 2,
+    title: '중화 반응',
+    intro: `<p>산성 용액과 염기성 용액을 섞으면 H₃O⁺의 H⁺가 OH⁻로 옮겨 가 물 분자 두 개가 돼요. 산성과 염기성이 함께 사라지므로 중화라고 해요. 이때 열이 나와서 용액이 조금 따뜻해져요. 속이 쓰릴 때 먹는 제산제는 위산을 중화해요.</p>
+<ul class="legend"><li><i class="g-arrow"></i>전자쌍 이동</li><li><i class="g-energy"></i>오른쪽 위: 에너지 변화</li></ul>`,
+    script: s(`
+scene "산과 염기가 섞여 물이 될 때"
+stage solution
+crowd H2O in water 24
+mol a = H3O+ at left
+mol b = OH- at right
+
+step "산성 용액에는 하이드로늄 이온(H3O+)이, 염기성 용액에는 수산화 이온(OH-)이 있어요"
+  note a.O "H3O+: 산성을 띠게 하는 이온"
+  note b.O "OH-: 염기성을 띠게 하는 이온"
+step "OH-의 O가 비공유 전자쌍을 앞세워 H3O+의 H에 다가가요"
+  approach b.O a.H1
+step "H+ 하나가 H3O+에서 OH-로 옮겨 가요. 이때 열이 나와요"
+  transfer a.H1 to b.O
+  energy -56 kJ/mol
+step "물 분자 두 개가 됐어요. 산성도 염기성도 사라졌어요(중화)"
+  note a.O "물"
+  note b.O "물"
+`),
+    tryIt: `<code>energy -56 kJ/mol</code>은 물 1몰(약 18 g)이 생길 때 나오는 열이에요. 이 줄을 지우면 오른쪽 위 에너지 그래프가 사라져요.`,
+  },
+  {
     id: 'redox',
     part: 2,
-    title: '산화·환원: 전자 이동',
-    intro: `<p>산화·환원에서는 전자가 한 원자에서 다른 원자로 옮겨 가요. 전자를 잃으면 산화, 얻으면 환원이에요.</p>
+    title: '산화와 환원: 전자 이동',
+    intro: `<p>원자가 전자를 잃으면 산화, 전자를 얻으면 환원이라고 해요. 한쪽이 잃은 전자를 다른 쪽이 얻으므로 산화와 환원은 늘 함께 일어나요. 철이 녹스는 것, 물질이 불꽃을 내며 산소와 반응하는 연소, 전지가 전기를 내는 것이 모두 산화·환원이에요. 산화수는 원자가 전자를 얼마나 잃었는지(+) 얻었는지(−)를 셈한 숫자예요.</p>
 <ul class="legend"><li><i class="g-hook"></i>전자 하나 이동</li><li><i class="g-ox">+2</i>산화수</li><li><i class="g-energy"></i>오른쪽 위: 에너지 변화</li></ul>`,
     script: s(`
 scene "아연이 구리 이온에 전자를 내줄 때"
@@ -271,99 +410,13 @@ step "아연의 전자 두 개가 하나씩 구리 이온으로 옮겨 가요. �
 step "전자를 잃은 아연은 Zn2+가 되고(산화), 전자를 얻은 구리는 Cu 원자가 돼요(환원)"
   solvate z
 `),
-    tryIt: `<code>energy -212 kJ/mol</code> 뒤에 <code>barrier 60</code>을 붙이면 반응이 넘어야 하는 에너지 언덕(활성화 에너지)이 그려져요.`,
-  },
-  {
-    id: 'radical',
-    part: 2,
-    title: '라디칼: 홑전자 반응',
-    intro: `<p>라디칼은 짝 없는 전자(홑전자)를 가진 입자예요. 라디칼 반응에서는 전자가 하나씩 움직여요. 빛이 결합을 깨면서 반응이 시작돼요.</p>
-<ul class="legend"><li><i class="g-hook"></i>전자 하나 이동</li><li><i class="g-single"></i>홑전자</li><li><i class="g-photon">∿</i>빛(hν)</li></ul>`,
-    script: s(`
-scene "염소와 메테인의 라디칼 반응"
-stage gas
-mol c = Cl2 at 400,330
-mol m = CH4 at 640,330
-
-step "빛을 흡수한 Cl2의 결합이 깨지며, 결합 전자 두 개가 하나씩 두 Cl로 가요"
-  light c
-  hop c.Cl1~c.Cl2 -> c.Cl1
-  hop c.Cl1~c.Cl2 -> c.Cl2
-step "홑전자를 가진 Cl(염소 라디칼) 하나가 메테인의 H에 다가가요"
-  approach c.Cl2 m.H1
-step "Cl의 홑전자와 C–H 결합 전자 하나가 새 Cl–H 결합을 이루고, 남은 전자 하나는 C에 남아요"
-  hop c.Cl2 -> c.Cl2~m.H1
-  hop m.C~m.H1 -> c.Cl2~m.H1
-  hop m.C~m.H1 -> m.C
-step "염화수소(HCl)와 메틸 라디칼(CH3·)이 생겨요. 메틸 라디칼은 다시 Cl2와 반응해 연쇄가 이어져요"
-  note m.C "홑전자 1개"
-`),
-    tryIt: `<code>light c</code> 줄을 지워도 화면은 그려져요. 실제로는 빛이나 열이 있어야 Cl–Cl 결합이 깨져요.`,
-  },
-  {
-    id: 'coordination',
-    part: 2,
-    title: '배위 결합: 착이온',
-    intro: `<p>배위 결합은 한 원자가 비공유 전자쌍을 통째로 내주어 만드는 결합이에요. 금속 이온과 물·암모니아 같은 분자 사이에 흔히 생기고, 그렇게 생긴 이온을 착이온이라고 해요.</p>
-<ul class="legend"><li><i class="g-dative"></i>배위 결합(화살촉 쪽이 전자쌍을 얻은 원자)</li></ul>`,
-    script: s(`
-scene "구리 이온과 암모니아가 착이온을 만들 때"
-stage solution
-crowd H2O in water 18
-mol c = Cu2+ at center
-mol n1 = NH3 at 320,310
-mol n2 = NH3 at 680,310
-mol n3 = NH3 at 500,130
-mol n4 = NH3 at 500,490
-
-step "구리 이온(Cu2+)은 다른 분자의 비공유 전자쌍과 결합할 수 있어요"
-  note c.Cu "Cu2+"
-step "암모니아 네 분자가 N의 비공유 전자쌍을 앞세워 다가가요"
-  approach n1.N c.Cu
-  approach n2.N c.Cu
-  approach n3.N c.Cu
-  approach n4.N c.Cu
-step "N의 비공유 전자쌍이 N과 Cu 사이로 옮겨 가 배위 결합 네 개가 생겨요"
-  ligand n1.N -> c.Cu
-  ligand n2.N -> c.Cu
-  ligand n3.N -> c.Cu
-  ligand n4.N -> c.Cu
-step "착이온 [Cu(NH3)4]2+가 됐어요. 전자쌍은 모두 N에서 왔으니 전하 +2는 구리에 그대로 있어요"
-  note c.Cu "전하 +2"
-`),
-    tryIt: `<code>NH3</code>를 <code>H2O</code>로, <code>.N</code>을 모두 <code>.O</code>로 바꿔 보세요. 물 분자도 같은 방식으로 구리 이온과 결합해요.`,
-  },
-  {
-    id: 'condensation',
-    part: 2,
-    title: '축합과 가수분해',
-    intro: `<p>축합은 두 분자가 물 한 분자를 내놓으면서 결합하는 반응이고, 가수분해는 그 반대로 물이 들어가 결합이 깨지는 반응이에요. 단백질, 녹말, 지방이 모두 이런 방식으로 만들어지고 분해돼요.</p>`,
-    script: s(`
-scene "두 아미노산이 이어졌다가 다시 나뉠 때"
-stage solution
-crowd H2O in water 16
-mol g1 = Gly at 330,300
-mol g2 = Gly at 670,300
-
-step "글라이신 두 분자예요. 한쪽 끝에는 카복실기(-COOH), 다른 끝에는 아미노기(-NH2)가 있어요"
-  note g1.C2 "카복실기"
-  note g2.N "아미노기"
-step "g2의 아미노기가 g1의 카복실기 쪽으로 다가가요"
-  approach g2.N g1.C2
-step "g1의 -OH와 g2의 H 하나가 떨어져 나와 물 분자가 되고, C와 N이 결합해요(축합)"
-  condensation g1.C2 g2.N
-step "이렇게 생긴 C–N 결합이 펩타이드 결합이에요"
-  note g1.C2~g2.N "펩타이드 결합"
-step "물 분자가 들어가면 펩타이드 결합이 깨지고 두 아미노산으로 다시 나뉘어요(가수분해)"
-  hydrolysis g1.C2~g2.N
-`),
-    tryIt: `<code>Gly</code>를 <code>Ala</code>(알라닌)로 바꿔 보세요. 원자 이름은 SMILES 순서(<code>CC(N)C(=O)O</code>)를 따라서, 카복실 탄소가 <code>C3</code>가 돼요.`,
+    tryIt: `<code>energy -212 kJ/mol</code> 뒤에 <code>barrier 60</code>을 더 적으면 반응이 넘어야 하는 에너지 언덕(활성화 에너지)이 그려져요.`,
   },
   {
     id: 'cell',
     part: 2,
-    title: '전지: 전자가 도선을 따라 흐를 때',
-    intro: `<p>전지는 산화와 환원을 두 전극에서 따로 일어나게 해서, 그 사이를 오가는 전자를 도선으로 흐르게 만든 장치예요. 산화 전극에서 생긴 전자가 도선을 따라 환원 전극으로 가고, 염다리의 이온이 두 용액의 전하를 맞춰요.</p>
+    title: '전지: 산화·환원으로 전기를 만들 때',
+    intro: `<p>전지는 산화와 환원을 두 전극에서 따로 일어나게 해서, 그 사이를 오가는 전자가 도선으로 흐르게 만든 장치예요. 산화 전극에서 생긴 전자가 도선을 따라 환원 전극으로 가는 동안 전구를 켜는 일을 해요. 염다리의 이온은 두 용액의 전하를 맞춰요.</p>
 <ul class="legend"><li><i class="g-e"></i>전자</li><li><i class="g-ox">+2</i>산화수</li></ul>`,
     script: s(`
 scene "다니엘 전지: 아연에서 구리로 전자가 흐를 때"
@@ -393,137 +446,182 @@ step "왼쪽 용액은 양이온이 늘고 오른쪽은 줄었어요. 염다리�
 `),
     tryIt: `<code>wire 2</code>를 <code>wire 1</code>로 바꾸면 환원 전극에 전자가 모자란다는 오류가 나요. 구리 이온 하나에는 전자 2개가 필요해요.`,
   },
-];
-
-// More phase changes sit next to the related part-1 chapters.
-CHAPTERS.splice(CHAPTERS.findIndex((c) => c.id === 'evaporation') + 1, 0,
   {
-    id: 'boiling',
-    part: 1,
-    title: '끓음',
-    intro: `<p>증발은 수면에서만 일어나지만, 끓을 때는 액체 속에서도 물 분자들이 기체가 되어 기포를 만들어요. 기포는 떠올라 수면에서 터지고, 그 안의 물 분자는 공기로 나가요.</p>`,
+    id: 'radical',
+    part: 2,
+    title: '라디칼 반응',
+    intro: `<p>전자는 보통 둘씩 짝을 지어 있지만, 짝이 없는 전자(홑전자)를 가진 입자도 있어요. 이런 입자를 라디칼이라고 해요. 라디칼은 짝을 찾으려는 성질이 강해서 다른 분자의 결합을 깨고, 그 분자가 다시 라디칼이 되어 반응이 연쇄로 이어져요. 빛(특히 자외선)이 결합을 깨서 라디칼이 생기는 일이 많고, 햇빛을 오래 쬔 플라스틱이 삭는 것도 라디칼 반응이에요.</p>
+<ul class="legend"><li><i class="g-hook"></i>전자 하나 이동</li><li><i class="g-single"></i>홑전자</li><li><i class="g-photon">∿</i>빛(hν)</li></ul>`,
     script: s(`
-scene "물이 끓을 때"
-stage interface
-crowd H2O in water 50
-crowd H2O in air 2
+scene "염소와 메테인의 라디칼 반응"
+stage gas
+mol c = Cl2 at 400,330
+mol m = CH4 at 640,330
 
-step "물을 세게 가열해요. 분자들이 아주 빠르게 움직여요"
-  heat water
-step "액체 속에서 물 분자 몇 개가 기체가 되어 기포를 만들고, 기포가 떠올라요"
-  boil 3
-step "또 다른 기포가 생겨 떠올라요"
-  boil 4
+step "빛을 흡수한 Cl2의 결합이 깨지며, 결합 전자 두 개가 하나씩 두 Cl로 가요"
+  light c
+  hop c.Cl1~c.Cl2 -> c.Cl1
+  hop c.Cl1~c.Cl2 -> c.Cl2
+step "홑전자를 가진 Cl(염소 라디칼) 하나가 메테인의 H에 다가가요"
+  approach c.Cl2 m.H1
+step "Cl의 홑전자와 C–H 결합 전자 하나가 새 Cl–H 결합을 이루고, 남은 전자 하나는 C에 남아요"
+  hop c.Cl2 -> c.Cl2~m.H1
+  hop m.C~m.H1 -> c.Cl2~m.H1
+  hop m.C~m.H1 -> m.C
+step "염화수소(HCl)와 메틸 라디칼(CH3·)이 생겨요. 메틸 라디칼은 다시 Cl2와 반응해 연쇄가 이어져요"
+  note m.C "홑전자 1개"
 `),
-    tryIt: `<code>boil 3</code>의 숫자를 바꾸면 기포 하나에 든 물 분자 수가 달라져요(2~6).`,
+    tryIt: `<code>light c</code> 줄을 지워도 화면은 그려져요. 실제로는 빛이나 열이 있어야 Cl–Cl 결합이 깨져요.`,
   },
   {
-    id: 'ice',
-    part: 1,
-    title: '얼음이 얼고 녹을 때',
-    intro: `<p>액체 물에서는 수소 결합이 끊임없이 생겼다 사라지며 무질서하게 이어져 있어요. 온도가 내려가면 물 분자들이 수소 결합으로 규칙적인 육각형 그물을 이뤄 얼음이 되고, 다시 데우면 그물이 흐트러져 녹아요.</p>`,
+    id: 'substitution',
+    part: 2,
+    title: '치환 반응',
+    intro: `<p>분자 속 원자(또는 원자 몇 개가 모인 덩어리) 하나가 다른 것으로 바뀌는 반응이 치환 반응이에요. Br, Cl처럼 전자를 세게 당기는 원자와 결합한 C는 조금 +를 띠어서, 비공유 전자쌍을 가진 분자가 그 C 쪽으로 다가와요. 새 결합이 생기는 동시에 원래 있던 원자가 떨어져 나가요. 약이나 플라스틱 원료를 만들 때 흔히 쓰는 반응이에요.</p>
+<ul class="legend"><li><i class="g-arrow"></i>전자쌍 이동</li><li><i class="g-charge">+</i>전하</li></ul>`,
     script: s(`
-scene "물이 얼고 녹을 때"
+scene "암모니아가 브로모메테인의 Br 대신 결합할 때"
 stage solution
-lens attract on
-crowd H2O in water 40
+crowd H2O in water 20
+mol n = NH3 at left
+mol m = CH3Br at right
 
-step "액체 물에서는 수소 결합(파란 점선)이 무질서하게 이어져 있어요"
-  wait
-step "온도가 내려가면 물 분자들이 육각형 그물로 자리 잡아 얼음이 돼요"
-  freeze water
-step "다시 데우면 그물이 흐트러지며 녹아요"
-  melt water
+step "브로모메테인(CH3Br)의 Br은 전자를 세게 당겨서, Br과 결합한 C는 조금 +를 띠어요"
+  note m.C "조금 + (δ+)"
+  note m.Br "전자를 세게 당기는 Br"
+step "암모니아의 N이 비공유 전자쌍을 앞세워 Br 반대쪽에서 C에 다가가요"
+  approach n.N m.C
+step "N의 전자쌍은 N–C 새 결합이 되고, C–Br 결합의 전자쌍은 Br로 가요. Br은 브로민화 이온(Br-)이 되어 떨어져 나가요"
+  arrow n.N:lp -> n.N~m.C
+  arrow m.C~m.Br -> m.Br
+step "C와 결합해 있던 Br 대신 N이 결합했어요. 이렇게 원자(또는 원자 몇 개가 모인 덩어리) 하나가 다른 것으로 바뀌는 반응이 치환 반응이에요"
+  note n.N "새로 결합한 N"
 `),
-    tryIt: `얼음 단계에서 보기 설정의 <b>분자 사이 인력</b>을 끄고 켜며 그물 모양을 비교해 보세요.`,
+    tryIt: `<code>NH3</code>를 <code>OH-</code>로, <code>n.N</code>을 모두 <code>n.O</code>로 바꿔 보세요. 메탄올(CH₃OH)이 생겨요.`,
   },
-);
-CHAPTERS.splice(CHAPTERS.findIndex((c) => c.id === 'dissolving') + 1, 0, {
-  id: 'precipitation',
-  part: 1,
-  title: '석출(침전)',
-  intro: `<p>어떤 이온 짝은 서로 당기는 힘이 물 분자와의 인력보다 세서, 물 분자를 떨치고 고체 결정을 이뤄요. 이것이 석출(침전)이에요. 같이 있던 다른 이온은 녹은 채로 남아요.</p>`,
-  script: s(`
-scene "은 이온과 염화 이온이 침전을 만들 때"
+  {
+    id: 'addition',
+    part: 2,
+    title: '첨가 반응',
+    intro: `<p>이중 결합에는 전자쌍이 둘 있어요. 그중 하나가 새 결합을 만드는 데 쓰이면서 분자 두 개가 하나로 합쳐지는 반응이 첨가 반응이에요. 식물성 기름에 수소를 더해 마가린을 만드는 것, 작은 분자 수천 개가 이어져 비닐(폴리에틸렌)이 되는 것도 첨가 반응이에요.</p>
+<ul class="legend"><li><i class="g-arrow"></i>전자쌍 이동</li><li><i class="g-charge">+</i>전하</li></ul>`,
+    script: s(`
+scene "에텐에 브로민화수소가 더해질 때"
 stage solution
-crowd H2O in water 30
-place Ag+ in left x3
-place NO3- in left x3
-place Na+ in right x3
-place Cl- in right x3
+mol e = C2H4 at 380,300
+mol h = HBr at 660,300
 
-step "질산은 용액(Ag+, NO3-)과 소금물(Na+, Cl-)을 섞었어요"
-  spread Ag+ NO3- Na+ Cl- in water
-step "Ag+와 Cl-가 물 분자를 떨치고 서로 결합해 고체 염화은(AgCl) 결정을 이뤄요"
-  precipitate Ag+ Cl- x3
-step "Na+와 NO3-는 물에 녹은 채로 남아요"
-  note Na+ "녹은 채 남은 Na+"
+step "에텐(C2H4)의 두 C 사이에는 이중 결합이 있어요. 선 두 개가 전자쌍 두 개예요"
+  note e.C1~e.C2 "이중 결합"
+step "브로민화수소(HBr)의 H가 이중 결합 쪽으로 다가가요"
+  approach h.H e.C1
+step "이중 결합의 전자쌍 하나는 C–H 새 결합이 되고, H–Br 결합의 전자쌍은 Br로 가요"
+  arrow e.C1~e.C2 -> e.C1~h.H
+  arrow h.H~h.Br -> h.Br
+step "H가 없는 쪽 C는 전자가 모자라 +를 띠어요. Br-가 그 C에 다가가요"
+  approach h.Br e.C2
+step "Br-의 비공유 전자쌍이 C–Br 새 결합이 돼요"
+  arrow h.Br:lp -> h.Br~e.C2
+step "이중 결합이 있던 두 C에 H와 Br이 하나씩 더해졌어요. 분자 둘이 하나로 합쳐지는 이런 반응이 첨가 반응이에요"
+  note e.C2 "Br이 더해진 C"
+  note e.C1 "H가 더해진 C"
 `),
-  tryIt: `<code>x3</code>을 <code>x2</code>로 바꾸면 Ag+와 Cl- 하나씩이 녹은 채 남아요.`,
-});
-
-// Phenomena that need their own stage come after the first five in part 1.
-CHAPTERS.splice(CHAPTERS.findIndex((c) => c.id === 'leaching') + 1, 0,
-  {
-    id: 'membrane',
-    part: 1,
-    title: '막 수송: 통로와 펌프',
-    intro: `<p>세포막은 인지질 두 층으로 되어 있어 이온이 그냥은 지나가지 못해요. 이온은 막에 박힌 단백질을 거쳐 지나가요. 농도가 높은 쪽에서 낮은 쪽으로 통로를 지나는 것은 확산이고, 에너지를 써서 반대 방향으로 옮기는 것은 능동 수송이에요.</p>`,
-    script: s(`
-scene "세포막을 지나는 이온"
-stage membrane
-protein k = channel K+ at 330
-protein p = pump at 680
-crowd H2O in outside 12
-crowd H2O in inside 12
-place K+ in inside x5
-place K+ in outside x1
-place Na+ in outside x5
-place Na+ in inside x3
-
-step "세포 안쪽에는 K+가, 바깥에는 Na+가 많아요"
-  note k "K+ 통로"
-  note p "나트륨-칼륨 펌프"
-step "K+ 하나가 통로를 지나 K+가 적은 바깥으로 나가요(확산)"
-  cross K+ via k
-step "펌프는 ATP의 에너지를 써서 Na+ 세 개를 밖으로, K+ 두 개를 안으로 옮겨요(능동 수송)"
-  pump p 3 Na+ out 2 K+ in
-`),
-    tryIt: `<code>cross K+ via k</code>를 <code>cross Na+ via k</code>로 바꾸면 'K+용 통로'라는 경고가 떠요. 통로는 지나갈 이온을 골라요.`,
+    tryIt: `<code>HBr</code>를 <code>HCl</code>로, <code>h.Br</code>을 모두 <code>h.Cl</code>로 바꿔 보세요.`,
   },
   {
-    id: 'osmosis',
-    part: 1,
-    title: '삼투',
-    intro: `<p>물 분자는 지나가고 녹아 있는 이온은 못 지나가는 막을 사이에 두면, 물은 이온이 많은 쪽으로 더 많이 건너가요. 이것이 삼투예요. 양쪽으로 물 분자가 다 지나가지만, 이온이 많은 쪽으로 가는 수가 더 많아요.</p>`,
+    id: 'condensation',
+    part: 2,
+    title: '축합과 가수분해',
+    intro: `<p>축합은 두 분자가 물 한 분자를 내보내면서 하나로 이어지는 반응이고, 가수분해는 반대로 물이 들어가면서 결합이 깨지는 반응이에요. 몸속의 단백질·녹말·지방이 축합으로 만들어지고, 음식을 소화하는 것은 가수분해예요.</p>`,
     script: s(`
-scene "물이 소금 쪽으로 건너갈 때"
-stage membrane
-protein a = channel H2O at 500
-crowd H2O in outside 22
-crowd H2O in inside 22
-place Na+ in inside x4
-place Cl- in inside x4
+scene "두 아미노산이 이어졌다가 다시 나뉠 때"
+stage solution
+crowd H2O in water 16
+mol g1 = Gly at 330,300
+mol g2 = Gly at 670,300
 
-step "막 아래쪽(안쪽)에 소금 이온이 많아요. 이온은 막을 못 지나가지만 물 분자는 물 통로로 지나가요"
-  note a "물 통로(아쿠아포린)"
-step "물 분자가 이온이 적은 위쪽에서 이온이 많은 아래쪽으로 더 많이 건너가요"
-  osmosis 4
-step "계속 건너가요. 아래쪽이 묽어질수록 건너가는 속도는 줄어들어요"
-  osmosis 4
+step "글라이신 두 분자예요. 한쪽 끝에는 카복실기(-COOH), 다른 끝에는 아미노기(-NH2)가 있어요"
+  note g1.C2 "카복실기"
+  note g2.N "아미노기"
+step "g2의 아미노기가 g1의 카복실기 쪽으로 다가가요"
+  approach g2.N g1.C2
+step "g1의 -OH와 g2의 H 하나가 떨어져 나와 물 분자가 되고, C와 N이 결합해요(축합)"
+  condensation g1.C2 g2.N
+step "이렇게 생긴 C–N 결합이 펩타이드 결합이에요"
+  note g1.C2~g2.N "펩타이드 결합"
+step "물 분자가 들어가면 펩타이드 결합이 깨지고 두 아미노산으로 다시 나뉘어요(가수분해)"
+  hydrolysis g1.C2~g2.N
 `),
-    tryIt: `소금 이온을 <code>in outside</code>로 옮겨 적으면 물이 위쪽으로 건너가요.`,
+    tryIt: `<code>Gly</code>를 <code>Ala</code>(알라닌)로 바꿔 보세요. 원자 이름은 SMILES 순서(<code>CC(N)C(=O)O</code>)를 따라서, 카복실 탄소가 <code>C3</code>가 돼요.`,
   },
-);
+  {
+    id: 'coordination',
+    part: 2,
+    title: '배위 결합: 착이온',
+    intro: `<p>보통의 공유 결합은 두 원자가 전자를 하나씩 내지만, 배위 결합은 한 원자가 비공유 전자쌍을 통째로 내줘서 생겨요. 금속 이온 둘레에 물·암모니아 같은 분자가 이렇게 결합한 이온을 착이온이라고 해요. 피 속 헤모글로빈의 철이 산소와 결합하는 것도 배위 결합이에요.</p>
+<ul class="legend"><li><i class="g-dative"></i>배위 결합(화살촉 쪽이 전자쌍을 얻은 원자)</li></ul>`,
+    script: s(`
+scene "구리 이온과 암모니아가 착이온을 만들 때"
+stage solution
+crowd H2O in water 18
+mol c = Cu2+ at center
+mol n1 = NH3 at 320,310
+mol n2 = NH3 at 680,310
+mol n3 = NH3 at 500,130
+mol n4 = NH3 at 500,490
 
-// Part 3: many molecules at once, and several steps combined into one natural process.
-CHAPTERS.push({
-  id: 'equilibrium',
-  part: 3,
-  title: '화학 평형',
-  intro: `<p>반응물 분자들은 서로 부딪칠 때 반응해요. 생성물이 늘면 생성물끼리 부딪쳐 반응물이 다시 생기는 반응(역반응)도 잦아져요. 두 방향의 빠르기가 같아지면 분자 수가 더 이상 변하지 않는데, 이 상태가 화학 평형이에요. 겉으로는 멈춘 것 같아도 두 반응은 계속 일어나요.</p>
+step "구리 이온(Cu2+)은 다른 분자의 비공유 전자쌍과 결합할 수 있어요"
+  note c.Cu "Cu2+"
+step "암모니아 네 분자가 N의 비공유 전자쌍을 앞세워 다가가요"
+  approach n1.N c.Cu
+  approach n2.N c.Cu
+  approach n3.N c.Cu
+  approach n4.N c.Cu
+step "N의 비공유 전자쌍이 N과 Cu 사이로 옮겨 가 배위 결합 네 개가 생겨요"
+  ligand n1.N -> c.Cu
+  ligand n2.N -> c.Cu
+  ligand n3.N -> c.Cu
+  ligand n4.N -> c.Cu
+step "착이온 [Cu(NH3)4]2+가 됐어요. 전자쌍은 모두 N에서 왔으니 전하 +2는 구리에 그대로 있어요"
+  note c.Cu "전하 +2"
+`),
+    tryIt: `<code>NH3</code>를 <code>H2O</code>로, <code>.N</code>을 모두 <code>.O</code>로 바꿔 보세요. 물 분자도 같은 방식으로 구리 이온과 결합해요.`,
+  },
+  // ------------------------------------------------------------------ part 3
+  {
+    id: 'energy',
+    part: 3,
+    title: '반응과 에너지',
+    intro: `<p>결합이 깨지려면 에너지가 필요하고, 결합이 생기면 에너지가 나와요. 반응 전체로 에너지가 나오면 발열 반응(주변이 따뜻해짐), 에너지를 흡수하면 흡열 반응(주변이 차가워짐)이에요. 또 대부분의 반응은 처음에 에너지 언덕을 넘어야 일어나는데, 이 언덕의 높이가 활성화 에너지예요. 촉매는 이 언덕을 낮춰 반응을 빠르게 하는 물질이고, 몸속의 효소도 촉매예요.</p>
+<ul class="legend"><li><i class="g-energy"></i>오른쪽 위: 에너지 변화</li></ul>`,
+    script: s(`
+scene "반응이 넘어야 하는 에너지 언덕"
+stage solution
+crowd H2O in water 22
+mol o = OH- at left
+mol m = CH3Br at right
+
+step "반응 전이에요. 오른쪽 위 그래프는 이 분자들이 가진 에너지를 나타내요"
+  note o.O "OH-"
+  note m.C "CH3Br"
+step "OH-가 CH3Br의 C에 다가가요"
+  approach o.O m.C
+step "결합이 바뀌는 동안 에너지가 잠깐 높아졌다가(언덕) 내려가요. 이 언덕의 높이가 활성화 에너지예요(숫자는 물속에서의 대략적인 값)"
+  arrow o.O:lp -> o.O~m.C
+  arrow m.C~m.Br -> m.Br
+  energy -75 kJ/mol barrier 95
+step "반응 뒤 에너지가 처음보다 낮아진 만큼 열이 주변으로 나와요(발열 반응). 처음보다 높아지는 반응은 열을 흡수해요(흡열 반응)"
+  note m.Br "떨어져 나간 Br-"
+`),
+    tryIt: `<code>barrier 95</code>를 <code>barrier 40</code>으로 바꿔 보세요. 촉매가 하는 일이 이렇게 언덕을 낮추는 거예요.`,
+  },
+  {
+    id: 'equilibrium',
+    part: 3,
+    title: '화학 평형',
+    intro: `<p>많은 반응은 앞으로도 뒤로도 일어나요(가역 반응). 반응물 분자들이 부딪쳐 생성물이 되고, 생성물이 늘면 생성물끼리 부딪쳐 반응물이 다시 생기는 반응(역반응)도 잦아져요. 두 방향의 빠르기가 같아지면 분자 수가 더 이상 변하지 않는데, 이 상태가 화학 평형이에요. 겉으로는 멈춘 것 같아도 두 반응은 계속 일어나요.</p>
 <ul class="legend"><li><i class="g-chart"><svg viewBox="0 0 18 12"><polyline class="up" points="1,11 6,6 11,4 17,4"/><polyline class="down" points="1,2 6,6 11,8 17,8"/></svg></i>오른쪽 위 그래프: 분자 종류별 개수</li><li><i class="g-spark"></i>방금 반응이 일어난 곳</li></ul>`,
-  script: s(`
+    script: s(`
 scene "수소와 아이오딘이 평형에 이를 때"
 stage gas
 place H2 in air x10
@@ -536,148 +634,6 @@ step "H2와 I2가 부딪치면 결합이 바뀌어 HI 두 분자가 돼요. HI�
 step "두 반응의 빠르기가 같아지면 분자 수가 거의 그대로 유지돼요. 이것이 평형이에요"
   ensemble H2 + I2 <=> 2 HI for 8s
 `),
-  tryIt: `<code>&lt;=&gt;</code>를 <code>-&gt;</code>로 바꾸면 역반응이 빠져서 HI만 계속 늘어요.`,
-});
-
-CHAPTERS.push({
-  id: 'limestone',
-  part: 3,
-  title: '석회 동굴과 종유석',
-  intro: `<p>자연의 현상은 여러 단계가 이어져 일어나요. 빗물에 녹은 이산화탄소가 탄산이 되고, 탄산이 석회암(탄산칼슘)을 녹여 동굴이 생겨요. 동굴 천장의 물방울에서는 이산화탄소가 공기로 빠져나가면서 반응이 거꾸로 일어나, 녹았던 탄산칼슘이 다시 결정이 되어 종유석이 자라요. 앞에서 본 기체 녹아듦, 굽은 화살표, 양성자 이동, 용해, 석출을 한 장면에서 이어 써요.</p>`,
-  script: s(`
-scene "석회 동굴이 생기고 종유석이 자랄 때"
-stage interface
-lens attract off
-crowd H2O in water 18
-mol c = CO2 at 330,120
-mol w = H2O at 300,330
-crystal s = CaCO3 at water 6x2
-
-step "공기 속 이산화탄소(CO2)가 빗물에 녹아들어요"
-  gas-in c
-step "물 분자가 O의 비공유 전자쌍을 앞세워 CO2의 C에 다가가요"
-  approach w.O c.C
-step "O의 전자쌍은 새 O–C 결합이 되고, C=O 결합 하나의 전자쌍은 O로 옮겨 가요"
-  arrow w.O:lp -> w.O~c.C
-  arrow c.C~c.O1 -> c.O1
-step "H+ 하나가 옆 O로 옮겨 가 탄산(H2CO3)이 돼요"
-  transfer w.H1 to c.O1
-step "탄산이 석회암(탄산칼슘, CaCO3) 표면으로 다가가요"
-  approach w.H2 s4.O1
-step "탄산의 H+가 석회암 표면 탄산 이온(CO32-)의 O로 옮겨 가요"
-  transfer w.H2 to s4.O1
-step "칼슘 이온(Ca2+)과 탄산수소 이온(HCO3-)이 물 분자에 둘러싸여 녹아 나가요. 석회암은 이렇게 녹아 동굴이 돼요"
-  dissolve s3 s4 from s
-step "동굴 천장의 물방울에서는 거꾸로 일어나요. 탄산수소 이온 하나가 다른 탄산수소 이온에 다가가요"
-  approach w.H2 w.O
-step "H+가 옮겨 가 탄산(H2CO3)과 탄산 이온(CO32-)이 생겨요"
-  transfer w.H2 to w.O
-step "탄산 안에서 H+ 하나가 옆 O로 옮겨 가요"
-  transfer w.H1 to w.O
-step "C–O 결합의 전자쌍이 O로 가며 물 분자가 떨어지고, 남은 O의 전자쌍은 C=O 결합이 돼요"
-  arrow c.O1:lp -> c.O1~c.C
-  arrow c.C~w.O -> w.O
-step "CO2가 공기로 빠져나가요"
-  gas-out c
-step "칼슘 이온과 탄산 이온이 물 분자를 떨치고 다시 결정이 돼요. 이렇게 생긴 결정이 조금씩 늘어나 종유석이 자라요"
-  precipitate Ca2+ CO32- onto s
-`),
-  tryIt: `처음 장면의 <code>crystal s = CaCO3 at water 6x2</code>를 <code>4x2</code>로 바꾸면 석회암이 작아져요. 그러면 표면 이온 이름도 바뀌니 <code>s4</code>, <code>s3</code>를 <code>s2</code>, <code>s1</code>로 고쳐 보세요.`,
-});
-
-// The lithium-ion battery sits right after the Daniell cell.
-CHAPTERS.splice(CHAPTERS.findIndex((c) => c.id === 'cell') + 1, 0, {
-  id: 'li-battery',
-  part: 2,
-  title: '리튬 이온 전지와 수명',
-  intro: `<p>휴대폰·전기차의 리튬 이온 전지는 리튬 이온(Li+)이 두 전극의 층 사이를 오가며 충전·방전돼요. 충전하면 Li+가 양극(금속 산화물)에서 음극(흑연)으로, 방전하면 그 반대로 가요. 그동안 전자는 바깥 도선으로 흘러요. 흑연 표면에서는 전해질이 조금씩 분해되어 막(SEI)이 생기는데, 그 안에 갇힌 리튬은 다시 쓸 수 없어서 전지의 용량이 줄어요.</p>
-<ul class="legend"><li><i class="g-e"></i>전자</li><li><i class="g-sei"></i>SEI 막</li></ul>`,
-  script: s(`
-scene "리튬 이온 전지가 충전·방전되며 조금씩 닳을 때"
-stage battery
-load cathode 10
-crowd EC in electrolyte 5
-
-step "방전된 전지예요. 리튬은 모두 양극(금속 산화물)의 층 사이에 이온(Li+)으로 있어요"
-  note cathode "리튬 이온이 든 산화물 층"
-step "충전: 충전기가 양극에서 전자를 빼내 음극으로 보내요. 그만큼 Li+가 전해질과 분리막을 지나 흑연 층 사이로 들어가요"
-  charge 4
-step "첫 충전 때 흑연 표면에서 전해질 일부가 전자를 얻어 분해되고, 리튬과 함께 얇은 막(SEI)이 돼요. 이 리튬은 다시 나오지 못해요"
-  sei 1
-step "방전: 흑연 속 리튬이 전자를 내놓고, 전자는 기기를 지나 양극으로 가요. Li+도 전해질을 지나 양극으로 가요"
-  discharge 4
-step "충전할 때마다 SEI가 조금씩 자라며 리튬이 더 갇혀요"
-  charge 3
-  sei 1
-step "쓸 수 있는 리튬이 줄어든 만큼 전지가 저장할 수 있는 전기의 양(용량)이 줄어요. 전지 수명이 줄어드는 주된 까닭이에요"
-  discharge 3
-`),
-  tryIt: `<code>sei 1</code> 줄을 지우면 리튬이 하나도 갇히지 않아 아래쪽 '쓸 수 있는 리튬'이 10/10 그대로예요.`,
-});
-
-CHAPTERS.push({
-  id: 'mitochondria',
-  part: 3,
-  title: '미토콘드리아의 ATP 합성',
-  intro: `<p>미토콘드리아는 음식에서 얻은 에너지를 ATP라는 분자에 저장해요. 먼저 전자 전달계가 전자의 에너지로 H+를 막 사이 공간으로 옮겨 H+가 한쪽에 많아지게 해요. H+가 ATP 합성 효소의 통로를 지나 다시 기질로 들어올 때, 그 흐름의 에너지로 ADP와 인산이 축합해 ATP가 돼요. 막 수송, 축합, 에너지 그래프를 한 장면에서 이어 써요.</p>
-<ul class="legend"><li><i class="g-energy"></i>오른쪽 위: 에너지 변화</li><li><i class="g-ad">Ad</i>아데노신 부분(간단히 표시)</li></ul>`,
-  script: s(`
-scene "미토콘드리아가 ATP를 만들 때"
-stage mito
-protein e = pump at 240
-protein a = synthase at 640
-crowd H2O in outside 10
-crowd H2O in inside 12
-place H+ in outside x3
-place H+ in inside x5
-mol d = ADP at 380,515
-mol p = H2PO4- at 700,520
-
-step "미토콘드리아 내막이에요. 위는 막 사이 공간, 아래는 기질이에요"
-  note e "전자 전달계"
-  note a "ATP 합성 효소"
-step "음식에서 온 전자가 전자 전달계를 지나며 내놓는 에너지로, H+가 기질에서 막 사이 공간으로 옮겨져요"
-  pump e 4 H+ out
-step "막 사이 공간에 H+가 많아졌어요. H+는 ATP 합성 효소의 통로를 지나 기질로 들어와요"
-  cross 3 H+ via a
-step "그 흐름의 에너지로 ATP 합성 효소가 ADP와 인산을 가까이 모아요"
-  approach d.O7 p.P
-step "ADP 끝의 O가 인산의 P와 결합하고, 인산의 -OH와 ADP의 H는 물 분자가 되어 떨어져 나와요(축합). ATP가 됐어요"
-  condensation p.P d.O7
-  energy +30 kJ/mol
-step "세포가 일할 때는 ATP가 가수분해되어 인산이 떨어져 나가며 이 에너지를 다시 내놓아요"
-  hydrolysis p.P~d.O7
-  energy -30
-`),
-  tryIt: `<code>pump e 4 H+ out</code>의 숫자를 바꿔 보세요. 막 사이 공간에 H+가 많을수록 ATP 합성 효소로 흘러드는 H+도 많아져요.`,
-});
-
-CHAPTERS.push({
-  id: 'root',
-  part: 3,
-  title: '뿌리털이 양분을 얻을 때',
-  intro: `<p>흙 속 칼륨(K+), 칼슘(Ca2+) 같은 양분 이온은 대부분 점토 알갱이 표면의 음전하에 흡착돼 있어요. 뿌리털 세포는 에너지를 써서 H+를 흙 속 물로 내보내고, 그 H+가 점토의 양이온과 자리를 바꾸면(이온 교환) 떨어져 나온 양이온이 뿌리털 세포막의 통로를 지나 세포 안으로 들어가요. 이온 교환과 막 수송을 한 장면에서 이어 써요.</p>`,
-  script: s(`
-scene "뿌리털이 흙에서 칼륨 이온을 얻을 때"
-stage root
-protein p = pump at 260
-protein k = channel K+ at 700
-crowd H2O in outside 10
-crowd H2O in inside 12
-mol c = K+ on clay
-mol d = Ca2+ on clay
-place H+ in inside x3
-
-step "점토 알갱이 표면의 음전하에 K+와 Ca2+가 흡착돼 있어요. 이대로는 뿌리가 가져갈 수 없어요"
-  note c "흡착된 K+"
-  note p "H+ 펌프"
-  note k "K+ 통로"
-step "뿌리털 세포가 ATP의 에너지로 H+를 흙 속 물로 내보내요"
-  pump p 2 H+ out
-step "H+가 점토 표면의 K+ 자리를 차지하고, 떨어져 나온 K+는 흙 속 물로 나와요(이온 교환)"
-  exchange c with H+ on clay
-step "K+가 K+ 통로를 지나 뿌리털 세포 안으로 들어가요"
-  cross c via k
-`),
-  tryIt: `<code>exchange c with H+ on clay</code>를 <code>exchange d with 2 H+ on clay</code>로 바꾸면 Ca2+ 하나가 H+ 두 개와 자리를 바꿔요. 그다음 줄은 <code>cross d</code>로 고쳐 보세요(Ca2+ 통로가 없다는 경고가 떠요).`,
-});
+    tryIt: `<code>&lt;=&gt;</code>를 <code>-&gt;</code>로 바꾸면 역반응이 빠져서 HI만 계속 늘어요.`,
+  },
+];

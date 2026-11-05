@@ -79,6 +79,8 @@ export interface StepAnim {
   tally: { t: number; counts: [string, number][] }[];
   appear: Set<string>;
   lens?: Partial<Lens>;
+  /** Energy before and after the step (energy diagram); barrier = height of the hump above `from`. */
+  energy?: { from: number; to: number; barrier?: number; unit: string };
 }
 
 /**

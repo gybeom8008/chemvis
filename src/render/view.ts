@@ -615,6 +615,8 @@ export class StageView {
 
     // Molecule counts over the step (collective mode), in the stage's top-right corner.
     if (step && step.tally.length) out.push(tallyChart(step.tally, t, tl.stage.width));
+    // Energy diagram (scenes that use `energy`), under the count chart when both are shown.
+    if (step && tl.steps.some((x) => x.energy)) out.push(energyChart(tl.steps, k, t, tl.stage.width, step.tally.length > 0, cam));
 
     this.dyn.innerHTML = out.join('');
   }
@@ -818,6 +820,84 @@ function prettyFormula(f: string): string {
   const body = m[1].replace(/\d/g, (d) => SUB[+d]);
   const charge = (m[2] ?? '').replace(/\d/g, (d) => SUP[+d]).replace('+', '⁺').replace('-', '⁻');
   return body + charge;
+}
+
+/** Energy over the whole scene: one stretch per step, drawn up to the current moment. */
+function energyChart(steps: StepAnim[], k: number, t: number, stageWidth: number, below: boolean, cam: Box): string {
+  // Under the count chart (whole stage in view), else pinned to the view's top-right corner.
+  let fs: number;
+  let box: Box;
+  if (below) {
+    fs = stageWidth / 1000;
+    const tb = tallyBox(stageWidth);
+    box = { x: tb.x, y: tb.y + tb.h + 12 * fs, w: tb.w, h: 132 * fs };
+  } else {
+    fs = cam.w / 1000;
+    const w = 280 * fs;
+    box = { x: cam.x + cam.w - 20 * fs - w, y: cam.y + 20 * fs, w, h: 124 * fs };
+  }
+  const pad = 14 * fs;
+  const head = 30 * fs;
+  const cx = box.x + pad;
+  const cy = box.y + head;
+  const cw = box.w - 2 * pad;
+  const ch = box.h - head - pad;
+  type Seg = { from: number; to: number; peak: number | null };
+  const segs: Seg[] = [];
+  let level = 0;
+  for (const st of steps) {
+    const e = st.energy;
+    if (e) {
+      segs.push({ from: e.from, to: e.to, peak: e.barrier !== undefined ? Math.max(e.from + e.barrier, e.from, e.to) : null });
+      level = e.to;
+    } else segs.push({ from: level, to: level, peak: null });
+  }
+  const vals = segs.flatMap((sg) => [sg.from, sg.to, sg.peak ?? sg.from]);
+  let lo = Math.min(...vals);
+  let hi = Math.max(...vals);
+  if (hi - lo < 1e-9) {
+    hi += 1;
+    lo -= 1;
+  }
+  const Y = (v: number) => cy + ch - ((v - lo) / (hi - lo)) * ch;
+  const X = (i: number, u: number) => cx + ((i + u) / steps.length) * cw;
+  const at = (sg: Seg, u: number) => {
+    if (u <= 0.2) return sg.from;
+    if (u >= 0.8) return sg.to;
+    const v = (u - 0.2) / 0.6;
+    if (sg.peak === null) return sg.from + (sg.to - sg.from) * smooth(v);
+    return v < 0.5 ? sg.from + (sg.peak - sg.from) * smooth(v * 2) : sg.peak + (sg.to - sg.peak) * smooth(v * 2 - 1);
+  };
+  const line = (i: number, u1: number) => {
+    const pts: string[] = [];
+    const n = Math.max(2, Math.round(28 * u1));
+    for (let j = 0; j <= n; j++) {
+      const u = (u1 * j) / n;
+      pts.push(`${f1(X(i, u))},${f1(Y(at(segs[i], u)))}`);
+    }
+    return pts.join(' ');
+  };
+  const size = 14 * fs;
+  let s = `<g class="energy">`;
+  s += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" rx="${f1(12 * fs)}"/>`;
+  s += `<text x="${f1(cx)}" y="${f1(box.y + 21 * fs)}" font-size="${f1(size)}">에너지</text>`;
+  for (let i = 0; i < k && i < segs.length; i++) s += `<polyline class="past" points="${line(i, 1)}" stroke-width="${f1(2.2 * fs)}"/>`;
+  const cur = segs[k];
+  if (cur) {
+    const u = clamp(t, 0, 1);
+    s += `<polyline class="now" points="${line(k, Math.max(u, 0.02))}" stroke-width="${f1(2.8 * fs)}"/>`;
+    s += `<circle class="dot" cx="${f1(X(k, u))}" cy="${f1(Y(at(cur, u)))}" r="${f1(4.5 * fs)}"/>`;
+    const e = steps[k].energy;
+    if (e) {
+      const d = e.to - e.from;
+      const num = (v: number) => (Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(Math.abs(v))) : Math.abs(v).toFixed(1));
+      let label = `${d < 0 ? '−' : d > 0 ? '+' : '±'}${num(d)}${e.unit ? ` ${e.unit}` : ''}`;
+      if (e.barrier !== undefined) label = `활성화 ${num(e.barrier)} · ${label}`;
+      const cls = d < 0 ? 'down' : d > 0 ? 'up' : '';
+      s += `<text class="delta ${cls}" x="${f1(box.x + box.w - pad)}" y="${f1(box.y + 21 * fs)}" font-size="${f1(size)}" text-anchor="end">${esc(label)}</text>`;
+    }
+  }
+  return s + '</g>';
 }
 
 /** How many molecules of each kind there are, drawn as lines growing over the step. */

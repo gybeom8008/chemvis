@@ -686,6 +686,8 @@ class Ctx {
       case 'heat':
       case 'cool':
         return this.temperature(cmd.op, a);
+      case 'energy':
+        return this.energy(a);
       case 'wait':
         return;
       case 'crowd':
@@ -1762,6 +1764,31 @@ class Ctx {
   rain(): void {
     const chans = this.needSoil('rain');
     chans.forEach((ch, i) => this.A.flows.push({ path: ch, count: 14, t0: 0, t1: 1, seed: i + 11 }));
+  }
+
+  // ------------------------------------------------------------ ops: energy diagram
+
+  energyLevel = 0;
+  energyUnit = '';
+
+  /** energy -212 kJ/mol [barrier 40] : the energy goes down (or up) by this much during the step. */
+  energy(a: string[]): void {
+    const d = parseFloat((a[0] ?? '').replace('−', '-'));
+    if (!Number.isFinite(d)) this.fail('energy는 이렇게 적어요: energy -57 kJ/mol  (에너지 언덕까지 그리려면 energy -57 kJ/mol barrier 40)');
+    let unit = '';
+    let barrier: number | undefined;
+    for (let i = 1; i < a.length; i++) {
+      if (a[i] === 'barrier') {
+        barrier = parseFloat(a[++i] ?? '');
+        if (!(barrier >= 0)) this.fail('barrier 뒤에는 0 이상의 숫자를 적어요(출발점에서 언덕 꼭대기까지의 높이).');
+      } else unit = a[i];
+    }
+    const cur = this.A.energy;
+    const from = cur ? cur.from : this.energyLevel;
+    const to = (cur ? cur.to : this.energyLevel) + d;
+    if (unit) this.energyUnit = unit;
+    this.A.energy = { from, to, barrier: barrier ?? cur?.barrier, unit: this.energyUnit };
+    this.energyLevel = to;
   }
 
   // ------------------------------------------------------------ ops: collective mode

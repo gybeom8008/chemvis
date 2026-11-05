@@ -904,6 +904,17 @@ code {
   border-left: 7px solid var(--bond);
 }
 
+/* energy step (energy diagram) */
+.g-energy {
+  width: 18px;
+  height: 12px;
+  border-top: 2px solid var(--ink-2);
+  border-right: 2px solid var(--ink-2);
+  border-radius: 0 6px 0 0;
+  clip-path: inset(0 0 45% 0);
+  box-shadow: 9px 9px 0 -7px var(--s0);
+}
+
 /* small line chart (molecule counts) */
 .g-chart {
   width: 18px;
@@ -1333,6 +1344,39 @@ code {
   fill: none;
   stroke: var(--focus);
   stroke-width: 2.5;
+}
+.energy rect {
+  fill: var(--note-bg);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.energy text {
+  fill: var(--ink-2);
+  font-family: var(--sans);
+}
+.energy text.delta {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.energy text.down {
+  fill: var(--s0);
+}
+.energy text.up {
+  fill: var(--s2);
+}
+.energy polyline {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.energy polyline.past {
+  stroke: var(--muted);
+}
+.energy polyline.now {
+  stroke: var(--ink);
+}
+.energy .dot {
+  fill: var(--focus);
 }
 .tally rect {
   fill: var(--note-bg);

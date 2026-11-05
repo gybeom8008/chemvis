@@ -216,3 +216,29 @@ step "x"
     expect(r.errors.length).toBeGreaterThan(0);
   });
 });
+
+describe('energy diagram', () => {
+  it('carries the level from step to step and keeps the barrier', () => {
+    const r = compile(`
+stage solution
+mol a = HCl at left
+step "하나"
+  energy +30 kJ/mol barrier 50
+step "둘"
+  wait
+step "셋"
+  energy -80
+  energy +10
+`);
+    expect(r.errors).toEqual([]);
+    const [s1, s2, s3] = r.timeline!.steps;
+    expect(s1.energy).toEqual({ from: 0, to: 30, barrier: 50, unit: 'kJ/mol' });
+    expect(s2.energy).toBeUndefined();
+    // Several energy lines in one step add up; the unit carries over.
+    expect(s3.energy).toEqual({ from: 30, to: -40, barrier: undefined, unit: 'kJ/mol' });
+  });
+  it('explains a bad energy line', () => {
+    const r = compile(`stage solution\nstep "x"\n  energy lots\n`);
+    expect(r.errors[0].message).toContain('energy -57 kJ/mol');
+  });
+});

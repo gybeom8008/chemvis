@@ -251,7 +251,7 @@ step "암모늄 이온(NH4+)과 수산화 이온(OH-)이 생겨요"
     part: 2,
     title: '산화·환원: 전자 이동',
     intro: `<p>산화·환원에서는 전자가 한 원자에서 다른 원자로 옮겨 가요. 전자를 잃으면 산화, 얻으면 환원이에요.</p>
-<ul class="legend"><li><i class="g-hook"></i>전자 하나 이동</li><li><i class="g-ox">+2</i>산화수</li></ul>`,
+<ul class="legend"><li><i class="g-hook"></i>전자 하나 이동</li><li><i class="g-ox">+2</i>산화수</li><li><i class="g-energy"></i>오른쪽 위: 에너지 변화</li></ul>`,
     script: s(`
 scene "아연이 구리 이온에 전자를 내줄 때"
 stage solution
@@ -265,12 +265,13 @@ step "아연 원자(Zn)에는 바깥 전자가 2개 있고, 구리 이온(Cu2+)�
   note c.Cu "전자 2개 모자람"
 step "구리 이온이 아연 원자 가까이 다가가요"
   approach c.Cu z.Zn
-step "아연의 전자 두 개가 하나씩 구리 이온으로 옮겨 가요"
+step "아연의 전자 두 개가 하나씩 구리 이온으로 옮겨 가요. 이때 에너지가 나와요"
   hop 2 z.Zn -> c.Cu
+  energy -212 kJ/mol
 step "전자를 잃은 아연은 Zn2+가 되고(산화), 전자를 얻은 구리는 Cu 원자가 돼요(환원)"
   solvate z
 `),
-    tryIt: `<code>lens oxidation on</code> 줄을 지우면 산화수 숫자가 사라져요. 보기 설정에서 다시 켤 수 있어요.`,
+    tryIt: `<code>energy -212 kJ/mol</code> 뒤에 <code>barrier 60</code>을 붙이면 반응이 넘어야 하는 에너지 언덕(활성화 에너지)이 그려져요.`,
   },
   {
     id: 'radical',

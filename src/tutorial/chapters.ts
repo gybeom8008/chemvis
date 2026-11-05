@@ -332,6 +332,32 @@ step "착이온 [Cu(NH3)4]2+가 됐어요. 전자쌍은 모두 N에서 왔으니
     tryIt: `<code>NH3</code>를 <code>H2O</code>로, <code>.N</code>을 모두 <code>.O</code>로 바꿔 보세요. 물 분자도 같은 방식으로 구리 이온과 결합해요.`,
   },
   {
+    id: 'condensation',
+    part: 2,
+    title: '축합과 가수분해',
+    intro: `<p>축합은 두 분자가 물 한 분자를 내놓으면서 결합하는 반응이고, 가수분해는 그 반대로 물이 들어가 결합이 깨지는 반응이에요. 단백질, 녹말, 지방이 모두 이런 방식으로 만들어지고 분해돼요.</p>`,
+    script: s(`
+scene "두 아미노산이 이어졌다가 다시 나뉠 때"
+stage solution
+crowd H2O in water 16
+mol g1 = Gly at 330,300
+mol g2 = Gly at 670,300
+
+step "글라이신 두 분자예요. 한쪽 끝에는 카복실기(-COOH), 다른 끝에는 아미노기(-NH2)가 있어요"
+  note g1.C2 "카복실기"
+  note g2.N "아미노기"
+step "g2의 아미노기가 g1의 카복실기 쪽으로 다가가요"
+  approach g2.N g1.C2
+step "g1의 -OH와 g2의 H 하나가 떨어져 나와 물 분자가 되고, C와 N이 결합해요(축합)"
+  condensation g1.C2 g2.N
+step "이렇게 생긴 C–N 결합이 펩타이드 결합이에요"
+  note g1.C2~g2.N "펩타이드 결합"
+step "물 분자가 들어가면 펩타이드 결합이 깨지고 두 아미노산으로 다시 나뉘어요(가수분해)"
+  hydrolysis g1.C2~g2.N
+`),
+    tryIt: `<code>Gly</code>를 <code>Ala</code>(알라닌)로 바꿔 보세요. 원자 이름은 SMILES 순서(<code>CC(N)C(=O)O</code>)를 따라서, 카복실 탄소가 <code>C3</code>가 돼요.`,
+  },
+  {
     id: 'cell',
     part: 2,
     title: '전지: 전자가 도선을 따라 흐를 때',

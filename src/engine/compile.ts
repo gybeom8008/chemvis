@@ -77,6 +77,8 @@ const OP_DURATION: Record<string, number> = {
   exchange: 3.6,
   leach: 5.2,
   oxidize: 3.6,
+  condensation: 3.6,
+  hydrolysis: 3.6,
   cross: 3.8,
   pump: 5.0,
   osmosis: 4.8,
@@ -589,6 +591,10 @@ class Ctx {
         return this.reduce(a);
       case 'bridge':
         return this.bridgeOp(a);
+      case 'condensation':
+        return this.condensation(a);
+      case 'hydrolysis':
+        return this.hydrolysis(a);
       case 'cross':
         return this.cross(a);
       case 'pump':
@@ -1086,7 +1092,8 @@ class Ctx {
     const M = this.w.atoms.get(mover)!;
     const tn = neighbors(this.w, target).map((n) => this.w.atoms.get(n.id)!);
     let dir: Vec;
-    if (tn.length) dir = norm(sub(T, centroid(tn)));
+    // Come in from the target's open side; if its bonds are spread evenly (no open side), from where the mover is.
+    if (tn.length && dist(T, centroid(tn)) > 6) dir = norm(sub(T, centroid(tn)));
     else dir = norm(sub(M, T));
     const gap = element(T.el).r + element(M.el).r + 58;
     const goal = add(T, scale(dir, gap));
@@ -1656,6 +1663,87 @@ class Ctx {
     chans.forEach((ch, i) => this.A.flows.push({ path: ch, count: 14, t0: 0, t1: 1, seed: i + 11 }));
   }
 
+  // ------------------------------------------------------------ ops: condensation / hydrolysis
+
+  /** Molecules that should slide apart a little more at the end of the step (e.g. released water). */
+  drift: { ids: string[]; from: Vec }[] = [];
+
+  /**
+   * condensation g1.C2 g2.N : A loses its OH, B loses an H, A–B bond forms and the OH + H
+   * leave together as a water molecule (net reaction, drawn without electron arrows).
+   */
+  condensation(a: string[]): void {
+    const [ra, rb] = a;
+    if (!ra || !rb) this.fail('축합은 이렇게 적어요: condensation g1.C2 g2.N  (OH를 내놓는 원자, H를 내놓는 원자)');
+    const A = this.atom(ra);
+    const B = this.atom(rb);
+    if (component(this.w, A).includes(B)) this.fail('같은 분자 안의 두 원자는 축합으로 잇지 않아요.');
+    const oh = neighbors(this.w, A)
+      .map((n) => this.w.atoms.get(n.id)!)
+      .find((o) => o.el === 'O' && neighbors(this.w, o.id).length === 2 && neighbors(this.w, o.id).some((x) => this.w.atoms.get(x.id)!.el === 'H'));
+    if (!oh) this.fail(`${ra}에 붙은 -OH가 없어요. 축합은 -OH를 가진 원자를 먼저 적어요.`);
+    const hb = neighbors(this.w, B)
+      .map((n) => this.w.atoms.get(n.id)!)
+      .find((h) => h.el === 'H');
+    if (!hb) this.fail(`${rb}에 붙은 H가 없어요.`);
+    for (const [x, y] of [
+      [A, oh.id],
+      [B, hb.id],
+    ]) {
+      this.w.bonds.delete(bondKey(x, y));
+    }
+    this.w.bonds.set(bondKey(A, B), { a: A, b: B, order: 1 });
+    this.w.bonds.set(bondKey(oh.id, hb.id), { a: oh.id, b: hb.id, order: 1 });
+    for (const id of [A, B, oh.id, hb.id]) this.touched.add(id);
+    const water = component(this.w, oh.id);
+    this.drift.push({ ids: water, from: lerpV(this.w.atoms.get(A)!, this.w.atoms.get(B)!, 0.5) });
+    this.focus([A, B, ...water]);
+    // Bonds switch a little into the step, then the new molecule settles and the water drifts off.
+    this.A.phase = { b0: 0.3, b1: 0.3, c0: 0.3 };
+  }
+
+  /** hydrolysis g1.C2~g2.N [with w] : a water molecule splits the bond: OH goes to the first atom, H to the second. */
+  hydrolysis(a: string[]): void {
+    const ref = a[0];
+    if (!ref || !ref.includes('~')) this.fail('가수분해는 이렇게 적어요: hydrolysis g1.C2~g2.N  (with w 로 물 분자를 고를 수 있어요)');
+    const [A, B] = ref.split('~').map((r) => this.atom(r));
+    if (!getBond(this.w, A, B)) this.fail(`${ref}는 결합해 있지 않아요.`);
+    const withI = a.indexOf('with');
+    let water: string[];
+    if (withI >= 0 && a[withI + 1]) water = this.mol(a[withI + 1]);
+    else {
+      // The nearest free water molecule: one released earlier counts as much as background water.
+      const mid = lerpV(this.w.atoms.get(A)!, this.w.atoms.get(B)!, 0.5);
+      const attached = new Set([...this.w.attached.values()].flat());
+      const pool = allComponents(this.w)
+        .filter((c) => formulaOf(this.w, c) === 'H2O' && !c.some((x) => attached.has(x)))
+        .sort((p, q) => dist(centerOf(this.w, p), mid) - dist(centerOf(this.w, q), mid));
+      water = pool[0] ?? this.spawn('H2O', this.autoName('~H2O'), true, add(mid, { x: 0, y: -90 }));
+    }
+    if (formulaOf(this.w, water) !== 'H2O') this.fail('가수분해에 쓸 분자는 물(H2O)이어야 해요.');
+    this.detach(water);
+    const O = water.map((id) => this.w.atoms.get(id)!).find((x) => x.el === 'O')!;
+    const Hs = water.map((id) => this.w.atoms.get(id)!).filter((x) => x.el === 'H');
+    // The H nearer to B goes to B.
+    const Bpos = this.w.atoms.get(B)!;
+    Hs.sort((p, q) => dist(p, Bpos) - dist(q, Bpos));
+    const hToB = Hs[0];
+    this.w.bonds.delete(bondKey(A, B));
+    this.w.bonds.delete(bondKey(O.id, hToB.id));
+    this.w.bonds.set(bondKey(A, O.id), { a: A, b: O.id, order: 1 });
+    this.w.bonds.set(bondKey(B, hToB.id), { a: B, b: hToB.id, order: 1 });
+    // The water's atoms now belong to the named molecules: draw them as such.
+    for (const at of [O, ...Hs]) {
+      if (at.crowd) {
+        at.crowd = false;
+        at.num = ++this.w.counter;
+      }
+    }
+    for (const id of [A, B, O.id, hToB.id]) this.touched.add(id);
+    this.focus([A, B, O.id, ...Hs.map((h) => h.id)]);
+    this.A.phase = { b0: 0.3, b1: 0.3, c0: 0.3 };
+  }
+
   // ------------------------------------------------------------ ops: membrane
 
   needMembrane(op: string) {
@@ -2004,6 +2092,16 @@ class Ctx {
       // Molecules that just split apart drift a little away from each other.
       separateComponents(this, [...this.touched]);
     }
+    // Released small molecules (water from a condensation) move clearly away from where they formed.
+    for (const d of this.drift) {
+      const ids = d.ids.filter((id) => this.w.atoms.has(id));
+      if (!ids.length) continue;
+      const c = centerOf(this.w, ids);
+      let u = norm(sub(c, d.from));
+      if (Math.hypot(c.x - d.from.x, c.y - d.from.y) < 1) u = { x: 0, y: -1 };
+      for (const id of ids) shift(this.w.atoms.get(id)!, scale(u, 85));
+    }
+    this.drift = [];
     // A bond is two electrons: one left alone means a hop was forgotten.
     for (const [k, b] of [...this.w.bonds]) {
       if (Math.abs(b.order - Math.round(b.order)) > 1e-6) {

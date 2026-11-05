@@ -274,6 +274,17 @@ export function relativeLayout(w: World, ids: string[]): Map<string, Vec> {
     return p < q ? -1 : 1;
   })[0];
 
+  // Size of each branch (heavy atoms), so long branches get the most open directions.
+  const branchSize = new Map<string, number>();
+  const sizeOf = (id: string, parent: string | null, seen: Set<string>): number => {
+    seen.add(id);
+    let s = w.atoms.get(id)!.el === 'H' ? 0 : 1;
+    for (const n of nb(id)) if (n.id !== parent && !seen.has(n.id)) s += sizeOf(n.id, id, seen);
+    branchSize.set(id, s);
+    return s;
+  };
+  sizeOf(root, null, new Set());
+
   pos.set(root, { x: 0, y: 0 });
   const queue: { id: string; parent: string | null; inAngle: number }[] = [{ id: root, parent: null, inAngle: 0 }];
   const visited = new Set([root]);
@@ -282,21 +293,38 @@ export function relativeLayout(w: World, ids: string[]): Map<string, Vec> {
     const { id, parent, inAngle } = queue.shift()!;
     const atom = w.atoms.get(id)!;
     const ns = nb(id);
-    const children = ns.filter((n) => n.id !== parent).sort((p, q) => (p.id < q.id ? -1 : 1));
+    const children = ns
+      .filter((n) => n.id !== parent)
+      .sort((p, q) => (branchSize.get(q.id) ?? 0) - (branchSize.get(p.id) ?? 0) || (p.id < q.id ? -1 : 1));
     const angles = idealBondAngles(ns.length, atom.lp + (atom.rad > 0 ? 1 : 0), parent === null);
     // With a parent, angle[0] points at the parent; children take the rest.
-    const childAngles = parent === null ? angles : angles.slice(1);
-    children.forEach((c, i) => {
+    const childAngles = (parent === null ? angles : angles.slice(1)).map((d) => (parent === null ? deg(d) : inAngle + deg(d)));
+    const free = childAngles.map((a, i) => ({ a, i }));
+    const here = pos.get(id)!;
+    children.forEach((c) => {
       if (visited.has(c.id)) {
         ringFallback = true;
         return;
       }
       visited.add(c.id);
-      // inAngle points from this atom back to its parent; ideal angles are measured from there.
-      const a = parent === null ? deg(childAngles[i] ?? 0) : inAngle + deg(childAngles[i] ?? 0);
       const l = bondLength(atom.el, w.atoms.get(c.id)!.el, c.order);
-      pos.set(c.id, add(pos.get(id)!, fromAngle(a, l)));
-      queue.push({ id: c.id, parent: id, inAngle: a + Math.PI });
+      // Heavy branches take the direction farthest from everything already drawn (keeps chains from folding back).
+      let pickIdx = 0;
+      if ((branchSize.get(c.id) ?? 0) > 0 && free.length > 1) {
+        let best = -Infinity;
+        free.forEach((f, k) => {
+          const p = add(here, fromAngle(f.a, l));
+          let near = Infinity;
+          for (const q of pos.values()) near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y));
+          if (near > best + 1e-6) {
+            best = near;
+            pickIdx = k;
+          }
+        });
+      }
+      const slot = free.splice(pickIdx, 1)[0] ?? { a: 0, i: 0 };
+      pos.set(c.id, add(here, fromAngle(slot.a, l)));
+      queue.push({ id: c.id, parent: id, inAngle: slot.a + Math.PI });
     });
   }
   if (ringFallback || pos.size !== ids.length) {

@@ -153,6 +153,23 @@ step "염다리"
   });
 });
 
+describe('condensation and hydrolysis', () => {
+  it('two glycines join with loss of water, then split again', () => {
+    const r = compile(`
+stage solution
+mol g1 = Gly at 330,300
+mol g2 = Gly at 670,300
+step "축합"
+  condensation g1.C2 g2.N
+step "가수분해"
+  hydrolysis g1.C2~g2.N
+`);
+    expect(r.errors).toEqual([]);
+    expect(species(r.timeline!.steps[0].after)).toEqual(['C4H8N2O3', 'H2O']);
+    expect(species(r.timeline!.steps[1].after)).toEqual(['C2H5NO2', 'C2H5NO2']);
+  });
+});
+
 describe('oxidation states', () => {
   it('water: O is −2, H is +1; chloride −1', () => {
     const r = compile('stage solution\nmol w = H2O\nmol c = Cl-\nstep "a"\n  wait\n');

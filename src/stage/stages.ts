@@ -58,6 +58,8 @@ export interface StageDef {
   bridge?: { left: Vec; right: Vec };
   /** Lithium-ion battery: where lithium can sit in each electrode, and the faces toward the electrolyte. */
   battery?: { anodeFace: number; cathodeFace: number; separatorX: number; top: number; bottom: number };
+  /** The box on the wire (charger or device): electrons on the wire pass behind it. */
+  device?: { x: number; y: number; w: number; h: number };
   /** Membrane stage: the bilayer band (molecules may only cross it through proteins or on purpose). */
   membrane?: { y0: number; y1: number; outside: string; inside: string };
   /** Pore channels (soil), top to bottom. */
@@ -535,6 +537,7 @@ function battery(): StageDef {
     wire,
     sites,
     battery: { anodeFace: AX1, cathodeFace: CX0, separatorX: SEP, top: TOP, bottom: BOT },
+    device: { x: SEP - 70, y: 58, w: 140, h: 44 },
     attractDefault: false,
     background,
   };

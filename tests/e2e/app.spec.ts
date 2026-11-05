@@ -269,3 +269,17 @@ test('the legend button lists the marks of the current scene', async ({ page }) 
   await expect(pop).toBeHidden();
 });
 
+test('phone: the legend button sits above the step bar, and electrons stay big enough to see', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('./?still#/x/li-battery');
+  const v = page.locator('#main-viewer');
+  const btn = (await v.locator('.legend-btn').boundingBox())!;
+  const bar = (await v.locator('.pill').boundingBox())!;
+  expect(btn.y + btn.height).toBeLessThanOrEqual(bar.y + 1);
+  expect(bar.width).toBeGreaterThan(340);
+  // Mid-charge: electrons run through the wire.
+  await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.main.seek(1, 0.45));
+  const e = v.locator('circle.wire-e').first();
+  await expect(e).toBeVisible();
+  expect((await e.boundingBox())!.width).toBeGreaterThanOrEqual(7);
+});

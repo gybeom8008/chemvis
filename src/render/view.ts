@@ -204,6 +204,11 @@ export class StageView {
     const step = tl.steps[k] as StepAnim | undefined;
     const cam = this.updateCamera(k, opt.dt ?? 0);
     const out: string[] = [];
+    // On a small screen the whole scene shrinks with the stage, and an electron would end up
+    // a pixel or two across. Moving electrons keep a size you can see instead.
+    const ew = this.svg.clientWidth;
+    const ppu = ew ? Math.min(ew / cam.w, this.svg.clientHeight / cam.h) : 1;
+    eScale = clamp(0.95 / ppu, 1, 2.6);
 
     // Which bonds/lone pairs exist at this moment.
     let topo: World;
@@ -557,7 +562,9 @@ export class StageView {
           const s = smooth((t - b0) / (b1 - b0));
           const p = qbez(ar.p0, ar.c, ar.p1, s);
           const tn = perp(qbezTangent(ar.p0, ar.c, ar.p1, s));
-          if (pair) out.push(dot(add(p, scale(tn, LANE + 0.6)), 'e fly'), dot(sub(p, scale(tn, LANE + 0.6)), 'e fly'));
+          // Enlarged electrons of a pair sit side by side instead of merging into one blob.
+          const off = Math.max(LANE + 0.6, FLY_R * eScale * 1.1);
+          if (pair) out.push(dot(add(p, scale(tn, off)), 'e fly'), dot(sub(p, scale(tn, off)), 'e fly'));
           else out.push(dot(p, 'e fly'));
         }
       }
@@ -579,7 +586,12 @@ export class StageView {
       for (let i = 0; i < wf.count; i++) {
         const f = clamp((u - i * gap) / (1 - (wf.count - 1) * gap), 0, 1);
         if (f <= 0 || f >= 1) continue;
-        out.push(dot(polyAt(wf.path, f), 'e wire-e'));
+        const q = polyAt(wf.path, f);
+        // Inside the charger or device box the electron is out of sight, not drawn over its name.
+        const dv = tl.stage.device;
+        const m = 5 * eScale;
+        if (dv && q.x > dv.x - m && q.x < dv.x + dv.w + m && q.y > dv.y - m && q.y < dv.y + dv.h + m) continue;
+        out.push(dot(q, 'e wire-e'));
       }
     }
 
@@ -996,8 +1008,16 @@ function tallyChart(tally: StepAnim['tally'], t: number, stageWidth: number): st
   return s + '</g>';
 }
 
+/** Radius of an electron on its way along an arrow. */
+const FLY_R = 4.2;
+/** How much moving electrons are enlarged on this frame (1 on a large screen, more on a phone). */
+let eScale = 1;
+
 function dot(p: Vec, cls: string, op = 1): string {
-  const r = cls.includes('wire-e') ? 5 : cls.includes('fly') ? 4.2 : cls === 'e' ? 2.9 : cls.includes('single') ? 2.6 : 2.2;
+  const base = cls.includes('wire-e') ? 5 : cls.includes('fly') ? FLY_R : cls === 'e' ? 2.9 : cls.includes('single') ? 2.6 : 2.2;
+  // Electrons in an electrode sit 11 apart, so they grow less than the ones on the move.
+  const grow = cls.includes('wire-e') || cls.includes('fly') ? eScale : cls === 'e' ? Math.min(eScale, 1.5) : 1;
+  const r = f1(base * grow);
   return `<circle class="${cls}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${r}" opacity="${f1(op)}"/>`;
 }
 

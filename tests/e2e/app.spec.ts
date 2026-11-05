@@ -42,13 +42,13 @@ test('the workspace opens as an empty canvas with controls waiting', async ({ pa
   await expect(canvas).toBeVisible();
   expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('radial-gradient');
   await expect(page.locator('#main-viewer .pill')).toBeVisible();
-  await expect(page.locator('#main-viewer [data-act="play"]')).toBeDisabled();
+  await expect(page.locator('#main-viewer [data-act="next"]')).toBeDisabled();
   await expect(page.locator('#tutorial')).not.toHaveAttribute('open', '');
   // Loading a scene turns the controls on.
   await page.evaluate(() =>
     (window as unknown as { chemvis: Api }).chemvis.main.load('stage solution\nmol w = H2O\nstep "물"\n  wait\n'),
   );
-  await expect(page.locator('#main-viewer [data-act="play"]')).toBeEnabled();
+  await expect(page.locator('#main-viewer [data-act="next"]')).toBeEnabled();
 });
 
 test('every tutorial chapter plays through without errors', async ({ page }) => {
@@ -80,50 +80,45 @@ test('on the last step of a chapter the forward button offers the next chapter',
   await expect(next).toHaveAttribute('aria-label', '다음 단계');
   await c.tut.seek(st.n - 1, 1);
   await expect(next).toHaveAttribute('aria-label', '다음 장');
-  // Play keeps its one job: it never turns into another button.
-  await expect(page.locator('#tut-viewer [data-act="play"]')).toHaveAttribute('aria-label', '재생');
   await next.click();
   await expect.poll(() => c.tut.chapter()).toBe('arrows');
   await expect.poll(async () => (await c.tut.state()).t).toBeGreaterThan(0);
 });
 
-test('play stays on the current step; replay shows it again; the last step offers to start over', async ({ page }) => {
+test('three step buttons, three different jobs; no play button to confuse them', async ({ page }) => {
   await page.goto('./?still');
   const c = cv(page);
   await c.main.load('stage solution\nmol w = H2O\nstep "하나"\n  wait\nstep "둘"\n  wait\nstep "셋"\n  wait\n');
   const v = page.locator('#main-viewer');
-  await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.main.seek(1, 1));
+  await expect(v.locator('.pill button')).toHaveCount(3);
+  await expect(v.locator('[data-act="play"]')).toHaveCount(0);
+  // First step: nothing before it, so the back button rests.
+  await expect(v.locator('[data-act="prev"]')).toBeDisabled();
+  await v.locator('[data-act="next"]').click();
   await expect(v.locator('.count')).toHaveText('2 / 3');
+  await expect(v.locator('[data-act="prev"]')).toBeEnabled();
+  // Replay stays on this step, even after waiting.
+  await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.main.seek(1, 1));
   await v.locator('[data-act="replay"]').click();
-  let st = await c.main.state();
-  expect(st.k).toBe(1);
-  expect(st.t).toBeLessThan(1);
-  await v.locator('[data-act="next"]').click();
-  await expect(v.locator('[data-act="next"]')).toHaveAttribute('aria-label', '처음부터');
-  await v.locator('[data-act="next"]').click();
-  st = await c.main.state();
-  expect(st.k).toBe(0);
-  // Keys: R replays, → moves on, Space plays and pauses.
-  await page.keyboard.press('ArrowRight');
-  await expect(v.locator('.count')).toHaveText('2 / 3');
-  await page.keyboard.press('r');
-  expect((await c.main.state()).k).toBe(1);
-  await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.main.seek(1, 1));
-  await expect(v.locator('[data-act="play"]')).toHaveAttribute('aria-label', '재생');
-  await page.keyboard.press(' ');
-  await expect(v.locator('[data-act="play"]')).toHaveAttribute('aria-label', '멈춤');
-  // Play shows the same step again; it never moves to the next one.
-  expect((await c.main.state()).k).toBe(1);
-  await v.locator('[data-act="play"]').click();
-  await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.main.seek(1, 1));
-  await v.locator('[data-act="play"]').click();
+  expect((await c.main.state()).t).toBeLessThan(1);
   await page.waitForTimeout(3000);
   expect((await c.main.state()).k).toBe(1);
-  await expect(v.locator('[data-act="play"]')).toHaveAttribute('aria-label', '재생');
+  await v.locator('[data-act="prev"]').click();
+  await expect(v.locator('.count')).toHaveText('1 / 3');
+  // Last step: the forward button says what it does now.
+  await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.main.seek(2, 1));
+  await expect(v.locator('[data-act="next"]')).toHaveAttribute('aria-label', '처음부터');
+  await v.locator('[data-act="next"]').click();
+  await expect(v.locator('.count')).toHaveText('1 / 3');
+  // Keys: Space and → go on, ← goes back, R replays.
   await page.keyboard.press(' ');
-  expect((await c.main.state()).k).toBe(1);
-  await page.keyboard.press(' ');
-  await expect(v.locator('[data-act="play"]')).toHaveAttribute('aria-label', '재생');
+  await expect(v.locator('.count')).toHaveText('2 / 3');
+  await page.keyboard.press('ArrowRight');
+  await expect(v.locator('.count')).toHaveText('3 / 3');
+  await page.keyboard.press('ArrowLeft');
+  await expect(v.locator('.count')).toHaveText('2 / 3');
+  await page.keyboard.press('r');
+  await expect(v.locator('.count')).toHaveText('2 / 3');
 });
 
 test('HCl chapter ends with H3O+ and Cl- charges drawn', async ({ page }) => {

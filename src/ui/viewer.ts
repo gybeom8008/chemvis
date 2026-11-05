@@ -21,7 +21,7 @@ export interface Settings {
 /** What the forward button does on the last step. */
 type EndAction = 'restart' | 'nextChapter';
 const END: Record<EndAction, { icon: string; text: string; title: string }> = {
-  restart: { icon: 'first', text: '처음부터', title: '처음부터 다시 보기 (→)' },
+  restart: { icon: 'first', text: '처음부터', title: '첫 단계로 (→)' },
   nextChapter: { icon: 'nextChapter', text: '다음 장', title: '다음 장으로 (→)' },
 };
 
@@ -41,7 +41,7 @@ export class Viewer {
   private caption: HTMLElement;
   private segs: HTMLElement;
   private count: HTMLElement;
-  private playBtn: HTMLButtonElement;
+  private prevBtn: HTMLButtonElement;
   private nextBtn: HTMLButtonElement;
   private legendBtn: HTMLButtonElement;
   private legendPop: HTMLElement;
@@ -60,14 +60,13 @@ export class Viewer {
             <p class="caption" aria-live="polite"><span class="text"></span></p>
             <div class="pill">
               <div class="pg">
-                <button class="icon" data-act="play" aria-label="재생" title="재생 (스페이스)">${icon('play')}</button>
-                <div class="segs" role="slider" aria-label="단계" tabindex="0"></div>
+                <div class="segs" role="slider" aria-label="단계" title="눌러서 원하는 순간 보기" tabindex="0"></div>
                 <span class="count"></span>
               </div>
               <div class="nav">
                 <button class="icon" data-act="prev" aria-label="이전 단계" title="이전 단계 (←)">${icon('prev')}</button>
                 <button class="lbl" data-act="replay" aria-label="다시 보기" title="이 단계 다시 보기 (R)">${icon('replay')}<span>다시 보기</span></button>
-                <button class="lbl primary" data-act="next" aria-label="다음 단계" title="다음 단계 (→)"><span>다음</span>${icon('next')}</button>
+                <button class="lbl primary" data-act="next" aria-label="다음 단계" title="다음 단계 (→, 스페이스)"><span>다음</span>${icon('next')}</button>
               </div>
             </div>
           </div>
@@ -79,7 +78,7 @@ export class Viewer {
     this.caption = host.querySelector('.caption')!;
     this.count = host.querySelector('.count')!;
     this.segs = host.querySelector('.segs')!;
-    this.playBtn = host.querySelector('[data-act="play"]')!;
+    this.prevBtn = host.querySelector('[data-act="prev"]')!;
     this.nextBtn = host.querySelector('[data-act="next"]')!;
     this.legendBtn = host.querySelector('.legend-btn')!;
     this.legendPop = host.querySelector('.legend-pop')!;
@@ -116,10 +115,8 @@ export class Viewer {
     host.querySelectorAll<HTMLButtonElement>('[data-act]').forEach((b) =>
       b.addEventListener('click', (e) => {
         const p = this.player;
-        ({ play: () => p.toggle(), prev: () => p.prev(), replay: () => p.replay(), next: () => p.next() })[
-          b.dataset.act as 'play'
-        ]();
-        // After a mouse press, keys go back to the page (Space plays and pauses, not "press again").
+        ({ prev: () => p.prev(), replay: () => p.replay(), next: () => p.next() })[b.dataset.act as 'prev']();
+        // After a mouse press, keys go back to the page shortcuts instead of pressing this button again.
         if (e.detail > 0) b.blur();
       }),
     );
@@ -247,21 +244,15 @@ export class Viewer {
     text.textContent = step ? step.text : (this.tl?.title ?? '');
     this.segs.setAttribute('aria-valuetext', step ? `${p.n}단계 중 ${p.k + 1}단계` : '');
 
-    // Play and pause the current step: one button, one job, never another step.
-    const playing = p.playing;
-    if (this.playBtn.dataset.state !== String(playing)) {
-      this.playBtn.dataset.state = String(playing);
-      this.playBtn.innerHTML = icon(playing ? 'pause' : 'play');
-      this.playBtn.setAttribute('aria-label', playing ? '멈춤' : '재생');
-      this.playBtn.title = playing ? '멈춤 (스페이스)' : '재생 (스페이스)';
-    }
+    // There is no step before the first one: the button rests instead of repeating the step.
+    this.prevBtn.disabled = !this.tl || p.onFirst;
 
     // Forward: the next step, and on the last step whatever comes after the scene.
     const end = p.onLast ? this.endAction() : null;
     const key = end ?? 'next';
     if (this.nextBtn.dataset.state !== key) {
       this.nextBtn.dataset.state = key;
-      const v = end ? END[end] : { icon: 'next', text: '다음', title: '다음 단계 (→)' };
+      const v = end ? END[end] : { icon: 'next', text: '다음', title: '다음 단계 (→, 스페이스)' };
       // An arrow that points back goes before the words, one that points ahead after them.
       this.nextBtn.innerHTML = end === 'restart' ? `${icon(v.icon)}<span>${v.text}</span>` : `<span>${v.text}</span>${icon(v.icon)}`;
       this.nextBtn.setAttribute('aria-label', end ? v.text : '다음 단계');

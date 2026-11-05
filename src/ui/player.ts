@@ -8,11 +8,12 @@ export function readingTime(text: string): number {
 /**
  * Playback position: step k, progress t (0..1) inside it.
  *
- * Every control does one thing:
- * - play/pause plays or stops the current step, and never leaves it;
- * - replay shows the current step again from its start;
- * - prev/next/go show another step from its start;
- * - seek (scrubbing) shows one frame and stops.
+ * A step plays once when you arrive at it and then holds on its last frame.
+ * Each control does one thing, and no two do the same:
+ * - prev: the step before (none on the first step);
+ * - replay: the current step again, from its start;
+ * - next: the step after; on the last step, start over (or the next chapter, via onEnd);
+ * - seek: one moment of any step, held still (the step bar).
  * Only the "이어서 재생" setting (auto) moves on by itself, after time to read the caption.
  */
 export class Player {
@@ -55,9 +56,8 @@ export class Player {
     return this.tl?.steps.length ?? 0;
   }
 
-  /** Something is moving or about to move on: the play button shows pause. */
-  get playing(): boolean {
-    return this.running || this.wait > 0;
+  get onFirst(): boolean {
+    return this.k === 0;
   }
 
   get onLast(): boolean {
@@ -76,7 +76,7 @@ export class Player {
     this.onChange?.();
   }
 
-  /** Show one frame and stop (scrubbing, tests). */
+  /** Show one moment and hold it (the step bar, tests). */
   seek(k: number, t: number): void {
     if (!this.n) return;
     this.k = Math.max(0, Math.min(this.n - 1, k));
@@ -101,7 +101,7 @@ export class Player {
   }
 
   prev(): void {
-    this.go(this.k - 1);
+    if (this.n && !this.onFirst) this.go(this.k - 1);
   }
 
   next(): void {
@@ -115,23 +115,11 @@ export class Player {
     this.go(0);
   }
 
-  /** Play the current step: go on from where it stopped, or from its start once it has finished. */
-  play(): void {
-    if (!this.n) return;
-    if (this.t >= 1) return this.go(this.k);
-    this.running = true;
-    this.emit();
-  }
-
-  pause(): void {
+  /** Stop where it is (the tutorial closing). */
+  stop(): void {
     this.running = false;
     this.wait = 0;
     this.emit();
-  }
-
-  toggle(): void {
-    if (this.playing) this.pause();
-    else this.play();
   }
 
   /** Advance by dt seconds of wall time. */
@@ -151,7 +139,6 @@ export class Player {
       if (this.wait <= 0) {
         this.wait = 0;
         if (this.auto) this.go(this.k + 1);
-        else this.emit();
       }
     }
   }

@@ -623,9 +623,10 @@ code {
 }
 
 /*
- * Controls in one bar, two groups:
- *   [play/pause | steps | 3 / 13]   [prev | replay | next]
- * The left group is about the whole scene, the right one about one step.
+ * Controls in one bar:
+ *   [steps | 3 / 13]   [prev | replay | next]
+ * A step plays when you arrive at it. The step bar shows any moment of the scene;
+ * the three buttons each do one thing and never the same thing.
  * Next is the main button: reading a scene is mostly pressing it.
  */
 .pill {
@@ -715,8 +716,9 @@ code {
   opacity: 0.86;
 }
 
-.pill .lbl:disabled {
-  opacity: 0.45;
+.pill .lbl:disabled,
+.pill .icon:disabled {
+  opacity: 0.35;
 }
 
 .segs {
@@ -725,7 +727,7 @@ code {
   align-items: center;
   gap: 4px;
   height: 38px;
-  padding: 0 8px 0 6px;
+  padding: 0 10px 0 16px;
   cursor: pointer;
   touch-action: none;
   border-radius: 999px;

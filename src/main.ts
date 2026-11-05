@@ -339,7 +339,7 @@ function closeTutorial(): void {
   if (dlg.open) dlg.close();
 }
 dlg.addEventListener('close', () => {
-  tut.player.pause();
+  tut.player.stop();
   history.replaceState(null, '', hashBeforeTutorial || location.pathname + location.search);
 });
 dlg.addEventListener('click', (e) => {
@@ -399,7 +399,7 @@ document.addEventListener('keydown', (e) => {
   if (!v.tl) return;
   const p = v.player;
   const act: Record<string, () => void> = {
-    ' ': () => p.toggle(),
+    ' ': () => p.next(),
     ArrowRight: () => p.next(),
     ArrowLeft: () => p.prev(),
     r: () => p.replay(),

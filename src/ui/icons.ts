@@ -1,7 +1,5 @@
 /** Line icons (24×24, stroke-based). */
 const P: Record<string, string> = {
-  play: '<path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"/>',
-  pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/>',
   replay: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 4v4.5H8"/>',
   first: '<path d="M6.5 5.5v13"/><path d="m17.5 6-6.5 6 6.5 6"/>',
   prev: '<path d="m14.5 6-6 6 6 6"/>',

@@ -245,4 +245,57 @@ step "암모늄 이온(NH4+)과 수산화 이온(OH-)이 생겨요"
 `),
     tryIt: `마지막 단계에 <code>solvate all</code>을 더해 보세요.`,
   },
+  {
+    id: 'redox',
+    part: 2,
+    title: '산화·환원: 전자 이동',
+    intro: `<p>산화·환원에서는 전자가 한 원자에서 다른 원자로 옮겨 가요. 전자를 잃으면 산화, 얻으면 환원이에요.</p>
+<ul class="legend"><li><i class="g-hook"></i>전자 하나 이동</li><li><i class="g-ox">+2</i>산화수</li></ul>`,
+    script: s(`
+scene "아연이 구리 이온에 전자를 내줄 때"
+stage solution
+lens oxidation on
+crowd H2O in water 26
+mol z = Zn at left
+mol c = Cu2+ at right
+
+step "아연 원자(Zn)에는 바깥 전자가 2개 있고, 구리 이온(Cu2+)은 전자 2개가 모자라요"
+  note z.Zn "바깥 전자 2개"
+  note c.Cu "전자 2개 모자람"
+step "구리 이온이 아연 원자 가까이 다가가요"
+  approach c.Cu z.Zn
+step "아연의 전자 두 개가 하나씩 구리 이온으로 옮겨 가요"
+  hop 2 z.Zn -> c.Cu
+step "전자를 잃은 아연은 Zn2+가 되고(산화), 전자를 얻은 구리는 Cu 원자가 돼요(환원)"
+  solvate z
+`),
+    tryIt: `<code>lens oxidation on</code> 줄을 지우면 산화수 숫자가 사라져요. 보기 설정에서 다시 켤 수 있어요.`,
+  },
+  {
+    id: 'radical',
+    part: 2,
+    title: '라디칼: 홑전자 반응',
+    intro: `<p>라디칼은 짝 없는 전자(홑전자)를 가진 입자예요. 라디칼 반응에서는 전자가 하나씩 움직여요. 빛이 결합을 깨면서 반응이 시작돼요.</p>
+<ul class="legend"><li><i class="g-hook"></i>전자 하나 이동</li><li><i class="g-single"></i>홑전자</li><li><i class="g-photon">∿</i>빛(hν)</li></ul>`,
+    script: s(`
+scene "염소와 메테인의 라디칼 반응"
+stage gas
+mol c = Cl2 at 400,330
+mol m = CH4 at 640,330
+
+step "빛을 흡수한 Cl2의 결합이 깨지며, 결합 전자 두 개가 하나씩 두 Cl로 가요"
+  light c
+  hop c.Cl1~c.Cl2 -> c.Cl1
+  hop c.Cl1~c.Cl2 -> c.Cl2
+step "홑전자를 가진 Cl(염소 라디칼) 하나가 메테인의 H에 다가가요"
+  approach c.Cl2 m.H1
+step "Cl의 홑전자와 C–H 결합 전자 하나가 새 Cl–H 결합을 이루고, 남은 전자 하나는 C에 남아요"
+  hop c.Cl2 -> c.Cl2~m.H1
+  hop m.C~m.H1 -> c.Cl2~m.H1
+  hop m.C~m.H1 -> m.C
+step "염화수소(HCl)와 메틸 라디칼(CH3·)이 생겨요. 메틸 라디칼은 다시 Cl2와 반응해 연쇄가 이어져요"
+  note m.C "홑전자 1개"
+`),
+    tryIt: `<code>light c</code> 줄을 지워도 화면은 그려져요. 실제로는 빛이나 열이 있어야 Cl–Cl 결합이 깨져요.`,
+  },
 ];

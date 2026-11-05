@@ -14,7 +14,7 @@ const params = new URLSearchParams(location.search);
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
 const settings: Settings = {
-  lens: { charge: true, attract: false, numbers: false },
+  lens: { charge: true, attract: false, numbers: false, oxidation: false },
   speed: 1,
   continuous: false,
   motion: !params.has('still') && !reducedMotion,
@@ -204,6 +204,7 @@ function buildSettings(pop: HTMLElement): void {
   pop.innerHTML = `
     <label class="sw"><input type="checkbox" data-lens="charge"><span>전하</span></label>
     <label class="sw"><input type="checkbox" data-lens="attract"><span>분자 사이 인력</span></label>
+    <label class="sw"><input type="checkbox" data-lens="oxidation"><span>산화수</span></label>
     <label class="sw"><input type="checkbox" data-lens="numbers"><span>원자 번호</span></label>
     <hr>
     <div class="speed" role="radiogroup" aria-label="속도">

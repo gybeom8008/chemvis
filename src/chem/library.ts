@@ -75,6 +75,29 @@ const DEFS: MolDef[] = [
       [0, 2, 2],
     ],
   },
+  // Radicals: an unpaired electron is written with "·" (also accepted: "." or "*").
+  { formula: 'H·', name: '수소 라디칼', atoms: [a('H', 'H', 0, 1)], bonds: [] },
+  { formula: 'Cl·', name: '염소 라디칼', atoms: [a('Cl', 'Cl', 3, 1)], bonds: [] },
+  { formula: 'Br·', name: '브로민 라디칼', atoms: [a('Br', 'Br', 3, 1)], bonds: [] },
+  { formula: 'OH·', name: '하이드록실 라디칼', atoms: [a('O', 'O', 2, 1), a('H', 'H')], bonds: [[0, 1, 1]] },
+  {
+    formula: 'CH3·',
+    name: '메틸 라디칼',
+    atoms: [a('C', 'C', 0, 1), a('H1', 'H'), a('H2', 'H'), a('H3', 'H')],
+    bonds: [
+      [0, 1, 1],
+      [0, 2, 1],
+      [0, 3, 1],
+    ],
+  },
+  // Metal atoms and their ions (outer electrons drawn as dots).
+  { formula: 'Na', name: '나트륨 원자', atoms: [a('Na', 'Na', 0, 1)], bonds: [] },
+  { formula: 'Zn', name: '아연 원자', atoms: [a('Zn', 'Zn', 1)], bonds: [] },
+  ion('Zn2+', '아연 이온', 'Zn', 0),
+  { formula: 'Cu', name: '구리 원자', atoms: [a('Cu', 'Cu', 1)], bonds: [] },
+  ion('Cu2+', '구리 이온', 'Cu', 0),
+  { formula: 'Ag', name: '은 원자', atoms: [a('Ag', 'Ag', 0, 1)], bonds: [] },
+  ion('Ag+', '은 이온', 'Ag', 0),
 ];
 
 export const LIBRARY: Map<string, MolDef> = new Map(DEFS.map((d) => [d.formula, d]));
@@ -82,6 +105,8 @@ export const LIBRARY: Map<string, MolDef> = new Map(DEFS.map((d) => [d.formula, 
 /** Accepts a few common spellings, e.g. "Ca++" or "Ca+2" for "Ca2+". */
 export function normalizeFormula(f: string): string {
   let s = f.trim().replace('−', '-');
+  // Radical dot: "Cl." / "Cl*" / "Cl•" → "Cl·"
+  s = s.replace(/[.*•]$/, '·');
   const m = s.match(/^(.*?)(\+\+|--|\+(\d)|-(\d))$/);
   if (m) {
     const n = m[2] === '++' || m[2] === '--' ? '2' : m[3] ?? m[4];

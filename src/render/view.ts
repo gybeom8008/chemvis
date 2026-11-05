@@ -3,9 +3,9 @@
  * pairs, charges, electron arrows, moving electrons, notes and so on.
  */
 import { bondLength, element } from '../chem/elements';
-import { lonePairAngles } from '../chem/geometry';
+import { electronDomains, lonePairAngles } from '../chem/geometry';
 import type { Keyframe, NoteTarget, StepAnim, Timeline } from '../engine/timeline';
-import { formalCharge, type Atom, type Lens, type World } from '../engine/world';
+import { formalCharge, oxidationState, type Atom, type Lens, type World } from '../engine/world';
 import { inRegion } from '../stage/stages';
 import {
   add,
@@ -116,6 +116,7 @@ export class StageView {
     }
     for (const id of step.trails) for (const kf of step.tracks.get(id) ?? []) pts.push(kf);
     for (const fl of step.flows) pts.push(...fl.path);
+    for (const ph of step.photons) pts.push(ph.p0, ph.p1);
     for (const n of step.notes) {
       const tg = n.target;
       if (tg.kind === 'point') {
@@ -334,14 +335,19 @@ export class StageView {
       const fresh = step?.phase && t >= step.phase.b1 && !step.before.bonds.has(keyOf(b.a, b.b));
       const fade = fresh ? clamp((t - step!.phase!.b1) / 0.06, 0, 1) : 1;
       const n = perp(norm(sub(pb, pa)));
-      const offs = b.order === 1 ? [0] : b.order === 2 ? [-3.6, 3.6] : [-5.5, 0, 5.5];
-      for (const o of offs) {
+      // Whole bonds are solid lines; a bond holding a single electron (mid-reaction) is dashed.
+      const whole = Math.floor(b.order + 1e-9);
+      const half = b.order - whole > 0.25;
+      const lines = whole + (half ? 1 : 0);
+      const offs = lines === 1 ? [0] : lines === 2 ? [-3.6, 3.6] : [-5.5, 0, 5.5];
+      offs.forEach((o, i) => {
         const q0 = add(pa, scale(n, o));
         const q1 = add(pb, scale(n, o));
+        const cls = `bond${crowd ? ' crowd' : ''}${half && i === lines - 1 ? ' half' : ''}`;
         out.push(
-          `<line class="bond${crowd ? ' crowd' : ''}" x1="${f1(q0.x)}" y1="${f1(q0.y)}" x2="${f1(q1.x)}" y2="${f1(q1.y)}" opacity="${f1(op * fade)}"/>`,
+          `<line class="${cls}" x1="${f1(q0.x)}" y1="${f1(q0.y)}" x2="${f1(q1.x)}" y2="${f1(q1.y)}" opacity="${f1(op * fade)}"/>`,
         );
-      }
+      });
     }
 
     // Atoms.
@@ -361,20 +367,18 @@ export class StageView {
       }
     }
 
-    // Lone pairs.
+    // Non-bonding electrons: lone pairs as two dots, unpaired electrons as one.
     for (const a of atoms) {
-      if (a.lp <= 0 || isCrowd(a)) continue;
+      if (a.lp + a.rad <= 0 || isCrowd(a)) continue;
       const p = pos.get(a.id)!;
-      const dirs = bonds
-        .filter((b) => b.a === a.id || b.b === a.id)
-        .map((b) => {
-          const q = pos.get(b.a === a.id ? b.b : b.a)!;
-          return Math.atan2(q.y - p.y, q.x - p.x);
-        });
       const r = element(a.el).r + 5.5;
-      for (const ang of lonePairAngles(p, dirs, a.lp)) {
-        const c = add(p, fromAngle(ang, r));
-        const n = fromAngle(ang + Math.PI / 2, 3.3);
+      for (const d of electronDomains(p, this.bondDirs(a.id, p, pos, bonds), a.lp, a.rad, a.face, a.skip ?? 0)) {
+        const c = add(p, fromAngle(d.angle, r));
+        if (d.single) {
+          out.push(dot(c, 'lp single', opacity(a.id)));
+          continue;
+        }
+        const n = fromAngle(d.angle + Math.PI / 2, 3.3);
         out.push(dot(add(c, n), 'lp', opacity(a.id)), dot(sub(c, n), 'lp', opacity(a.id)));
       }
     }
@@ -392,6 +396,24 @@ export class StageView {
         out.push(
           `<g class="charge ${q > 0 ? 'pos' : 'neg'}" opacity="${f1(opacity(a.id))}"><circle cx="${f1(c.x)}" cy="${f1(c.y)}" r="${txt.length > 1 ? 9 : 7.5}"/><text x="${f1(c.x)}" y="${f1(c.y)}" dy="0.36em">${txt}</text></g>`,
         );
+      }
+    }
+
+    // Oxidation states (small signed numbers beside the atom, clear of the charge badge).
+    if (opt.lens.oxidation) {
+      for (const a of atoms) {
+        if (isCrowd(a)) continue;
+        const w = chargeWorld.atoms.has(a.id) ? chargeWorld : after;
+        const wa = w.atoms.get(a.id)!;
+        const ox = oxidationState(w, wa);
+        const p = pos.get(a.id)!;
+        const r = element(a.el).r;
+        const extra: number[] = [];
+        if (opt.lens.charge && formalCharge(w, wa) !== 0) extra.push(this.freeAngle(a, p, pos, bonds));
+        const ang = this.freeAngle(a, p, pos, bonds, extra, Math.PI / 4);
+        const c = add(p, fromAngle(ang, r + 9));
+        const txt = ox > 0 ? `+${ox}` : ox < 0 ? `−${-ox}` : '0';
+        out.push(`<text class="ox" x="${f1(c.x)}" y="${f1(c.y)}" dy="0.35em" opacity="${f1(opacity(a.id))}">${txt}</text>`);
       }
     }
 
@@ -430,6 +452,33 @@ export class StageView {
           if (ar.kind === 'pair') out.push(dot(add(p, scale(tn, 3.4)), 'e'), dot(sub(p, scale(tn, 3.4)), 'e'));
           else out.push(dot(p, 'e'));
         }
+      }
+    }
+
+    // Light: a wavy line (hν) runs to the molecule, then a brief flash where it is absorbed.
+    if (step) {
+      for (const ph of step.photons) {
+        const u = clamp((t - ph.t0) / (ph.t1 - ph.t0), 0, 1);
+        const fade = t <= ph.t1 ? 1 : clamp(1 - (t - ph.t1) / 0.18, 0, 1);
+        if (fade <= 0 || t <= ph.t0) continue;
+        const dir = norm(sub(ph.p1, ph.p0));
+        const nrm = perp(dir);
+        const total = dist(ph.p0, ph.p1) - 26;
+        const head = add(ph.p0, scale(dir, total * u));
+        const pts: string[] = [];
+        for (let s = 0; s <= total * u; s += 3) {
+          const q = add(add(ph.p0, scale(dir, s)), scale(nrm, Math.sin(s / 6) * 7));
+          pts.push(`${f1(q.x)},${f1(q.y)}`);
+        }
+        const tipBase = sub(head, scale(dir, 9));
+        const tri = `${f1(head.x)},${f1(head.y)} ${f1(tipBase.x + nrm.x * 5)},${f1(tipBase.y + nrm.y * 5)} ${f1(tipBase.x - nrm.x * 5)},${f1(tipBase.y - nrm.y * 5)}`;
+        let svg = `<g class="photon" opacity="${f1(fade)}"><polyline points="${pts.join(' ')}"/><polygon points="${tri}"/>`;
+        svg += `<text x="${f1(ph.p0.x - 6)}" y="${f1(ph.p0.y - 12)}">hν</text>`;
+        if (t > ph.t1) {
+          const k2 = clamp((t - ph.t1) / 0.18, 0, 1);
+          svg += `<circle class="flash" cx="${f1(ph.p1.x)}" cy="${f1(ph.p1.y)}" r="${f1(18 + 30 * k2)}" opacity="${f1(1 - k2)}"/>`;
+        }
+        out.push(svg + '</g>');
       }
     }
 
@@ -478,15 +527,27 @@ export class StageView {
   }
 
   /** Direction around an atom that is clear of bonds and lone pairs (for the charge badge). */
-  private freeAngle(a: Atom, p: Vec, pos: Map<string, Vec>, bonds: { a: string; b: string }[]): number {
-    const taken = bonds
-      .filter((b) => b.a === a.id || b.b === a.id)
+  private bondDirs(id: string, p: Vec, pos: Map<string, Vec>, bonds: { a: string; b: string }[]): number[] {
+    return bonds
+      .filter((b) => b.a === id || b.b === id)
       .map((b) => {
-        const q = pos.get(b.a === a.id ? b.b : b.a)!;
+        const q = pos.get(b.a === id ? b.b : b.a)!;
         return Math.atan2(q.y - p.y, q.x - p.x);
       });
-    taken.push(...lonePairAngles(p, [...taken], a.lp));
-    const pref = -Math.PI / 4;
+  }
+
+  /** Direction around an atom clear of bonds, electrons and `extra` directions (preferring `pref`). */
+  private freeAngle(
+    a: Atom,
+    p: Vec,
+    pos: Map<string, Vec>,
+    bonds: { a: string; b: string }[],
+    extra: number[] = [],
+    prefer = -Math.PI / 4,
+  ): number {
+    const dirs = this.bondDirs(a.id, p, pos, bonds);
+    const taken = [...dirs, ...electronDomains(p, dirs, a.lp, a.rad, a.face, a.skip ?? 0).map((d) => d.angle), ...extra];
+    const pref = prefer;
     let best = pref;
     let bestScore = -Infinity;
     for (let i = 0; i < 24; i++) {
@@ -631,7 +692,9 @@ export class StageView {
             const q = pos.get(b.a === tg.id ? b.b : b.a)!;
             return Math.atan2(q.y - p.y, q.x - p.x);
           });
-        const angs = lonePairAngles(p, dirs, Math.max(1, at.lp));
+        const doms = electronDomains(p, dirs, at.lp, at.rad, at.face, at.skip ?? 0);
+        const pairs = doms.filter((d) => !d.single).map((d) => d.angle);
+        const angs = pairs.length ? pairs : doms.length ? doms.map((d) => d.angle) : lonePairAngles(p, dirs, 1);
         const up = -Math.PI / 2;
         // Two lone pairs often sit symmetrically about "up"; round the score so floating-point noise
         // from thermal motion cannot flip the choice between them from frame to frame.
@@ -654,7 +717,8 @@ function keyOf(a: string, b: string): string {
 }
 
 function dot(p: Vec, cls: string, op = 1): string {
-  return `<circle class="${cls}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${cls === 'e' ? 2.9 : 2.2}" opacity="${f1(op)}"/>`;
+  const r = cls === 'e' ? 2.9 : cls.includes('single') ? 2.6 : 2.2;
+  return `<circle class="${cls}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${r}" opacity="${f1(op)}"/>`;
 }
 
 function waterSvg(p: Vec, ang: number, alpha: number): string {

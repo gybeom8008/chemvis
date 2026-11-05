@@ -5,7 +5,7 @@
  * checks the chemistry (electron counts, charge balance) as it goes.
  */
 import { bondLength, element } from '../chem/elements';
-import { lonePairDirsInWorld, placeNew, relayout } from '../chem/geometry';
+import { domainsInWorld, lonePairDirsInWorld, placeNew, relayout } from '../chem/geometry';
 import { formulaCharge, lookupMolecule, normalizeFormula } from '../chem/library';
 import { parse, type Cmd, type Diag } from '../dsl/parser';
 import { channelArcAtY, getStage, inRegion, randomInRegion, regionCenter, type Region, type StageDef } from '../stage/stages';
@@ -63,7 +63,8 @@ const OP_DURATION: Record<string, number> = {
   move: 2.6,
   arrow: 2.8,
   transfer: 2.8,
-  hop: 2.8,
+  hop: 3.0,
+  light: 3.0,
   solvate: 2.8,
   diffuse: 4.5,
   spread: 4.5,
@@ -95,7 +96,7 @@ export function compile(src: string): CompileResult {
   if (!stage) {
     ctx.errors.push({
       line: stageCmd?.line ?? 1,
-      message: `무대 '${stageName}'은(는) 없어요. 쓸 수 있는 무대: solution, interface, soil`,
+      message: `무대 '${stageName}'은(는) 없어요. 쓸 수 있는 무대: solution, interface, soil, gas`,
     });
     return { timeline: null, errors: ctx.errors, warnings: ctx.warnings };
   }
@@ -144,6 +145,7 @@ export function compile(src: string): CompileResult {
       focus: new Set(),
       trails: [],
       flows: [],
+      photons: [],
       appear: new Set(),
     };
     ctx.anim = anim;
@@ -177,6 +179,12 @@ export function compile(src: string): CompileResult {
 
 interface ArrowEnd {
   kind: 'lp' | 'bond' | 'atom';
+  a: string;
+  b?: string;
+}
+
+interface HopEnd {
+  kind: 'lp' | 'e' | 'bond' | 'atom';
   a: string;
   b?: string;
 }
@@ -221,13 +229,14 @@ class Ctx {
 
   lens(cmd: Cmd): void {
     const [name, val] = cmd.args;
-    const map: Record<string, 'charge' | 'attract' | 'numbers'> = {
+    const map: Record<string, 'charge' | 'attract' | 'numbers' | 'oxidation'> = {
       charge: 'charge',
       attract: 'attract',
       numbers: 'numbers',
+      oxidation: 'oxidation',
     };
     const key = map[name];
-    if (!key) this.fail(`렌즈 '${name}'은(는) 없어요. 쓸 수 있는 렌즈: charge, attract, numbers`);
+    if (!key) this.fail(`렌즈 '${name}'은(는) 없어요. 쓸 수 있는 렌즈: charge, attract, numbers, oxidation`);
     if (val !== 'on' && val !== 'off') this.fail('렌즈는 on 또는 off로 정해 주세요. 예: lens attract on');
     this.w.lens[key] = val === 'on';
     if (this.anim) this.anim.lens = { ...(this.anim.lens ?? {}), [key]: val === 'on' };
@@ -527,6 +536,10 @@ class Ctx {
         return this.arrow(a);
       case 'transfer':
         return this.transfer(a);
+      case 'hop':
+        return this.hop(a);
+      case 'light':
+        return this.light(a);
       case 'approach':
         return this.approach(a);
       case 'move':
@@ -818,6 +831,188 @@ class Ctx {
     if (ns.length === 1) this.applyArrow({ kind: 'bond', a: h, b: ns[0].id }, { kind: 'atom', a: ns[0].id });
   }
 
+  // ------------------------------------------------------------ ops: single electrons
+
+  hopEnd(word: string, isSource: boolean): HopEnd {
+    if (word.endsWith(':lp') || word.endsWith(':e')) {
+      if (!isSource) this.fail('도착점에는 :lp나 :e를 붙이지 않아요. 원자(c.Cu)나 결합(c.Cl~m.H)으로 적어 주세요.');
+      const kind = word.endsWith(':lp') ? 'lp' : 'e';
+      return { kind, a: this.atom(word.slice(0, word.lastIndexOf(':'))) };
+    }
+    if (word.includes('~')) {
+      const [x, y] = word.split('~');
+      return { kind: 'bond', a: this.atom(x), b: this.atom(y) };
+    }
+    return { kind: 'atom', a: this.atom(word) };
+  }
+
+  /**
+   * hop [N] SRC -> DST : one electron moves (fishhook arrow); N repeats it.
+   * Sources: atom (its unpaired electron first, else one from a lone pair), atom:e, atom:lp,
+   * or a bond (one of its two electrons). Destinations: an atom or a bond (new or existing).
+   */
+  hop(a: string[]): void {
+    let i = 0;
+    let n = 1;
+    if (/^\d+$/.test(a[0] ?? '')) {
+      n = clamp(parseInt(a[0], 10), 1, 4);
+      i = 1;
+    }
+    if (a.length - i !== 3 || (a[i + 1] !== '->' && a[i + 1] !== '→')) {
+      this.fail('전자 하나의 이동은 이렇게 적어요: hop z.Zn -> c.Cu  ·  hop 2 z.Zn -> c.Cu  ·  hop c.Cl1~c.Cl2 -> c.Cl1');
+    }
+    const src = this.hopEnd(a[i], true);
+    const dst = this.hopEnd(a[i + 2], false);
+    for (let k = 0; k < n; k++) this.applyHop(src, dst);
+    this.lastHopLine = this.line;
+  }
+
+  lastHopLine = 0;
+  hopCount = new Map<string, number>();
+
+  applyHop(src: HopEnd, dst: HopEnd): void {
+    const w = this.w;
+    const before = this.A.before;
+    const mid = this.ensureMid();
+    const S = w.atoms.get(src.a)!;
+    // What is there to move?
+    if (src.kind === 'e' && S.rad <= 0) this.fail(`${label(w, src.a)}에는 홑전자가 없어요.`);
+    if (src.kind === 'lp' && S.lp <= 0) this.fail(`${label(w, src.a)}에는 비공유 전자쌍이 없어요.`);
+    if (src.kind === 'atom' && S.rad <= 0 && S.lp <= 0) this.fail(`${label(w, src.a)}에는 옮길 비결합 전자가 없어요.`);
+    if (src.kind === 'bond') {
+      const b = getBond(w, src.a, src.b!);
+      if (!b || b.order < 0.5) this.fail(`${label(w, src.a)}와 ${label(w, src.b!)} 사이에 옮길 결합 전자가 없어요.`);
+    }
+    if (dst.kind === 'atom' && src.kind !== 'bond' && dst.a === src.a) this.fail('전자가 같은 원자로 옮겨 가게 적혔어요.');
+    if (dst.kind === 'bond') {
+      const srcAtoms = src.kind === 'bond' ? [src.a, src.b!] : [src.a];
+      if (!srcAtoms.some((x) => x === dst.a || x === dst.b)) {
+        this.fail('전자는 출발한 원자(또는 결합의 원자)가 포함된 결합으로만 갈 수 있어요.');
+      }
+    }
+
+    // Geometry from the "before" picture.
+    const P = (id: string) => before.atoms.get(id) ?? w.atoms.get(id)!;
+    const srcKey = src.kind === 'bond' ? bondKey(src.a, src.b!) : src.a;
+    const dstKey = dst.kind === 'bond' ? bondKey(dst.a, dst.b!) : dst.a;
+    const fromSame = this.hopCount.get(srcKey) ?? 0;
+    this.hopCount.set(srcKey, fromSame + 1);
+    const pairKey = `${srcKey}>${dstKey}`;
+    const same = this.hopCount.get(pairKey) ?? 0;
+    this.hopCount.set(pairKey, same + 1);
+
+    // For electrons leaving a bond: the open side of the bond (away from the rest of the molecule, else up).
+    let bondSide: Vec | null = null;
+    if (src.kind === 'bond') {
+      const A0 = P(src.a);
+      const B0 = P(src.b!);
+      let side = perp(norm(sub(B0, A0)));
+      const others = [...neighbors(before, src.a), ...neighbors(before, src.b!)]
+        .map((x) => x.id)
+        .filter((id) => id !== src.a && id !== src.b)
+        .map((id) => P(id));
+      const m = lerpV(A0, B0, 0.5);
+      if (others.length) {
+        const c = centroid(others);
+        if (dist(add(m, side), c) < dist(add(m, scale(side, -1)), c)) side = scale(side, -1);
+      } else if (side.y > 0) side = scale(side, -1);
+      bondSide = side;
+    }
+    let p1: Vec;
+    if (dst.kind === 'bond') p1 = lerpV(P(dst.a), P(dst.b!), 0.5);
+    else if (src.kind === 'bond' && bondSide && (dst.a === src.a || dst.a === src.b)) {
+      // The electron slides off the bond onto one of its atoms, ending on that atom's open outer side.
+      const at = P(dst.a);
+      const away = norm(sub(at, lerpV(P(src.a), P(src.b!), 0.5)));
+      p1 = add(at, scale(norm(add(scale(bondSide, 0.9), scale(away, 0.55))), element(at.el).r + 7));
+    } else {
+      const at = P(dst.a);
+      p1 = add(at, scale(norm(sub(P(src.a), at)), element(at.el).r + 7));
+    }
+    let p0: Vec;
+    if (src.kind === 'bond') {
+      const m = lerpV(P(src.a), P(src.b!), 0.5);
+      const along = norm(sub(P(src.b!), P(src.a)));
+      // The two electrons of the bond start side by side, just off the bond line.
+      p0 = add(add(m, scale(bondSide!, 4)), scale(along, fromSame % 2 ? 3.5 : -3.5));
+    } else {
+      const at = P(src.a);
+      const doms = domainsInWorld(before.atoms.has(src.a) ? before : w, src.a);
+      const wantSingle = src.kind === 'e' || (src.kind === 'atom' && P(src.a).rad > 0);
+      let cands = doms.filter((d) => d.single === wantSingle);
+      if (!cands.length) cands = doms;
+      const want = angleOf(sub(p1, at));
+      const best = cands.reduce((b, d) => (angDiff(d.angle, want) < angDiff(b.angle, want) ? d : b), cands[0]);
+      const ang = best ? best.angle : want;
+      p0 = add(add(at, fromAngle(ang, element(at.el).r + 6)), fromAngle(ang + Math.PI / 2, fromSame % 2 ? -3.3 : 3.3));
+    }
+    const involved = [src.a, src.b, dst.a, dst.b].filter(Boolean).map((id) => P(id!));
+    const cen = centroid(involved);
+    const mm = lerpV(p0, p1, 0.5);
+    let side = perp(norm(sub(p1, p0)));
+    if (bondSide) {
+      // Electrons leaving a bond arc out over its open side.
+      if (side.x * bondSide.x + side.y * bondSide.y < 0) side = scale(side, -1);
+    } else {
+      if (dist(add(mm, side), cen) < dist(add(mm, scale(side, -1)), cen)) side = scale(side, -1);
+      if (same % 2 === 1) side = scale(side, -1);
+    }
+    const bow = Math.max(bondSide ? 22 : 30, dist(p0, p1) * 0.45) * (1 + 0.3 * Math.floor(same / 2));
+    this.A.arrows.push({ kind: 'single', p0, c: add(mm, scale(side, bow)), p1, line: this.line });
+
+    // Electron bookkeeping: take one from the source (mid and final), give one to the destination.
+    const takeOne = (world: World, inFlight: boolean) => {
+      const at = world.atoms.get(src.a)!;
+      const lone = neighbors(world, src.a).length === 0;
+      if (src.kind === 'e' || (src.kind === 'atom' && at.rad > 0 && inFlight && lone)) {
+        // An unpaired electron leaves; while in flight its place stays empty.
+        at.rad -= 1;
+        if (inFlight && lone) at.skip = (at.skip ?? 0) + 1;
+      } else if (src.kind === 'lp') {
+        at.lp -= 1;
+        at.rad += 1;
+      } else if (src.kind === 'atom') {
+        if (at.rad > 0) at.rad -= 1;
+        else {
+          at.lp -= 1;
+          at.rad += 1;
+        }
+      } else {
+        const b = getBond(world, src.a, src.b!)!;
+        b.order -= 0.5;
+        if (b.order <= 1e-9) world.bonds.delete(bondKey(src.a, src.b!));
+      }
+    };
+    takeOne(mid, true);
+    takeOne(w, false);
+    if (dst.kind === 'atom') {
+      const at = w.atoms.get(dst.a)!;
+      if (at.rad > 0) {
+        at.rad -= 1;
+        at.lp += 1;
+      } else at.rad += 1;
+    } else {
+      const k = bondKey(dst.a, dst.b!);
+      const b = w.bonds.get(k);
+      if (b) b.order += 0.5;
+      else w.bonds.set(k, { a: dst.a, b: dst.b!, order: 0.5 });
+    }
+    for (const id of [src.a, src.b, dst.a, dst.b]) if (id) this.touched.add(id);
+    this.A.phase = { b0: 0.22, b1: 0.56, c0: 0.56 };
+    this.focus([...this.touched]);
+  }
+
+  /** light c : a photon (hν) arrives and is absorbed. */
+  light(a: string[]): void {
+    const ref = a[0];
+    if (!ref) this.fail('빛 흡수는 이렇게 적어요: light c  (분자 이름이나 원자)');
+    const ids = ref.includes('.') ? [this.atom(ref)] : this.mol(ref);
+    const p1 = centerOf(this.w, ids);
+    const p0 = add(p1, { x: -170, y: -115 });
+    this.A.photons.push({ p0, p1, t0: 0, t1: 0.2 });
+    this.focusMol(ids);
+  }
+
   // ------------------------------------------------------------ ops: moving whole molecules
 
   /** approach w.O a.H : bring w so that its O (lone pair first) faces a.H. */
@@ -837,19 +1032,25 @@ class Ctx {
     else dir = norm(sub(M, T));
     const gap = element(T.el).r + element(M.el).r + 58;
     const goal = add(T, scale(dir, gap));
-    // Turn so that a lone pair (or the free side) of the mover faces the target.
+    // Turn so that the unpaired electron (radicals), else a lone pair, else the free side faces the target.
     const want = angleOf(scale(dir, -1));
+    const mn = neighbors(this.w, mover).map((n) => this.w.atoms.get(n.id)!);
     let face: number;
-    if (M.lp > 0) {
-      const dirs = lonePairDirsInWorld(this.w, mover, M.lp);
-      face = dirs.reduce((b, d) => (angDiff(d, want) < angDiff(b, want) ? d : b), dirs[0]);
+    if (!mn.length) {
+      // A lone atom: just turn its electrons; the first unpaired electron (or first pair) faces the target.
+      face = want;
+      M.face = want;
+    } else if (M.rad > 0 || M.lp > 0) {
+      const doms = domainsInWorld(this.w, mover);
+      const pick = doms.filter((d) => d.single === M.rad > 0);
+      const list = pick.length ? pick : doms;
+      face = list.reduce((b, d) => (angDiff(d.angle, want) < angDiff(b, want) ? d.angle : b), list[0].angle);
     } else {
-      const mn = neighbors(this.w, mover).map((n) => this.w.atoms.get(n.id)!);
-      face = mn.length ? angleOf(sub(M, centroid(mn))) : want;
+      face = angleOf(sub(M, centroid(mn)));
     }
     const rot = signedAng(face, want);
     const pivot = { x: M.x, y: M.y };
-    this.moveGroup(ids, pivot, [pivot, goal], rot, 0, 1);
+    this.moveGroup(ids, pivot, [pivot, goal], mn.length ? rot : 0, 0, 1);
     this.focusMol(comp);
   }
 
@@ -893,7 +1094,8 @@ class Ctx {
       const off = this.rng.range(0, Math.PI / 2);
       for (let i = 0; i < k; i++) {
         const u = fromAngle(off + (2 * Math.PI * i) / k);
-        if (q > 0) out.push({ pos: add(at, scale(u, r + element('O').r + 7)), u, mode: 'O' });
+        // Six waters need a little more room than four so their H atoms do not collide.
+        if (q > 0) out.push({ pos: add(at, scale(u, r + element('O').r + (k >= 6 ? 14 : 7))), u, mode: 'O' });
         else out.push({ pos: add(at, scale(u, r + element('H').r + 12)), u, mode: 'H' });
       }
       return out;
@@ -1432,6 +1634,19 @@ class Ctx {
       // Molecules that just split apart drift a little away from each other.
       separateComponents(this, [...this.touched]);
     }
+    // A bond is two electrons: one left alone means a hop was forgotten.
+    for (const [k, b] of [...this.w.bonds]) {
+      if (Math.abs(b.order - Math.round(b.order)) > 1e-6) {
+        this.errors.push({
+          line: this.lastHopLine || A.line,
+          message: `${label(this.w, b.a)}–${label(this.w, b.b)} 결합에 전자가 홀수 개(${Math.round(b.order * 2)}개) 남아요. 결합 하나는 전자 2개이니, 같은 단계에서 나머지 전자도 hop으로 옮겨 주세요.`,
+        });
+        b.order = Math.round(b.order);
+        if (b.order <= 0) this.w.bonds.delete(k);
+      }
+    }
+    this.hopCount.clear();
+    this.lastHopLine = 0;
     separateSolutes(this);
     resolveOverlaps(this, new Set(A.focus));
 

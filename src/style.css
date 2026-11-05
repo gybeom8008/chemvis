@@ -34,6 +34,8 @@
   --attract: #3b82c4;
   --trail: #8b9098;
   --focus: #f59f00;
+  --ox: #5f3dc4;
+  --photon: #e67700;
   --note-bg: #ffffff;
   --note-line: #8b9098;
   --canvas: #fbfaf7;
@@ -77,6 +79,8 @@
     --attract: #74b0e6;
     --trail: #7f848c;
     --focus: #ffc078;
+    --ox: #b197fc;
+    --photon: #ffa94d;
     --note-bg: #232428;
     --note-line: #7f848c;
     --canvas: #16171a;
@@ -745,6 +749,11 @@ code {
   padding: 18px 18px 0 28px;
 }
 
+/* The dialog lands focus here (not on the first chapter link), so no stray focus ring shows. */
+.tut-main:focus {
+  outline: none;
+}
+
 .tut-head {
   display: flex;
   justify-content: space-between;
@@ -869,6 +878,49 @@ code {
   width: 18px;
   height: 0;
   border-top: 2px dotted var(--trail);
+}
+
+/* half-headed (fishhook) arrow */
+.g-hook {
+  position: relative;
+  width: 18px;
+  height: 10px;
+  border: 2px solid var(--electron);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+}
+
+.g-hook::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  bottom: -2px;
+  border-left: 5px solid transparent;
+  border-top: 6px solid var(--electron);
+}
+
+.g-single {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lp);
+}
+
+.g-photon,
+.g-ox {
+  font-style: normal;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.g-photon {
+  color: var(--photon);
+  font-size: 16px;
+}
+
+.g-ox {
+  color: var(--ox);
 }
 
 .tut-body {
@@ -1012,6 +1064,11 @@ code {
 .bond.crowd {
   stroke-width: 2.4;
 }
+/* A bond left with one electron while electrons are moving. */
+.bond.half {
+  stroke-width: 2;
+  stroke-dasharray: 3 4;
+}
 .atom {
   stroke: rgba(0, 0, 0, 0.32);
   stroke-width: 1;
@@ -1064,6 +1121,38 @@ code {
   font-size: 11px;
   fill: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+.ox {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-anchor: middle;
+  fill: var(--ox);
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.photon polyline {
+  fill: none;
+  stroke: var(--photon);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+.photon polygon {
+  fill: var(--photon);
+}
+.photon text {
+  font-family: var(--sans);
+  font-style: italic;
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--photon);
+}
+.photon .flash {
+  fill: none;
+  stroke: var(--photon);
+  stroke-width: 2.5;
 }
 .trail {
   fill: none;

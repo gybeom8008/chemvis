@@ -308,7 +308,35 @@ function soil(): StageDef {
   };
 }
 
-export const STAGES: Record<string, () => StageDef> = { solution, interface: iface, soil };
+// ---------------------------------------------------------------- gas
+
+function gas(): StageDef {
+  const W = 1000;
+  const H = 620;
+  const regions: Record<string, Region> = {
+    air: rect('air', '기체 전체', 20, 20, 960, 580),
+    left: rect('left', '왼쪽', 20, 20, 320, 580),
+    center: rect('center', '가운데', 340, 20, 320, 580),
+    right: rect('right', '오른쪽', 660, 20, 320, 580),
+    top: rect('top', '위쪽', 20, 20, 960, 200),
+    bottom: rect('bottom', '아래쪽', 20, 400, 960, 200),
+  };
+  return {
+    name: 'gas',
+    label: '기체',
+    width: W,
+    height: H,
+    regions,
+    defaultRegion: 'air',
+    liquid: [],
+    attractDefault: false,
+    background: () =>
+      `<rect x="8" y="8" width="${W - 16}" height="${H - 16}" rx="18" class="bg-air"/>` +
+      `<text x="30" y="46" class="bg-label">기체</text>`,
+  };
+}
+
+export const STAGES: Record<string, () => StageDef> = { solution, interface: iface, soil, gas };
 
 export function getStage(name: string): StageDef | undefined {
   const f = STAGES[name];

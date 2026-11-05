@@ -1,4 +1,4 @@
-import { element } from '../chem/elements';
+import { ELECTRONEGATIVITY, element } from '../chem/elements';
 import type { Vec } from '../util/math';
 
 export interface Atom {
@@ -17,6 +17,10 @@ export interface Atom {
   num: number;
   /** Background solvent molecule (crowd). */
   crowd: boolean;
+  /** For an atom with no bonds: direction (radians) its first unpaired electron faces. */
+  face?: number;
+  /** While electrons are in flight: slots left empty by unpaired electrons that just left (atoms with no bonds). */
+  skip?: number;
 }
 
 export interface Bond {
@@ -41,6 +45,7 @@ export interface Lens {
   charge: boolean;
   attract: boolean;
   numbers: boolean;
+  oxidation: boolean;
 }
 
 export interface World {
@@ -69,7 +74,7 @@ export function emptyWorld(): World {
     temp: {},
     names: new Map(),
     crystals: new Map(),
-    lens: { charge: true, attract: false, numbers: false },
+    lens: { charge: true, attract: false, numbers: false, oxidation: false },
     counter: 0,
   };
 }
@@ -225,8 +230,27 @@ export function formulaOf(w: World, ids: string[]): string {
     const other = els.find((e) => e !== 'H')!;
     if (['F', 'Cl', 'Br', 'I'].includes(other)) f = `H${other}`;
   }
+  // An odd number of unpaired electrons makes it a radical, written with "·".
+  const unpaired = ids.reduce((n, i) => n + w.atoms.get(i)!.rad, 0);
+  if (unpaired % 2 === 1) f += '·';
   const q = componentCharge(w, ids);
   if (q === 0) return f;
   const mag = Math.abs(q) === 1 ? '' : String(Math.abs(q));
   return f + mag + (q > 0 ? '+' : '-');
+}
+
+/**
+ * Oxidation state: give each bond's electrons to the more electronegative atom
+ * (split evenly between identical elements), then compare with the neutral atom.
+ */
+export function oxidationState(w: World, atom: Atom): number {
+  const en = (el: string) => ELECTRONEGATIVITY[el] ?? 2;
+  let owned = atom.lp * 2 + atom.rad;
+  for (const n of neighbors(w, atom.id)) {
+    const other = w.atoms.get(n.id)!;
+    const d = en(atom.el) - en(other.el);
+    if (Math.abs(d) < 1e-9) owned += n.order;
+    else if (d > 0) owned += n.order * 2;
+  }
+  return element(atom.el).valence - owned;
 }

@@ -215,14 +215,55 @@ export function lonePairAngles(center: Vec, bondDirs: number[], count: number): 
   return out;
 }
 
-/** Lone-pair directions of an atom in a world, from its current bonds. */
-export function lonePairDirsInWorld(w: World, id: string, lp: number): number[] {
+export interface ElectronDomain {
+  angle: number;
+  /** true = one unpaired electron, false = a lone pair. */
+  single: boolean;
+}
+
+/**
+ * Where an atom's non-bonding electrons sit: lone pairs and unpaired electrons
+ * share the gaps between bonds. An atom without bonds spreads them evenly,
+ * starting from `face` with the unpaired electrons first, so a radical can be
+ * turned to face whatever it is about to react with.
+ */
+export function electronDomains(
+  center: Vec,
+  bondDirs: number[],
+  lp: number,
+  rad: number,
+  face?: number,
+  skip = 0,
+): ElectronDomain[] {
+  const n = lp + rad;
+  if (n <= 0) return [];
+  if (bondDirs.length === 0) {
+    // `skip` keeps the places of electrons that just left empty, so the rest do not jump.
+    const slots = n + skip;
+    const base = face ?? -Math.PI / 4;
+    return Array.from({ length: n }, (_, i) => ({
+      angle: wrap(base + (2 * Math.PI * (i < rad ? i : i + skip)) / slots),
+      single: i < rad,
+    }));
+  }
+  return lonePairAngles(center, bondDirs, n).map((angle, i) => ({ angle, single: i >= lp }));
+}
+
+/** Electron domains of an atom in a world, from its current bonds. */
+export function domainsInWorld(w: World, id: string): ElectronDomain[] {
   const a = w.atoms.get(id)!;
   const dirs = neighbors(w, id).map((n) => {
     const b = w.atoms.get(n.id)!;
     return Math.atan2(b.y - a.y, b.x - a.x);
   });
-  return lonePairAngles(a, dirs, lp);
+  return electronDomains(a, dirs, a.lp, a.rad, a.face, a.skip ?? 0);
+}
+
+/** Lone-pair directions of an atom in a world, from its current bonds. */
+export function lonePairDirsInWorld(w: World, id: string, _lp?: number): number[] {
+  return domainsInWorld(w, id)
+    .filter((d) => !d.single)
+    .map((d) => d.angle);
 }
 
 export { getBond };

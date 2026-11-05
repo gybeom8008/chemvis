@@ -56,6 +56,35 @@ export const ELEMENTS: Record<string, ElementInfo> = {
   Ca: E('Ca', '칼슘', 2, 4, '#37b24d', '#fff', 16),
   Br: E('Br', '브로민', 7, 4, '#a12b2b', '#fff', 16),
   I: E('I', '아이오딘', 7, 5, '#862e9c', '#fff', 17),
+  // Metals: only the outer electrons that take part in the reactions shown here are counted
+  // (Zn 4s², Cu → Cu²⁺ uses two, Ag → Ag⁺ uses one).
+  Zn: E('Zn', '아연', 2, 4, '#7d80b0', '#fff', 15),
+  Cu: E('Cu', '구리', 2, 4, '#c88033', '#fff', 15),
+  Ag: E('Ag', '은', 1, 5, '#b8b8b8', '#222', 16),
+};
+
+/** Pauling electronegativity, for oxidation states. */
+export const ELECTRONEGATIVITY: Record<string, number> = {
+  H: 2.2,
+  Li: 0.98,
+  C: 2.55,
+  N: 3.04,
+  O: 3.44,
+  F: 3.98,
+  Na: 0.93,
+  Mg: 1.31,
+  Al: 1.61,
+  Si: 1.9,
+  P: 2.19,
+  S: 2.58,
+  Cl: 3.16,
+  K: 0.82,
+  Ca: 1.0,
+  Br: 2.96,
+  I: 2.66,
+  Zn: 1.65,
+  Cu: 1.9,
+  Ag: 1.93,
 };
 
 export function element(symbol: string): ElementInfo {

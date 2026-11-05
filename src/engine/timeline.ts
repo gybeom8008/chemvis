@@ -42,6 +42,14 @@ export interface FlowAnim {
   seed: number;
 }
 
+/** A photon (drawn as a wavy line, hν) travelling to the molecule that absorbs it. */
+export interface PhotonAnim {
+  p0: Vec;
+  p1: Vec;
+  t0: number;
+  t1: number;
+}
+
 export interface StepAnim {
   index: number;
   text: string;
@@ -60,6 +68,7 @@ export interface StepAnim {
   focus: Set<string>;
   trails: string[];
   flows: FlowAnim[];
+  photons: PhotonAnim[];
   appear: Set<string>;
   lens?: Partial<Lens>;
 }

@@ -1,4 +1,5 @@
 import { element } from './elements';
+import { parseSmiles } from './smiles';
 
 /**
  * Molecules the script can name directly. Only topology is stored (atoms,
@@ -100,11 +101,41 @@ const DEFS: MolDef[] = [
   ion('Ag+', '은 이온', 'Ag', 0),
 ];
 
+/** Larger molecules are defined by SMILES; atom names then follow SMILES order (see smiles.ts). */
+const NAMED_SMILES: [string, string, string][] = [
+  ['Gly', '글라이신', 'NCC(=O)O'],
+  ['Ala', '알라닌', 'CC(N)C(=O)O'],
+  ['CH3OH', '메탄올', 'CO'],
+  ['C2H5OH', '에탄올', 'CCO'],
+  ['CH3COOH', '아세트산', 'CC(=O)O'],
+  ['CH3COO-', '아세트산 이온', 'CC(=O)[O-]'],
+  ['CH3Br', '브로모메테인', 'CBr'],
+  ['CH3Cl', '클로로메테인', 'CCl'],
+  ['C2H4', '에텐', 'C=C'],
+  ['C6H6', '벤젠', 'c1ccccc1'],
+  ['C6H12O6', '포도당(고리형)', 'OCC1OC(O)C(O)C(O)C1O'],
+  ['H2CO3', '탄산', 'OC(=O)O'],
+  ['HCO3-', '탄산수소 이온', 'OC(=O)[O-]'],
+  ['CO32-', '탄산 이온', '[O-]C(=O)[O-]'],
+  ['NO3-', '질산 이온', '[O-][N+](=O)[O-]'],
+  ['H3PO4', '인산', 'OP(=O)(O)O'],
+  ['H2PO4-', '인산이수소 이온', 'OP(=O)(O)[O-]'],
+  ['SO42-', '황산 이온', '[O-]S(=O)(=O)[O-]'],
+  ['H2O2', '과산화수소', 'OO'],
+];
+
 export const LIBRARY: Map<string, MolDef> = new Map(DEFS.map((d) => [d.formula, d]));
+for (const [key, name, smi] of NAMED_SMILES) {
+  const def = parseSmiles(smi);
+  LIBRARY.set(key, { ...def, formula: key, name });
+}
+
+const smilesCache = new Map<string, MolDef>();
 
 /** Accepts a few common spellings, e.g. "Ca++" or "Ca+2" for "Ca2+". */
 export function normalizeFormula(f: string): string {
   let s = f.trim().replace('−', '-');
+  if (s.startsWith('smiles:')) return s;
   // Radical dot: "Cl." / "Cl*" / "Cl•" → "Cl·"
   s = s.replace(/[.*•]$/, '·');
   const m = s.match(/^(.*?)(\+\+|--|\+(\d)|-(\d))$/);
@@ -116,7 +147,16 @@ export function normalizeFormula(f: string): string {
   return s;
 }
 
+/**
+ * A library molecule by formula/name, or any molecule written as `smiles:...`.
+ * Throws SmilesError (with a readable message) for a malformed SMILES.
+ */
 export function lookupMolecule(f: string): MolDef | undefined {
+  if (f.startsWith('smiles:')) {
+    const key = f.slice(7);
+    if (!smilesCache.has(key)) smilesCache.set(key, parseSmiles(key));
+    return smilesCache.get(key);
+  }
   return LIBRARY.get(normalizeFormula(f));
 }
 

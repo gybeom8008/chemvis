@@ -6,6 +6,7 @@
  */
 import { bondLength, element } from '../chem/elements';
 import { domainsInWorld, lonePairDirsInWorld, placeNew, relayout } from '../chem/geometry';
+import { SmilesError } from '../chem/smiles';
 import { formulaCharge, lookupMolecule, normalizeFormula } from '../chem/library';
 import { parse, type Cmd, type Diag } from '../dsl/parser';
 import { channelArcAtY, getStage, inRegion, randomInRegion, regionCenter, type Region, type StageDef } from '../stage/stages';
@@ -114,7 +115,7 @@ export function compile(src: string): CompileResult {
       if (cmd.op === 'scene') title = cmd.args.join(' ');
       else ctx.header(cmd);
     } catch (e) {
-      if (e instanceof ScriptError) ctx.errors.push({ line: cmd.line, message: e.message });
+      if (e instanceof ScriptError || e instanceof SmilesError) ctx.errors.push({ line: cmd.line, message: e.message });
       else throw e;
     }
   }
@@ -158,7 +159,7 @@ export function compile(src: string): CompileResult {
         ctx.op(cmd);
         maxDur = Math.max(maxDur, OP_DURATION[cmd.op] ?? STEP_BASE);
       } catch (e) {
-        if (e instanceof ScriptError) ctx.errors.push({ line: cmd.line, message: e.message });
+        if (e instanceof ScriptError || e instanceof SmilesError) ctx.errors.push({ line: cmd.line, message: e.message });
         else throw e;
       }
     }

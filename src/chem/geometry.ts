@@ -3,7 +3,7 @@
  * molecules look like textbook drawings (bent H2O, tripod NH3, cross NH4+),
  * and lone pairs are placed in the widest gaps between bonds.
  */
-import { bondLength } from './elements';
+import { bondLength, element } from './elements';
 import type { World } from '../engine/world';
 import { neighbors, getBond } from '../engine/world';
 import { add, angleOf, deg, fromAngle, sub, wrap, type Vec } from '../util/math';
@@ -24,7 +24,221 @@ export function idealBondAngles(nb: number, nlp: number, isRoot: boolean): numbe
   return Array.from({ length: nb }, (_, i) => (360 * i) / nb);
 }
 
-/** Relative layout of one connected molecule (tree-shaped molecules; rings fall back to a circle). */
+/** Small rings of a molecule (one cycle per non-tree bond of a DFS spanning tree). */
+export function findRings(ids: string[], nb: (id: string) => { id: string }[]): string[][] {
+  const parent = new Map<string, string | null>();
+  const depth = new Map<string, number>();
+  const rings: string[][] = [];
+  const seenEdge = new Set<string>();
+  const key = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const start = ids[0];
+  parent.set(start, null);
+  depth.set(start, 0);
+  const stack = [start];
+  const order: string[] = [];
+  while (stack.length) {
+    const u = stack.pop()!;
+    order.push(u);
+    for (const { id: v } of nb(u)) {
+      if (!depth.has(v)) {
+        parent.set(v, u);
+        depth.set(v, depth.get(u)! + 1);
+        seenEdge.add(key(u, v));
+        stack.push(v);
+      }
+    }
+  }
+  for (const u of order) {
+    for (const { id: v } of nb(u)) {
+      const k = key(u, v);
+      if (seenEdge.has(k)) continue;
+      seenEdge.add(k);
+      // Walk both ends up to their common ancestor.
+      const pathU = [u];
+      const pathV = [v];
+      let a = u;
+      let b = v;
+      while (a !== b) {
+        if ((depth.get(a) ?? 0) >= (depth.get(b) ?? 0)) {
+          a = parent.get(a)!;
+          pathU.push(a);
+        } else {
+          b = parent.get(b)!;
+          pathV.push(b);
+        }
+        if (a === undefined || b === undefined) break;
+      }
+      pathV.pop();
+      const ring = [...pathU, ...pathV.reverse()];
+      if (ring.length >= 3 && ring.length <= 10) rings.push(ring);
+    }
+  }
+  return rings;
+}
+
+/** Layout for molecules with rings: rings as regular polygons, substituents pointing outward. */
+function ringLayout(w: World, ids: string[], nb: (id: string) => { id: string; order: number }[], rings: string[][]): Map<string, Vec> {
+  const pos = new Map<string, Vec>();
+  const L = (a: string, b: string) => bondLength(w.atoms.get(a)!.el, w.atoms.get(b)!.el);
+  const placeRingAround = (ring: string[], center: Vec, startAngle: number) => {
+    const n = ring.length;
+    let avg = 0;
+    for (let i = 0; i < n; i++) avg += L(ring[i], ring[(i + 1) % n]);
+    avg /= n;
+    const R = avg / (2 * Math.sin(Math.PI / n));
+    ring.forEach((id, i) => {
+      if (!pos.has(id)) pos.set(id, add(center, fromAngle(startAngle + (2 * Math.PI * i) / n, R)));
+    });
+  };
+  const sorted = [...rings].sort((p, q) => q.length - p.length);
+  placeRingAround(sorted[0], { x: 0, y: 0 }, -Math.PI / 2);
+  const pending = sorted.slice(1);
+  // Fused rings: share an edge with something already placed.
+  for (let guard = 0; guard < 20 && pending.length; guard++) {
+    const idx = pending.findIndex((r) => r.some((id, i) => pos.has(id) && pos.has(r[(i + 1) % r.length])));
+    if (idx < 0) break;
+    const ring = pending.splice(idx, 1)[0];
+    const n = ring.length;
+    const i0 = ring.findIndex((id, i) => pos.has(id) && pos.has(ring[(i + 1) % n]));
+    const u = pos.get(ring[i0])!;
+    const v = pos.get(ring[(i0 + 1) % n])!;
+    const mid = { x: (u.x + v.x) / 2, y: (u.y + v.y) / 2 };
+    const placedC = centroidOf([...pos.values()]);
+    let nrm = { x: -(v.y - u.y), y: v.x - u.x };
+    const nl = Math.hypot(nrm.x, nrm.y) || 1;
+    nrm = { x: nrm.x / nl, y: nrm.y / nl };
+    if ((placedC.x - mid.x) * nrm.x + (placedC.y - mid.y) * nrm.y > 0) nrm = { x: -nrm.x, y: -nrm.y };
+    const edge = Math.hypot(v.x - u.x, v.y - u.y);
+    const apothem = edge / (2 * Math.tan(Math.PI / n));
+    const center = add(mid, { x: nrm.x * apothem, y: nrm.y * apothem });
+    const R = edge / (2 * Math.sin(Math.PI / n));
+    // Walk around the new ring from u in the direction that does not pass v first.
+    const angU = Math.atan2(u.y - center.y, u.x - center.x);
+    const angV = Math.atan2(v.y - center.y, v.x - center.x);
+    let dir = Math.sign(Math.atan2(Math.sin(angV - angU), Math.cos(angV - angU))) || 1;
+    dir = -dir;
+    for (let k = 1; k < n - 1; k++) {
+      const id = ring[(i0 - k + n) % n];
+      if (!pos.has(id)) pos.set(id, add(center, fromAngle(angU + dir * ((2 * Math.PI * k) / n), R)));
+    }
+  }
+  const ringOf = new Map<string, string[]>();
+  for (const r of rings) for (const id of r) if (!ringOf.has(id)) ringOf.set(id, r);
+
+  // Everything else grows outward from placed atoms.
+  const queue = [...pos.keys()];
+  for (let qi = 0; qi < queue.length; qi++) {
+    const a = queue[qi];
+    const pa = pos.get(a)!;
+    const placedNb = nb(a).filter((x) => pos.has(x.id));
+    const free = nb(a).filter((x) => !pos.has(x.id));
+    if (!free.length) continue;
+    let angles: number[];
+    if (placedNb.length === 1) {
+      const atom = w.atoms.get(a)!;
+      const back = angleOf(sub(pos.get(placedNb[0].id)!, pa));
+      const ideal = idealBondAngles(placedNb.length + free.length, atom.lp + (atom.rad > 0 ? 1 : 0), false).slice(1);
+      angles = free.map((_, i) => back + deg(ideal[i] ?? 180));
+    } else {
+      let ox = 0;
+      let oy = 0;
+      for (const p of placedNb) {
+        const d = sub(pa, pos.get(p.id)!);
+        const l = Math.hypot(d.x, d.y) || 1;
+        ox += d.x / l;
+        oy += d.y / l;
+      }
+      const out = Math.atan2(oy, ox);
+      const spread = free.length === 1 ? [0] : free.length === 2 ? [-0.9, 0.9] : [-1.2, 0, 1.2];
+      angles = free.map((_, i) => out + (spread[i] ?? 0));
+    }
+    free.forEach((f, i) => {
+      if (pos.has(f.id)) return;
+      const ring = ringOf.get(f.id);
+      const dirAng = angles[i];
+      const l = L(a, f.id);
+      const p = add(pa, fromAngle(dirAng, l));
+      if (ring && ring.every((id) => !pos.has(id) || id === f.id)) {
+        // A ring hanging off a chain: its centre lies straight out beyond the entry atom.
+        const n = ring.length;
+        const R = l / (2 * Math.sin(Math.PI / n));
+        const center = add(p, fromAngle(dirAng, R));
+        const k0 = ring.indexOf(f.id);
+        const start = dirAng + Math.PI;
+        ring.forEach((id, k) => {
+          if (!pos.has(id)) pos.set(id, add(center, fromAngle(start + (2 * Math.PI * (k - k0)) / n, R)));
+          queue.push(id);
+        });
+        return;
+      }
+      pos.set(f.id, p);
+      queue.push(f.id);
+    });
+  }
+  // Anything unreachable (should not happen): put it on a small circle.
+  ids.forEach((id, i) => {
+    if (!pos.has(id)) pos.set(id, fromAngle((2 * Math.PI * i) / ids.length, 40));
+  });
+  // Substituents on neighbouring ring atoms can bump into each other: nudge them apart,
+  // keeping bond lengths and leaving the ring itself in place.
+  const pinned = new Set(rings.flat());
+  const bonds: [string, string, number][] = [];
+  for (const id of ids) for (const n of nb(id)) if (id < n.id) bonds.push([id, n.id, L(id, n.id)]);
+  const bonded = new Set(bonds.map(([a, b]) => `${a}|${b}`));
+  const r = (id: string) => element(w.atoms.get(id)!.el).r;
+  for (let iter = 0; iter < 120; iter++) {
+    const f = new Map<string, Vec>(ids.map((id) => [id, { x: 0, y: 0 }]));
+    for (const [a, b, l] of bonds) {
+      const pa = pos.get(a)!;
+      const pb = pos.get(b)!;
+      const d = Math.hypot(pb.x - pa.x, pb.y - pa.y) || 1;
+      const k = ((d - l) / d) * 0.5;
+      f.get(a)!.x += (pb.x - pa.x) * k;
+      f.get(a)!.y += (pb.y - pa.y) * k;
+      f.get(b)!.x -= (pb.x - pa.x) * k;
+      f.get(b)!.y -= (pb.y - pa.y) * k;
+    }
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = ids[i];
+        const b = ids[j];
+        if (bonded.has(a < b ? `${a}|${b}` : `${b}|${a}`)) continue;
+        const pa = pos.get(a)!;
+        const pb = pos.get(b)!;
+        const d = Math.hypot(pb.x - pa.x, pb.y - pa.y) || 0.01;
+        const want = r(a) + r(b) + 7;
+        if (d >= want) continue;
+        const k = ((want - d) / d) * 0.5;
+        f.get(a)!.x -= (pb.x - pa.x) * k;
+        f.get(a)!.y -= (pb.y - pa.y) * k;
+        f.get(b)!.x += (pb.x - pa.x) * k;
+        f.get(b)!.y += (pb.y - pa.y) * k;
+      }
+    }
+    let moved = 0;
+    for (const id of ids) {
+      if (pinned.has(id)) continue;
+      const v = f.get(id)!;
+      const p = pos.get(id)!;
+      pos.set(id, { x: p.x + v.x * 0.6, y: p.y + v.y * 0.6 });
+      moved += Math.abs(v.x) + Math.abs(v.y);
+    }
+    if (moved < 0.05) break;
+  }
+  return pos;
+}
+
+function centroidOf(ps: Vec[]): Vec {
+  let x = 0;
+  let y = 0;
+  for (const p of ps) {
+    x += p.x;
+    y += p.y;
+  }
+  return { x: x / (ps.length || 1), y: y / (ps.length || 1) };
+}
+
+/** Relative layout of one connected molecule. */
 export function relativeLayout(w: World, ids: string[]): Map<string, Vec> {
   const pos = new Map<string, Vec>();
   if (ids.length === 1) {
@@ -33,6 +247,8 @@ export function relativeLayout(w: World, ids: string[]): Map<string, Vec> {
   }
   const inSet = new Set(ids);
   const nb = (id: string) => neighbors(w, id).filter((n) => inSet.has(n.id));
+  const rings = findRings(ids, nb);
+  if (rings.length) return ringLayout(w, ids, nb, rings);
   // Root: heaviest branching atom.
   const root = [...ids].sort((p, q) => {
     const dp = nb(p).length;
@@ -70,7 +286,7 @@ export function relativeLayout(w: World, ids: string[]): Map<string, Vec> {
     });
   }
   if (ringFallback || pos.size !== ids.length) {
-    // Simple circle for rings or anything odd; good enough until RDKit coordinates arrive.
+    // Should not happen now that rings have their own layout; keep a safe fallback.
     const r = 20 + ids.length * 6;
     ids.forEach((id, i) => pos.set(id, fromAngle((2 * Math.PI * i) / ids.length, r)));
     return pos;

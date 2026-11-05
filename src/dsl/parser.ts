@@ -49,6 +49,7 @@ export function tokenize(src: string, line: number, errors: Diag[]): { words: st
       i++;
       continue;
     }
+    // '#' starts a comment only where a word would start (so SMILES triple bonds like C#N survive).
     if (ch === '#') break;
     if (ch === '"' || ch === '“' || ch === '”') {
       let j = i + 1;

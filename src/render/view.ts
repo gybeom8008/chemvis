@@ -71,6 +71,8 @@ export class StageView {
   private tl: Timeline | null = null;
   private boxes: Box[] = [];
   private cam: Box | null = null;
+  /** Where each note box sits relative to its target, decided once per step so it never jumps. */
+  private notePlace = new Map<string, { dx: number; dy: number }>();
 
   constructor(svg: SVGSVGElement) {
     this.svg = svg;
@@ -87,6 +89,7 @@ export class StageView {
     this.bg.innerHTML = st.background();
     this.boxes = tl.steps.map((step) => this.stepBox(step));
     this.cam = null;
+    this.notePlace.clear();
   }
 
   /** Part of the stage worth showing during a step: everything that matters, padded. */
@@ -169,7 +172,6 @@ export class StageView {
     if (!tl) return;
     const step = tl.steps[k] as StepAnim | undefined;
     const cam = this.updateCamera(k, opt.dt ?? 0);
-    const fs = cam.w / 1000;
     const out: string[] = [];
 
     // Which bonds/lone pairs exist at this moment.
@@ -401,27 +403,44 @@ export class StageView {
       }
     }
 
-    // Notes.
+    // Notes. Box positions are chosen once per step from the still (end-of-step) picture,
+    // then follow their target; choosing them every frame made them flicker.
     if (step) {
       const alpha = clamp(t / 0.1, 0, 1);
+      const view = this.boxes[k] ?? cam;
+      const nfs = view.w / 1000;
+      const basePos = new Map<string, Vec>();
+      for (const [id, a] of step.after.atoms) basePos.set(id, { x: a.x, y: a.y });
+      const baseBonds = [...step.after.bonds.values()].filter((b) => b.order > 0);
+      const baseAtoms = [...step.after.atoms.values()];
       const placed: Box[] = [];
-      const obstacles = atoms
-        .filter((a) => !a.crowd)
-        .map((a) => ({ p: pos.get(a.id)!, r: element(a.el).r + 6 }));
+      const obstacles = baseAtoms.filter((a) => !a.crowd).map((a) => ({ p: basePos.get(a.id)!, r: element(a.el).r + 6 }));
       step.notes.forEach((nt, i) => {
         const target = this.notePoint(nt.target, pos, bonds, atoms);
         if (!target) return;
         let rr = 0;
-        let avoid: number | null = null;
         if (nt.target.kind === 'atom') {
           const at = atoms.find((x) => x.id === (nt.target as { id: string }).id);
-          if (at) {
-            rr = element(at.el).r;
-            const w = chargeWorld.atoms.has(at.id) ? chargeWorld : after;
-            if (opt.lens.charge && formalCharge(w, w.atoms.get(at.id)!) !== 0) avoid = this.freeAngle(at, target, pos, bonds);
-          }
+          if (at) rr = element(at.el).r;
         }
-        out.push(noteSvg(target, nt.text, i, cam, fs, alpha, rr, avoid, placed, obstacles));
+        const key = `${k}:${i}`;
+        let off = this.notePlace.get(key);
+        if (!off) {
+          const base = this.notePoint(nt.target, basePos, baseBonds, baseAtoms) ?? target;
+          let avoid: number | null = null;
+          if (nt.target.kind === 'atom') {
+            const at = step.after.atoms.get(nt.target.id);
+            if (at && opt.lens.charge && formalCharge(step.after, at) !== 0) avoid = this.freeAngle(at, base, basePos, baseBonds);
+          }
+          const b = placeNote(base, nt.text, view, nfs, avoid, placed, obstacles);
+          off = { dx: b.x - base.x, dy: b.y - base.y };
+          this.notePlace.set(key, off);
+        }
+        const box = noteBox(nt.text, nfs);
+        const bx = target.x + off.dx;
+        const by = target.y + off.dy;
+        placed.push({ x: bx, y: by, w: box.w, h: box.h });
+        out.push(drawNote(target, nt.text, bx, by, nfs, alpha, rr));
       });
     }
 
@@ -549,7 +568,10 @@ export class StageView {
           });
         const angs = lonePairAngles(p, dirs, Math.max(1, at.lp));
         const up = -Math.PI / 2;
-        const best = angs.reduce((b, a) => (Math.abs(Math.sin((a - up) / 2)) < Math.abs(Math.sin((b - up) / 2)) ? a : b), angs[0]);
+        // Two lone pairs often sit symmetrically about "up"; round the score so floating-point noise
+        // from thermal motion cannot flip the choice between them from frame to frame.
+        const score = (a: number) => Math.round(Math.abs(Math.sin((a - up) / 2)) * 1e4);
+        const best = [...angs].sort((p2, q2) => score(p2) - score(q2) || Math.cos(q2) - Math.cos(p2))[0];
         return add(p, fromAngle(best, element(at.el).r + 6));
       }
       case 'group': {
@@ -599,53 +621,59 @@ function textWidth(s: string, size: number): number {
   return w;
 }
 
-function noteSvg(
-  target: Vec,
-  text: string,
-  i: number,
-  cam: Box,
-  fs: number,
-  alpha: number,
-  edge = 0,
-  avoid: number | null = null,
-  placed: Box[] = [],
-  obstacles: { p: Vec; r: number }[] = [],
-): string {
+function noteBox(text: string, fs: number): { w: number; h: number; size: number; lines: string[] } {
   const size = 17 * fs;
   const lines = wrapText(text, 15);
   const w = Math.max(...lines.map((l) => textWidth(l, size))) + 22 * fs;
   const h = lines.length * size * 1.35 + 14 * fs;
+  return { w, h, size, lines };
+}
+
+/** Pick a spot for a note box near its target, clear of other notes, molecules and the charge badge. */
+function placeNote(
+  target: Vec,
+  text: string,
+  view: Box,
+  fs: number,
+  avoid: number | null,
+  placed: Box[],
+  obstacles: { p: Vec; r: number }[],
+): Box {
+  const { w, h } = noteBox(text, fs);
   const dirs: Vec[] = [
     { x: 1, y: -1 },
     { x: -1, y: -1 },
     { x: 1, y: 1 },
     { x: -1, y: 1 },
   ];
-  // Try a few spots around the target; keep clear of other notes, molecules and the charge badge.
   let best: { bx: number; by: number; score: number } | null = null;
   for (const off of [70 * fs, 120 * fs, 175 * fs]) {
     dirs.forEach((d, k) => {
       let bx = target.x + d.x * off - (d.x < 0 ? w : 0);
       let by = target.y + d.y * off - (d.y < 0 ? h : 0);
-      bx = clamp(bx, cam.x + 8 * fs, cam.x + cam.w - w - 8 * fs);
-      by = clamp(by, cam.y + 8 * fs, cam.y + cam.h - h - 8 * fs);
+      bx = clamp(bx, view.x + 8 * fs, view.x + view.w - w - 8 * fs);
+      by = clamp(by, view.y + 8 * fs, view.y + view.h - h - 8 * fs);
       let score = off * 0.02 + k * 0.5;
       for (const b of placed) score += overlap({ x: bx - 6, y: by - 6, w: w + 12, h: h + 12 }, b) / 40;
       for (const o of obstacles) {
         const cx = clamp(o.p.x, bx, bx + w);
         const cy = clamp(o.p.y, by, by + h);
-        if (Math.hypot(cx - o.p.x, cy - o.p.y) < o.r) score += 60;
+        // Margin keeps borderline cases decided the same way every time.
+        if (Math.hypot(cx - o.p.x, cy - o.p.y) < o.r + 8) score += 60;
       }
       if (avoid !== null) {
         const a = Math.atan2(d.y, d.x);
         if (Math.abs(Math.atan2(Math.sin(a - avoid), Math.cos(a - avoid))) < 0.9) score += 30;
       }
-      if (!best || score < best.score) best = { bx, by, score };
+      if (!best || score < best.score - 1e-6) best = { bx, by, score };
     });
   }
-  const { bx, by } = best!;
-  placed.push({ x: bx, y: by, w, h });
-  void i;
+  const b = best!;
+  return { x: b.bx, y: b.by, w, h };
+}
+
+function drawNote(target: Vec, text: string, bx: number, by: number, fs: number, alpha: number, edge = 0): string {
+  const { w, h, size, lines } = noteBox(text, fs);
   const anchor = { x: clamp(target.x, bx, bx + w), y: clamp(target.y, by, by + h) };
   const tip = edge > 0 ? add(target, scale(norm(sub(anchor, target)), edge + 2)) : target;
   let s = `<g class="note" opacity="${f1(alpha)}">`;

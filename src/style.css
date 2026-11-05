@@ -178,6 +178,22 @@ textarea:focus-visible {
   background: var(--chip);
 }
 
+.script-toggle {
+  margin-left: auto;
+  font-size: 14px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+
+body[data-script='hidden'] .script {
+  display: none;
+}
+
+body[data-script='hidden'] .layout,
+body[data-script='hidden'][data-mode='edit'] .layout {
+  grid-template-columns: 230px minmax(0, 1fr);
+}
+
 .layout {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr) 380px;
@@ -268,21 +284,29 @@ body[data-mode='edit'] .layout {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 68vh;
+  /* Leaves room for the caption and controls below, even when the script panel is hidden. */
+  max-height: 56vh;
 }
 
+/* Step caption sits centred under the stage, like a subtitle. */
 .narration {
   display: flex;
-  gap: 12px;
-  align-items: baseline;
-  min-height: 3.2em;
-  padding: 12px 4px 4px;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 4.4em;
+  padding: 12px 8px 6px;
   font-size: 18px;
+  text-align: center;
+}
+
+.narration .text {
+  max-width: 46em;
+  text-wrap: balance;
 }
 
 .narration .count {
-  flex: none;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -707,7 +731,9 @@ body[data-mode='edit'] .layout {
 
 @media (max-width: 1180px) {
   .layout,
-  body[data-mode='edit'] .layout {
+  body[data-mode='edit'] .layout,
+  body[data-script='hidden'] .layout,
+  body[data-script='hidden'][data-mode='edit'] .layout {
     grid-template-columns: minmax(0, 1fr);
   }
   .chapters {
@@ -748,8 +774,6 @@ body[data-mode='edit'] .layout {
   }
   .narration {
     font-size: 16px;
-    flex-direction: column;
-    gap: 2px;
   }
   .intro h1 {
     font-size: 20px;

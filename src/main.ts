@@ -295,6 +295,28 @@ for (const [id, key] of [
     lens[key] = (e.target as HTMLInputElement).checked;
   });
 }
+// Script panel can be hidden; the choice is remembered in this browser only.
+const SCRIPT_KEY = 'chemvis.scriptHidden';
+function setScriptHidden(hidden: boolean): void {
+  document.body.dataset.script = hidden ? 'hidden' : 'shown';
+  const b = $('btn-script-toggle');
+  b.textContent = hidden ? '대본 보기' : '대본 숨기기';
+  b.setAttribute('aria-pressed', String(hidden));
+  try {
+    localStorage.setItem(SCRIPT_KEY, hidden ? '1' : '0');
+  } catch {
+    /* storage may be unavailable (private window); the toggle still works */
+  }
+}
+let initialHidden = false;
+try {
+  initialHidden = localStorage.getItem(SCRIPT_KEY) === '1';
+} catch {
+  initialHidden = false;
+}
+setScriptHidden(initialHidden);
+$('btn-script-toggle').addEventListener('click', () => setScriptHidden(document.body.dataset.script !== 'hidden'));
+
 $('btn-edit').addEventListener('click', () => setEditing(!state.editing));
 $('btn-apply').addEventListener('click', () => {
   const src = $<HTMLTextAreaElement>('script-edit').value;

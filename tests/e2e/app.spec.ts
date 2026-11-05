@@ -86,3 +86,35 @@ test('layout fits a phone screen without sideways scrolling', async ({ page }) =
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test('note boxes stay put while molecules jiggle', async ({ page }) => {
+  await page.goto('./#/t/atoms');
+  await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.seek(2, 1));
+  const offsets: number[][] = [];
+  for (let i = 0; i < 12; i++) {
+    offsets.push(
+      await page.evaluate(() => {
+        const l = document.querySelector('#stage .note line')!;
+        const r = document.querySelector('#stage .note rect')!;
+        return [+r.getAttribute('x')! - +l.getAttribute('x1')!, +r.getAttribute('y')! - +l.getAttribute('y1')!];
+      }),
+    );
+    await page.waitForTimeout(60);
+  }
+  for (const [dx, dy] of offsets) {
+    expect(Math.abs(dx - offsets[0][0])).toBeLessThan(1.5);
+    expect(Math.abs(dy - offsets[0][1])).toBeLessThan(1.5);
+  }
+});
+
+test('the script panel can be hidden from the top-right button and stays hidden', async ({ page }) => {
+  await page.goto('./?still#/t/atoms');
+  await expect(page.locator('#script-panel')).toBeVisible();
+  await page.locator('#btn-script-toggle').click();
+  await expect(page.locator('#script-panel')).toBeHidden();
+  await expect(page.locator('#btn-script-toggle')).toHaveText('대본 보기');
+  await page.reload();
+  await expect(page.locator('#script-panel')).toBeHidden();
+  await page.locator('#btn-script-toggle').click();
+  await expect(page.locator('#script-panel')).toBeVisible();
+});

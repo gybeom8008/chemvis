@@ -7,7 +7,7 @@ import type { Timeline } from '../engine/timeline';
 import type { Lens } from '../engine/world';
 import { StageView } from '../render/view';
 import { icon } from './icons';
-import { legendHtml } from './legend';
+import { legendHtml, playSwatch } from './legend';
 import { Player } from './player';
 
 export interface Settings {
@@ -42,8 +42,9 @@ export class Viewer {
       <div class="viewer is-empty">
         <div class="stage-box"><svg class="stage" role="img" aria-label="장면"></svg></div>
         <div class="dock">
-          <div class="dock-side">
+          <div class="dock-side legend-wrap">
             <button class="icon legend-btn" aria-label="범례" title="범례" aria-expanded="false">${icon('legend')}</button>
+            <div class="legend-pop" role="dialog" aria-label="범례" hidden></div>
           </div>
           <div class="dock-main">
             <p class="caption" aria-live="polite"><span class="count"></span><span class="text"></span></p>
@@ -56,7 +57,6 @@ export class Viewer {
             </div>
           </div>
           <div class="dock-side"></div>
-          <div class="legend-pop" role="dialog" aria-label="범례" hidden></div>
         </div>
       </div>`;
     this.root = host.querySelector('.viewer')!;
@@ -76,7 +76,16 @@ export class Viewer {
       if (!more) return;
       const all = this.legendPop.classList.toggle('show-all');
       more.setAttribute('aria-pressed', String(all));
-      more.textContent = all ? '이 장면에 쓰인 기호만 보기' : '이 장면에 없는 기호도 보기';
+      more.textContent = all ? '이 장면 범례만 보기' : '전체 범례 보기';
+    });
+    // Marks that move on the stage move in their swatch while the pointer is on the row.
+    this.legendPop.addEventListener('pointerover', (e) => {
+      const row = (e.target as Element).closest('.lg-list li');
+      if (row && !row.contains(e.relatedTarget as Node)) playSwatch(row, true);
+    });
+    this.legendPop.addEventListener('pointerout', (e) => {
+      const row = (e.target as Element).closest('.lg-list li');
+      if (row && !row.contains(e.relatedTarget as Node)) playSwatch(row, false);
     });
     // Any press outside the panel closes it (some buttons stop their clicks from spreading).
     document.addEventListener('pointerdown', (e) => {

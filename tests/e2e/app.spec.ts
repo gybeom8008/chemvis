@@ -212,7 +212,7 @@ test('the legend button lists the marks of the current scene', async ({ page }) 
   // No scene yet: every mark is listed.
   await btn.click();
   await expect(pop).toBeVisible();
-  await expect(pop).toContainText('굽은 화살표');
+  await expect(pop).toContainText('전자쌍(전자 2개)의 이동');
   await page.mouse.click(5, 300);
   await expect(pop).toBeHidden();
   // A water molecule: its elements and its marks, others hidden until asked for.
@@ -220,9 +220,14 @@ test('the legend button lists the marks of the current scene', async ({ page }) 
   await btn.click();
   await expect(pop.locator('.lg-els li span')).toHaveText(['수소', '산소']);
   await expect(pop.getByText('비공유 전자쌍')).toBeVisible();
-  await expect(pop.getByText('굽은 화살표', { exact: false })).toBeHidden();
+  await expect(pop.getByText('전자쌍(전자 2개)의 이동')).toBeHidden();
   await pop.locator('.lg-more').click();
-  await expect(pop.getByText('굽은 화살표', { exact: false })).toBeVisible();
+  await expect(pop.getByText('전자쌍(전자 2개)의 이동')).toBeVisible();
+  // The panel sits right above its button.
+  const b = (await btn.boundingBox())!;
+  const p = (await pop.boundingBox())!;
+  expect(b.y - (p.y + p.height)).toBeLessThan(16);
+  expect(Math.abs(b.x - p.x)).toBeLessThan(4);
   await page.keyboard.press('Escape');
   await expect(pop).toBeHidden();
 });

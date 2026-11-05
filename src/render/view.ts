@@ -520,30 +520,38 @@ export class StageView {
       }
     }
 
-    // Electron arrows and electrons in flight.
+    // Electron arrows and the electrons themselves. The arrow is the textbook path; while the
+    // electrons travel along it, it fades to a faint guide so the electrons are what you see.
     if (step && step.arrows.length && step.phase) {
-      const alpha = t < 0.12 ? t / 0.12 : t < 0.8 ? 1 : clamp(1 - (t - 0.8) / 0.15, 0, 1);
+      const { b0, b1 } = step.phase;
+      const flying = t >= b0 && t < b1;
+      const alpha = (t < 0.12 ? t / 0.12 : t < 0.8 ? 1 : clamp(1 - (t - 0.8) / 0.15, 0, 1)) * (flying ? 0.4 : 1);
       for (const ar of step.arrows) {
         if (alpha > 0) {
           const tip = ar.p1;
           const tan = qbezTangent(ar.p0, ar.c, ar.p1, 1);
           const nn = perp(tan);
-          const base = sub(tip, scale(tan, 11));
-          const head =
-            ar.kind === 'pair'
-              ? `${f1(tip.x)},${f1(tip.y)} ${f1(base.x + nn.x * 5.5)},${f1(base.y + nn.y * 5.5)} ${f1(base.x - nn.x * 5.5)},${f1(base.y - nn.y * 5.5)}`
-              : `${f1(tip.x)},${f1(tip.y)} ${f1(base.x + nn.x * 6)},${f1(base.y + nn.y * 6)} ${f1(base.x)},${f1(base.y)}`;
-          out.push(
-            `<g class="arrow" opacity="${f1(alpha)}"><path d="M${f1(ar.p0.x)},${f1(ar.p0.y)} Q${f1(ar.c.x)},${f1(ar.c.y)} ${f1(base.x)},${f1(base.y)}"/><polygon points="${head}"/></g>`,
-          );
+          const pair = ar.kind === 'pair';
+          const base = sub(tip, scale(tan, pair ? 11 : 2));
+          const d = `M${f1(ar.p0.x)},${f1(ar.p0.y)} Q${f1(ar.c.x)},${f1(ar.c.y)} ${f1(base.x)},${f1(base.y)}`;
+          if (pair) {
+            // Two electrons: a full, filled arrowhead.
+            const head = `${f1(tip.x)},${f1(tip.y)} ${f1(base.x + nn.x * 5.5)},${f1(base.y + nn.y * 5.5)} ${f1(base.x - nn.x * 5.5)},${f1(base.y - nn.y * 5.5)}`;
+            out.push(`<g class="arrow" opacity="${f1(alpha)}"><path d="${d}"/><polygon points="${head}"/></g>`);
+          } else {
+            // One electron: a fishhook, a single open barb on one side.
+            const barb = add(sub(tip, scale(tan, 11)), scale(nn, 7));
+            out.push(
+              `<g class="arrow hook" opacity="${f1(alpha)}"><path d="${d}"/><path d="M${f1(tip.x)},${f1(tip.y)} L${f1(barb.x)},${f1(barb.y)}"/></g>`,
+            );
+          }
         }
-        const { b0, b1 } = step.phase;
-        if (t >= b0 && t < b1) {
+        if (flying) {
           const s = smooth((t - b0) / (b1 - b0));
           const p = qbez(ar.p0, ar.c, ar.p1, s);
           const tn = perp(qbezTangent(ar.p0, ar.c, ar.p1, s));
-          if (ar.kind === 'pair') out.push(dot(add(p, scale(tn, 3.4)), 'e'), dot(sub(p, scale(tn, 3.4)), 'e'));
-          else out.push(dot(p, 'e'));
+          if (ar.kind === 'pair') out.push(dot(add(p, scale(tn, 4.6)), 'e fly'), dot(sub(p, scale(tn, 4.6)), 'e fly'));
+          else out.push(dot(p, 'e fly'));
         }
       }
     }
@@ -982,7 +990,7 @@ function tallyChart(tally: StepAnim['tally'], t: number, stageWidth: number): st
 }
 
 function dot(p: Vec, cls: string, op = 1): string {
-  const r = cls.includes('wire-e') ? 5 : cls === 'e' ? 2.9 : cls.includes('single') ? 2.6 : 2.2;
+  const r = cls.includes('wire-e') ? 5 : cls.includes('fly') ? 4.2 : cls === 'e' ? 2.9 : cls.includes('single') ? 2.6 : 2.2;
   return `<circle class="${cls}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${r}" opacity="${f1(op)}"/>`;
 }
 

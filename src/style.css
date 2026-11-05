@@ -438,12 +438,17 @@ code {
   color: var(--muted);
 }
 
+.legend-wrap {
+  position: relative;
+}
+
+/* The panel opens right above its button, from the same left edge. */
 .legend-pop {
   position: absolute;
-  left: 16px;
-  bottom: calc(100% - 8px);
+  left: 0;
+  bottom: calc(100% + 8px);
   z-index: 20;
-  width: min(340px, calc(100% - 32px));
+  width: min(340px, calc(100vw - 32px));
   max-height: min(62vh, 520px);
   overflow: auto;
   padding: 10px 14px 12px;
@@ -451,6 +456,25 @@ code {
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: var(--shadow-lg);
+}
+
+.legend-pop .lg-title {
+  margin: 2px 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.legend-pop .lg-list li {
+  cursor: default;
+}
+
+.legend-pop .lg-list li:hover {
+  color: var(--ink);
+}
+
+.legend-pop .lg-dot {
+  fill: var(--ink-2);
 }
 
 .legend-pop .lg-group {
@@ -461,9 +485,6 @@ code {
   letter-spacing: 0.02em;
 }
 
-.legend-pop .lg-group:first-child {
-  margin-top: 2px;
-}
 
 .legend-pop ul {
   margin: 0;
@@ -1513,6 +1534,14 @@ code {
 }
 .arrow polygon {
   fill: var(--electron);
+}
+.arrow.hook path {
+  stroke-width: 2.2;
+}
+/* Electrons on their way: larger and glowing, so they read as the thing that moves. */
+.e.fly {
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 3px var(--electron));
 }
 .charge circle {
   fill: var(--surface);

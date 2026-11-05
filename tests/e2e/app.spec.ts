@@ -269,14 +269,23 @@ test('the legend button lists the marks of the current scene', async ({ page }) 
   await expect(pop).toBeHidden();
 });
 
-test('phone: the legend button sits above the step bar, and electrons stay big enough to see', async ({ page }) => {
+test('phone: the legend button sits inside the canvas, menus stay on screen, electrons stay big enough to see', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('./?still#/x/li-battery');
   const v = page.locator('#main-viewer');
   const btn = (await v.locator('.legend-btn').boundingBox())!;
+  const canvas = (await v.locator('svg.stage').boundingBox())!;
   const bar = (await v.locator('.pill').boundingBox())!;
-  expect(btn.y + btn.height).toBeLessThanOrEqual(bar.y + 1);
+  expect(btn.x).toBeGreaterThanOrEqual(canvas.x);
+  expect(btn.y).toBeGreaterThanOrEqual(canvas.y);
+  expect(btn.y + btn.height).toBeLessThanOrEqual(canvas.y + canvas.height);
   expect(bar.width).toBeGreaterThan(340);
+  // The examples menu fits the screen.
+  await page.locator('#btn-examples').click();
+  const pop = (await page.locator('#examples-pop').boundingBox())!;
+  expect(pop.x).toBeGreaterThanOrEqual(0);
+  expect(pop.x + pop.width).toBeLessThanOrEqual(390);
+  await page.locator('#btn-examples').click();
   // Mid-charge: electrons run through the wire.
   await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.main.seek(1, 0.45));
   // The stage is redrawn every frame, so read the size in one go rather than through a handle.
@@ -308,3 +317,20 @@ test('a reaction is one motion: electrons light up, then carry the bond line; te
   await expect(v.locator('circle.e.fly')).toHaveCount(0);
   await expect(v.locator('line.bond.hot')).toHaveCount(0);
 });
+
+test('phone tutorial: chapter list opens over the page, the intro unfolds on request', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('./?still#/t/acid-hcl');
+  await expect(page.locator('#tut-nav')).toBeHidden();
+  await expect(page.locator('#tut-part .cnt')).toHaveText(/\d+ \/ \d+/);
+  const intro = page.locator('#tut-intro');
+  const folded = (await intro.boundingBox())!.height;
+  await page.locator('#tut-more').click();
+  expect((await intro.boundingBox())!.height).toBeGreaterThan(folded);
+  await page.locator('#tut-menu').click();
+  await expect(page.locator('#tut-nav')).toBeVisible();
+  await page.locator('#tut-nav a[data-ch="redox"]').click();
+  await expect(page.locator('#tut-nav')).toBeHidden();
+  await expect(page.locator('#tut-title')).toContainText('산화와 환원');
+});
+

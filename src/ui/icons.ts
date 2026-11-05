@@ -3,6 +3,7 @@ const P: Record<string, string> = {
   replay: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 4v4.5H8"/>',
   first: '<path d="M6.5 5.5v13"/><path d="m17.5 6-6.5 6 6.5 6"/>',
   prev: '<path d="m14.5 6-6 6 6 6"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   next: '<path d="m9.5 6 6 6-6 6"/>',
   nextChapter: '<path d="m5 6 6 6-6 6"/><path d="m12 6 6 6-6 6"/>',
   book: '<path d="M3 4.5h5.5A3.5 3.5 0 0 1 12 8v12a2.5 2.5 0 0 0-2.5-2.5H3z"/><path d="M21 4.5h-5.5A3.5 3.5 0 0 0 12 8v12a2.5 2.5 0 0 1 2.5-2.5H21z"/>',

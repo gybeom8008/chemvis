@@ -41,6 +41,7 @@ const icons: [string, string][] = [
   ['tut-script', 'code'],
   ['tut-open', 'openIn'],
   ['tut-close', 'close'],
+  ['tut-menu', 'menu'],
 ];
 for (const [id, name] of icons) $(id).innerHTML = icon(name);
 
@@ -292,7 +293,8 @@ let chapter: Chapter = CHAPTERS[0];
 let hashBeforeTutorial = '';
 
 function renderNav(): void {
-  let html = '';
+  // On phones the list opens over the page; this row closes it again.
+  let html = `<div class="nav-top"><b>목차</b><button class="icon sm" id="tut-nav-close" type="button" aria-label="목차 닫기" title="목차 닫기">${icon('close')}</button></div>`;
   for (const part of PARTS) {
     html += `<p class="part">${esc(part.title)}</p><ol>`;
     for (const c of CHAPTERS.filter((x) => x.part === part.id)) {
@@ -304,9 +306,23 @@ function renderNav(): void {
   $('tut-nav').innerHTML = html;
 }
 
+function setNav(open: boolean): void {
+  dlg.classList.toggle('nav-open', open);
+  $('tut-menu').setAttribute('aria-expanded', String(open));
+}
+
+function setIntro(open: boolean): void {
+  dlg.classList.toggle('intro-open', open);
+  $('tut-more').setAttribute('aria-expanded', String(open));
+  $('tut-more').textContent = open ? '설명 접기' : '설명 더 보기';
+}
+
 function showChapter(c: Chapter, play = false): void {
   chapter = c;
-  $('tut-part').textContent = PARTS.find((p) => p.id === c.part)?.title ?? '';
+  const n = CHAPTERS.indexOf(c) + 1;
+  $('tut-part').innerHTML = `<span class="pt">${esc(PARTS.find((p) => p.id === c.part)?.title ?? '')}</span><span class="cnt">${n} / ${CHAPTERS.length}</span>`;
+  setNav(false);
+  setIntro(false);
   $('tut-title').textContent = c.title;
   $('tut-intro').innerHTML = c.intro;
   $('tut-tryit').innerHTML = c.tryIt;
@@ -348,6 +364,11 @@ dlg.addEventListener('click', (e) => {
 });
 
 $('btn-tutorial').addEventListener('click', () => openTutorial());
+$('tut-menu').addEventListener('click', () => setNav(!dlg.classList.contains('nav-open')));
+$('tut-more').addEventListener('click', () => setIntro(!dlg.classList.contains('intro-open')));
+$('tut-nav').addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('#tut-nav-close')) setNav(false);
+});
 $('tut-close').addEventListener('click', closeTutorial);
 $('tut-script').addEventListener('click', () => {
   const box = $('tut-code');

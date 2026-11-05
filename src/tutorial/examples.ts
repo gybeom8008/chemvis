@@ -16,16 +16,16 @@ const s = (x: string) => x.replace(/^\n/, '');
 export const EXAMPLES: Example[] = [
   {
     id: 'limestone',
-    title: '석회 동굴과 종유석',
-    summary: '석회암은 이산화탄소가 녹은 빗물에 녹아 동굴이 되고, 반응이 거꾸로 일어나면 종유석이 자라요',
+    title: '석회 동굴이 생길 때',
+    summary: '이산화탄소가 녹은 빗물은 약한 산이 되어 석회암을 조금씩 녹여요',
     script: s(`
-scene "석회 동굴이 생기고 종유석이 자랄 때"
+scene "석회암이 녹아 동굴이 생길 때"
 stage interface
 lens attract off
 crowd H2O in water 18
 mol c = CO2 at 330,120
 mol w = H2O at 300,330
-crystal s = CaCO3 at water 6x2
+crystal s = CaCO3 at water 6x1
 
 step "비가 내릴 때 공기 중의 이산화탄소(CO2)가 빗물에 녹아들어요"
   gas-in c
@@ -38,23 +38,49 @@ step "이어서 H+ 하나가 옆 O로 옮겨 가면 탄산(H2CO3)이 돼요"
   transfer w.H1 to c.O1
 step "빗물에 녹은 탄산은 땅속 석회암(탄산칼슘, CaCO3) 표면에 다가가요"
   approach w.H2 s4.O1
-step "탄산의 H+가 석회암 표면에 있는 탄산 이온(CO32-)의 O로 옮겨 가요"
+step "탄산의 H+가 석회암 표면에 있는 탄산 이온(CO32-)의 O로 옮겨 가요. 탄산은 H+를 내주고 탄산수소 이온(HCO3-)이 돼요"
   transfer w.H2 to s4.O1
-step "H+를 얻은 탄산 이온은 탄산수소 이온(HCO3-)이 되어, 옆의 칼슘 이온(Ca2+)과 함께 물에 녹아 나가요. 석회암이 이렇게 조금씩 녹아서 동굴이 생겨요"
+step "H+를 얻은 탄산 이온도 탄산수소 이온이 돼요. 이 이온과 옆의 칼슘 이온(Ca2+)은 물 분자에 둘러싸인 채 물속으로 녹아 나가요"
   dissolve s3 s4 from s
-step "한편 동굴 천장에 맺힌 물방울에서는 반응이 거꾸로 일어나요. 먼저 탄산수소 이온 하나가 다른 탄산수소 이온에 다가가요"
-  approach w.H2 w.O
-step "한쪽의 H+가 다른 쪽으로 옮겨 가면서 탄산(H2CO3)과 탄산 이온(CO32-)이 생겨요"
-  transfer w.H2 to w.O
-step "탄산 안에서 H+ 하나가 옆 O로 옮겨 가요"
-  transfer w.H1 to w.O
-step "C–O 결합의 전자쌍은 O로 가서 물 분자가 떨어져 나가고, 남은 O의 전자쌍은 C=O 결합이 돼요"
-  arrow c.O1:lp -> c.O1~c.C
-  arrow c.C~w.O -> w.O
-step "이렇게 생긴 CO2는 공기 중으로 빠져나가요"
-  gas-out c
-step "남은 칼슘 이온과 탄산 이온은 물 분자를 떨치고 다시 결정이 돼요. 이 결정이 조금씩 늘어나면서 종유석이 자라요"
+step "석회암은 이렇게 조금씩 녹아서 동굴이 돼요. 녹아 나간 칼슘 이온과 탄산수소 이온은 지하수를 따라 흘러가요. 이 이온들이 다시 결정이 되는 과정은 예시 '종유석과 석순이 자랄 때'에서 볼 수 있어요"
+  note s3 "칼슘 이온"
+  note s4 "탄산수소 이온"
+  note c "탄산수소 이온"
+`),
+  },
+  {
+    id: 'stalactite',
+    title: '종유석과 석순이 자랄 때',
+    summary: '동굴 물방울에서 이산화탄소가 빠져나가면, 녹아 있던 탄산칼슘이 다시 결정이 돼요',
+    script: s(`
+scene "종유석과 석순이 자랄 때"
+stage interface
+lens attract off
+crowd H2O in water 14
+crystal s = CaCO3 at water 6x1
+mol b1 = HCO3- at 300,400
+mol b2 = HCO3- at 560,310
+mol ca = Ca2+ at 790,370
+
+step "동굴 천장에서 떨어진 물방울이 바닥의 석순 위에 고여 있어요. 이 물에는 석회암에서 녹아 나온 칼슘 이온(Ca2+)과 탄산수소 이온(HCO3-)이 들어 있어요"
+  note ca "칼슘 이온"
+  note b1 "탄산수소 이온"
+  note b2 "탄산수소 이온"
+step "탄산수소 이온 하나가 다른 탄산수소 이온에 다가가요. 이때 한쪽의 H는 다른 쪽의 O를 향해 있어요"
+  approach b1.H1 b2.O3
+step "한쪽 이온의 H+가 다른 쪽 이온의 O로 옮겨 가요. 그러면 H+를 내준 쪽은 탄산 이온(CO32-)이 되고, H+를 얻은 쪽은 탄산(H2CO3)이 돼요"
+  transfer b1.H1 to b2.O3
+step "탄산 안에서도 H+ 하나가 옆 O로 옮겨 가요"
+  transfer b2.H1 to b2.O3
+step "C–O 결합의 전자쌍은 O로 옮겨 가서 물 분자가 떨어져 나가요. 남은 O의 비공유 전자쌍은 C=O 결합이 되어 CO2가 생겨요"
+  arrow b2.O1:lp -> b2.O1~b2.C
+  arrow b2.C~b2.O3 -> b2.O3
+step "동굴 공기에는 CO2가 적어서, 생긴 CO2는 물방울 밖 공기로 빠져나가요"
+  gas-out CO2
+step "남은 칼슘 이온과 탄산 이온은 석순 표면에서 다시 탄산칼슘 결정이 돼요"
   precipitate Ca2+ CO32- onto s
+step "이 반응이 물방울마다 되풀이되면서 석순은 위로 자라요. 천장에 매달린 물방울에서도 같은 반응이 일어나서, 종유석은 아래로 자라요"
+  wait
 `),
   },
   {

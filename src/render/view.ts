@@ -5,7 +5,7 @@
 import { bondLength, element } from '../chem/elements';
 import { electronDomains, lonePairAngles } from '../chem/geometry';
 import { tallyBox, type Keyframe, type NoteTarget, type StepAnim, type Timeline } from '../engine/timeline';
-import { formalCharge, oxidationState, type Atom, type Lens, type World } from '../engine/world';
+import { component, formalCharge, oxidationState, type Atom, type Lens, type World } from '../engine/world';
 import { inRegion } from '../stage/stages';
 import {
   add,
@@ -306,7 +306,13 @@ export class StageView {
       if (step && after.atoms.get(id)?.gone) return clamp((0.86 - t) / 0.26, 0, 1);
       return step && step.appear.has(id) ? clamp(t / 0.18, 0, 1) : 1;
     };
-    const isCrowd = (a: Atom) => a.crowd && !(step && step.focus.has(a.id));
+    // Water molecules around an ion (a hydration shell) move with it, so they are drawn as
+    // clearly as the ion; otherwise they would look like stray water being dragged along.
+    const shell = new Set<string>();
+    for (const list of after.attached.values()) {
+      for (const id of list) if (after.atoms.has(id)) for (const x of component(after, id)) shell.add(x);
+    }
+    const isCrowd = (a: Atom) => a.crowd && !shell.has(a.id) && !(step && step.focus.has(a.id));
 
     // Vapour bubbles (boiling): grow in place, rise, burst at the surface.
     for (const b of step?.bubbles ?? []) {

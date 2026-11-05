@@ -1550,7 +1550,12 @@ class Ctx {
       const r = this.ionRadius(unit);
       const sum = free.reduce((s, u) => add(s, u), { x: 0, y: 0 });
       const out = Math.hypot(sum.x, sum.y) > 1e-6 ? norm(sum) : { x: 0, y: -1 };
-      const chosen = [...free].sort((p, q2) => dist(p, out) - dist(q2, out)).slice(0, shellN);
+      // Water molecules of the shell sit at least a right angle apart, so they never overlap.
+      const chosen: Vec[] = [];
+      for (const u of [...free].sort((p, q2) => dist(p, out) - dist(q2, out))) {
+        if (chosen.length >= shellN) break;
+        if (chosen.every((v) => u.x * v.x + u.y * v.y < 0.05)) chosen.push(u);
+      }
       const targets = chosen.map((u) =>
         q > 0
           ? { pos: add(ion, scale(u, r + element('O').r + 7)), u, mode: 'O' as const }
@@ -1591,7 +1596,8 @@ class Ctx {
       for (let i = 0; i < 40; i++) {
         const cand = {
           x: clamp(ion.x + out.x * 120 + this.rng.range(-170, 170), region.x + 70, region.x + region.w - 70),
-          y: clamp(ion.y + out.y * 80 - this.rng.range(110, 230), region.y + 70, region.y + region.h - 70),
+          // Far enough below the top of the water that the shell around the ion stays in it too.
+          y: clamp(ion.y + out.y * 80 - this.rng.range(110, 230), region.y + Math.max(70, r + 66), region.y + region.h - 70),
         };
         let near = 400;
         for (const o of solutes) near = Math.min(near, dist(o, cand));
@@ -3140,6 +3146,9 @@ function keepInside(ctx: Ctx): void {
       if (cy > (mb.y0 + mb.y1) / 2 && y0 + dy < mb.y1 + 10) dy = mb.y1 + 10 - y0;
       if (cy <= (mb.y0 + mb.y1) / 2 && y1 + dy > mb.y0 - 10) dy = mb.y0 - 10 - y1;
     }
+    // An ion in water keeps its whole water shell under the surface, not poking into the air.
+    const S = st.surfaceY;
+    if (S !== undefined && ids.length > c.length && centerOf(w, c).y > S && y0 + dy < S + 12) dy = S + 12 - y0;
     if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
     for (const a of atoms) shift(a, { x: dx, y: dy });
   }

@@ -71,6 +71,8 @@ export interface StepAnim {
   photons: PhotonAnim[];
   /** Electrons running along the external wire (electrode stage). */
   wires: { path: Vec[]; count: number; t0: number; t1: number }[];
+  /** Vapour bubbles rising through a liquid (boiling). */
+  bubbles: { p0: Vec; p1: Vec; r: number; t0: number; t1: number }[];
   appear: Set<string>;
   lens?: Partial<Lens>;
 }

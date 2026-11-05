@@ -15,6 +15,7 @@ import {
   dist,
   fromAngle,
   lerp,
+  lerpV,
   norm,
   perp,
   polyAt,
@@ -282,6 +283,17 @@ export class StageView {
 
     const opacity = (id: string) => (step && step.appear.has(id) ? clamp(t / 0.18, 0, 1) : 1);
     const isCrowd = (a: Atom) => a.crowd && !(step && step.focus.has(a.id));
+
+    // Vapour bubbles (boiling): grow in place, rise, burst at the surface.
+    for (const b of step?.bubbles ?? []) {
+      const u = clamp((t - b.t0) / (b.t1 - b.t0), 0, 1);
+      const fade = t <= b.t1 ? 1 : clamp(1 - (t - b.t1) / 0.12, 0, 1);
+      if (t <= b.t0 || fade <= 0) continue;
+      const grow = clamp(u / 0.3, 0, 1);
+      const rise = clamp((u - 0.3) / 0.7, 0, 1);
+      const p = lerpV(b.p0, b.p1, smooth(rise));
+      out.push(`<circle class="bubble" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(6 + (b.r - 6) * grow)}" opacity="${f1(fade)}"/>`);
+    }
 
     // Membrane proteins (drawn under the molecules that pass through them).
     if (tl.stage.membrane) {

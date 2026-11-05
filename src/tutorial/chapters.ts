@@ -393,6 +393,73 @@ step "왼쪽 용액은 양이온이 늘고 오른쪽은 줄었어요. 염다리�
   },
 ];
 
+// More phase changes sit next to the related part-1 chapters.
+CHAPTERS.splice(CHAPTERS.findIndex((c) => c.id === 'evaporation') + 1, 0,
+  {
+    id: 'boiling',
+    part: 1,
+    title: '끓음',
+    intro: `<p>증발은 수면에서만 일어나지만, 끓을 때는 액체 속에서도 물 분자들이 기체가 되어 기포를 만들어요. 기포는 떠올라 수면에서 터지고, 그 안의 물 분자는 공기로 나가요.</p>`,
+    script: s(`
+scene "물이 끓을 때"
+stage interface
+crowd H2O in water 50
+crowd H2O in air 2
+
+step "물을 세게 가열해요. 분자들이 아주 빠르게 움직여요"
+  heat water
+step "액체 속에서 물 분자 몇 개가 기체가 되어 기포를 만들고, 기포가 떠올라요"
+  boil 3
+step "또 다른 기포가 생겨 떠올라요"
+  boil 4
+`),
+    tryIt: `<code>boil 3</code>의 숫자를 바꾸면 기포 하나에 든 물 분자 수가 달라져요(2~6).`,
+  },
+  {
+    id: 'ice',
+    part: 1,
+    title: '얼음이 얼고 녹을 때',
+    intro: `<p>액체 물에서는 수소 결합이 끊임없이 생겼다 사라지며 무질서하게 이어져 있어요. 온도가 내려가면 물 분자들이 수소 결합으로 규칙적인 육각형 그물을 이뤄 얼음이 되고, 다시 데우면 그물이 흐트러져 녹아요.</p>`,
+    script: s(`
+scene "물이 얼고 녹을 때"
+stage solution
+lens attract on
+crowd H2O in water 40
+
+step "액체 물에서는 수소 결합(파란 점선)이 무질서하게 이어져 있어요"
+  wait
+step "온도가 내려가면 물 분자들이 육각형 그물로 자리 잡아 얼음이 돼요"
+  freeze water
+step "다시 데우면 그물이 흐트러지며 녹아요"
+  melt water
+`),
+    tryIt: `얼음 단계에서 보기 설정의 <b>분자 사이 인력</b>을 끄고 켜며 그물 모양을 비교해 보세요.`,
+  },
+);
+CHAPTERS.splice(CHAPTERS.findIndex((c) => c.id === 'dissolving') + 1, 0, {
+  id: 'precipitation',
+  part: 1,
+  title: '석출(침전)',
+  intro: `<p>어떤 이온 짝은 서로 당기는 힘이 물 분자와의 인력보다 세서, 물 분자를 떨치고 고체 결정을 이뤄요. 이것이 석출(침전)이에요. 같이 있던 다른 이온은 녹은 채로 남아요.</p>`,
+  script: s(`
+scene "은 이온과 염화 이온이 침전을 만들 때"
+stage solution
+crowd H2O in water 30
+place Ag+ in left x3
+place NO3- in left x3
+place Na+ in right x3
+place Cl- in right x3
+
+step "질산은 용액(Ag+, NO3-)과 소금물(Na+, Cl-)을 섞었어요"
+  spread Ag+ NO3- Na+ Cl- in water
+step "Ag+와 Cl-가 물 분자를 떨치고 서로 결합해 고체 염화은(AgCl) 결정을 이뤄요"
+  precipitate Ag+ Cl- x3
+step "Na+와 NO3-는 물에 녹은 채로 남아요"
+  note Na+ "녹은 채 남은 Na+"
+`),
+  tryIt: `<code>x3</code>을 <code>x2</code>로 바꾸면 Ag+와 Cl- 하나씩이 녹은 채 남아요.`,
+});
+
 // Phenomena that need their own stage come after the first five in part 1.
 CHAPTERS.splice(CHAPTERS.findIndex((c) => c.id === 'leaching') + 1, 0,
   {

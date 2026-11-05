@@ -1092,6 +1092,11 @@ code {
 .dative {
   fill: var(--bond);
 }
+.bubble {
+  fill: rgba(255, 255, 255, 0.45);
+  stroke: var(--water-line);
+  stroke-width: 2.5;
+}
 /* membrane stage */
 .head {
   fill: #e9c46a;

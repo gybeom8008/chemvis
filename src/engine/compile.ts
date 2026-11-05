@@ -77,6 +77,12 @@ const OP_DURATION: Record<string, number> = {
   exchange: 3.6,
   leach: 5.2,
   oxidize: 3.6,
+  precipitate: 4.4,
+  freeze: 4.6,
+  melt: 4.6,
+  'gas-in': 3.6,
+  'gas-out': 3.6,
+  boil: 4.6,
   condensation: 3.6,
   hydrolysis: 3.6,
   cross: 3.8,
@@ -159,6 +165,7 @@ export function compile(src: string): CompileResult {
       flows: [],
       photons: [],
       wires: [],
+      bubbles: [],
       appear: new Set(),
     };
     ctx.anim = anim;
@@ -591,6 +598,18 @@ class Ctx {
         return this.reduce(a);
       case 'bridge':
         return this.bridgeOp(a);
+      case 'precipitate':
+        return this.precipitate(a);
+      case 'freeze':
+        return this.freeze(a);
+      case 'melt':
+        return this.melt(a);
+      case 'gas-in':
+        return this.condense(a.length ? a : ['CO2']);
+      case 'gas-out':
+        return this.evaporate(a.length ? a : ['CO2']);
+      case 'boil':
+        return this.boil(a);
       case 'condensation':
         return this.condensation(a);
       case 'hydrolysis':
@@ -1663,6 +1682,192 @@ class Ctx {
     chans.forEach((ch, i) => this.A.flows.push({ path: ch, count: 14, t0: 0, t1: 1, seed: i + 11 }));
   }
 
+  // ------------------------------------------------------------ ops: more phase changes
+
+  /** precipitate Ag+ Cl- x3 [onto s] : dissolved ions shed their water and lock into a solid lattice. */
+  precipitate(a: string[]): void {
+    const mult = a.find((x) => /^x\d+$/.test(x));
+    const n = mult ? clamp(parseInt(mult.slice(1), 10), 1, 12) : 1;
+    const ontoI = a.indexOf('onto');
+    const onto = ontoI >= 0 ? a[ontoI + 1] : null;
+    const [catF, anF] = a.filter((x, i) => !/^x\d+$/.test(x) && x !== 'onto' && (ontoI < 0 || i !== ontoI + 1));
+    if (!catF || !anF) this.fail('석출은 이렇게 적어요: precipitate Ag+ Cl- x3  (결정에 덧붙이려면 onto s)');
+    if (formulaCharge(catF) <= 0 || formulaCharge(anF) >= 0) this.fail('precipitate는 양이온, 음이온 순서로 적어요. 예: precipitate Ag+ Cl-');
+    if (formulaCharge(catF) !== -formulaCharge(anF)) this.fail('지금은 전하 크기가 같은 이온 짝(Ag+와 Cl-, Ca2+와 CO32- 등)만 석출할 수 있어요.');
+    const inLattice = new Set([...this.w.crystals.values()].flat());
+    const pick = (f: string) =>
+      allComponents(this.w)
+        .filter((c) => !this.w.atoms.get(c[0])!.crowd && formulaOf(this.w, c) === normalizeFormula(f) && !c.some((x) => inLattice.has(x)))
+        .slice(0, n);
+    const cats = pick(catF);
+    const ans = pick(anF);
+    if (cats.length < n || ans.length < n) this.fail(`녹아 있는 ${catF}·${anF}가 ${n}개씩 있어야 해요(지금 ${cats.length}개, ${ans.length}개).`);
+    const all = [...cats, ...ans];
+    const rad = (c: string[]) => Math.max(...c.map((id) => element(this.w.atoms.get(id)!.el).r)) + (c.length > 1 ? 14 : 0);
+    const s = rad(cats[0]) + rad(ans[0]) + 7;
+    // Lattice positions: existing crystal's free neighbours, or a new block where the ions are.
+    let name = onto;
+    let slots: { p: Vec; parity: number }[] = [];
+    if (onto) {
+      const lat = this.w.crystals.get(onto);
+      if (!lat) this.fail(`'${onto}'이라는 결정이 없어요.`);
+      const pts = lat.map((id) => this.w.atoms.get(id)!);
+      const first = pts[0];
+      const occupied = (p: Vec) => [...this.w.atoms.values()].some((x) => inLattice.has(x.id) && dist(x, p) < s * 0.5);
+      for (const p of pts) {
+        for (const d of [
+          { x: s, y: 0 },
+          { x: -s, y: 0 },
+          { x: 0, y: s },
+          { x: 0, y: -s },
+        ]) {
+          const q = add(p, d);
+          if (occupied(q) || slots.some((sl) => dist(sl.p, q) < s * 0.5)) continue;
+          const parity = (Math.round((q.x - first.x) / s) + Math.round((q.y - first.y) / s)) & 1;
+          slots.push({ p: q, parity });
+        }
+      }
+      slots.sort((p, q) => p.p.y - q.p.y);
+    } else {
+      name = this.autoName('ppt');
+      const c = centroid(all.map((x) => centerOf(this.w, x)));
+      const cols = Math.max(2, Math.ceil(Math.sqrt(2 * n)));
+      const rows = Math.ceil((2 * n) / cols) + 1;
+      for (let j = 0; j < rows; j++) {
+        for (let i = 0; i < cols; i++) {
+          slots.push({ p: { x: c.x + (i - (cols - 1) / 2) * s, y: c.y + (j - (rows - 1) / 2) * s }, parity: (i + j) & 1 });
+        }
+      }
+      this.w.crystals.set(name!, []);
+    }
+    const lattice = this.w.crystals.get(name!)!;
+    const take = (parity: number) => {
+      const k = slots.findIndex((sl) => sl.parity === parity);
+      if (k < 0) this.fail('결정에 이온이 들어갈 빈 곳이 모자라요.');
+      return slots.splice(k, 1)[0].p;
+    };
+    // The first cation of a new crystal takes parity 0; for an existing one, cations go where cations sit.
+    const catParity = onto ? (formulaCharge(formulaOf(this.w, [lattice[0]])) > 0 ? 0 : 1) : 0;
+    all.forEach((comp, k) => {
+      const isCat = k < cats.length;
+      const goal = take(isCat ? catParity : 1 - catParity);
+      this.detach(comp);
+      const start = centerOf(this.w, comp);
+      this.moveGroup(comp, start, this.wander(start, goal, null, 0.3), 0, 0.05, 0.95);
+      lattice.push(...comp);
+      this.focusMol(comp);
+    });
+  }
+
+  /** freeze water : water molecules settle into the ordered hydrogen-bond network of ice. */
+  freeze(a: string[]): void {
+    const r = this.region(a[0] ?? this.stage.defaultRegion);
+    const waters = allComponents(this.w).filter(
+      (c) => this.w.atoms.get(c[0])!.crowd && formulaOf(this.w, c) === 'H2O' && inRegion(r, centerOf(this.w, c)),
+    );
+    if (waters.length < 6) this.fail(`${r.label}에 얼 물 분자가 모자라요(crowd H2O로 먼저 깔아 주세요).`);
+    // Honeycomb positions for the O atoms (O···O about 2.75 Å apart).
+    const d = bondLength('O', 'H') * 2.5;
+    const slots: Vec[] = [];
+    const c = regionCenter(r);
+    const dx = d * Math.sqrt(3);
+    for (let row = -6; row <= 6; row++) {
+      for (let col = -8; col <= 8; col++) {
+        const base = { x: c.x + col * dx + (row & 1 ? dx / 2 : 0), y: c.y + row * 1.5 * d };
+        for (const p of [base, { x: base.x, y: base.y + d }]) {
+          if (inRegion(r, p, 34)) slots.push(p);
+        }
+      }
+    }
+    slots.sort((p, q) => dist(p, c) - dist(q, c));
+    const use = slots.slice(0, waters.length);
+    // Each slot gets the nearest remaining water.
+    const left = [...waters];
+    const plan: { comp: string[]; slot: Vec }[] = [];
+    for (const slot of use) {
+      let bi = 0;
+      for (let i = 1; i < left.length; i++) if (dist(centerOf(this.w, left[i]), slot) < dist(centerOf(this.w, left[bi]), slot)) bi = i;
+      plan.push({ comp: left.splice(bi, 1)[0], slot });
+    }
+    // Work out final orientations on a scratch copy, then animate there.
+    const before = new Map(plan.flatMap((p) => p.comp.map((id) => [id, { x: this.w.atoms.get(id)!.x, y: this.w.atoms.get(id)!.y }] as const)));
+    for (const { comp, slot } of plan) {
+      const O = comp.map((id) => this.w.atoms.get(id)!).find((x) => x.el === 'O')!;
+      const sh = sub(slot, O);
+      for (const id of comp) shift(this.w.atoms.get(id)!, sh);
+    }
+    orientWaters(this.w, plan.map((p) => p.comp), 3);
+    const ids: string[] = [];
+    for (const { comp } of plan) {
+      const O = comp.map((id) => this.w.atoms.get(id)!).find((x) => x.el === 'O')!;
+      const Hs = comp.map((id) => this.w.atoms.get(id)!).filter((x) => x.el === 'H');
+      const finalPos = new Map(comp.map((id) => [id, { x: this.w.atoms.get(id)!.x, y: this.w.atoms.get(id)!.y }]));
+      const b0 = before.get(O.id)!;
+      const bis0 = add(sub(before.get(Hs[0].id)!, b0), sub(before.get(Hs[1].id)!, b0));
+      const bis1 = add(sub(finalPos.get(Hs[0].id)!, finalPos.get(O.id)!), sub(finalPos.get(Hs[1].id)!, finalPos.get(O.id)!));
+      // Back to the start pose, then a rigid move with turn to the final pose.
+      for (const id of comp) {
+        const p = before.get(id)!;
+        this.w.atoms.get(id)!.x = p.x;
+        this.w.atoms.get(id)!.y = p.y;
+      }
+      const rot = signedAng(angleOf(bis0), angleOf(bis1));
+      this.moveGroup(comp, b0, [b0, finalPos.get(O.id)!], rot, 0.05, 0.95);
+      // moveGroup turns about O, which reproduces the scratch orientation.
+      ids.push(...comp);
+    }
+    this.w.crystals.set('ice', ids);
+    this.w.temp[r.name] = 0.35;
+  }
+
+  /** melt water : the ice network loosens and the molecules wander off. */
+  melt(a: string[]): void {
+    const r = this.region(a[0] ?? this.stage.defaultRegion);
+    const ice = this.w.crystals.get('ice');
+    if (!ice?.length) this.fail('녹을 얼음이 없어요. 먼저 freeze로 얼려 주세요.');
+    const comps = allComponents(this.w).filter((c) => c.some((x) => ice.includes(x)));
+    this.w.crystals.delete('ice');
+    for (const comp of comps) {
+      const start = centerOf(this.w, comp);
+      const goal = {
+        x: clamp(start.x + this.rng.range(-70, 70), r.x + 30, r.x + r.w - 30),
+        y: clamp(start.y + this.rng.range(-70, 70), r.y + 30, r.y + r.h - 30),
+      };
+      this.moveGroup(comp, start, this.wander(start, goal, r, 0.4), this.rng.range(-2, 2), 0.05, 1);
+    }
+    this.w.temp[r.name] = 1.6;
+  }
+
+  /** boil : a vapour bubble forms inside the liquid, rises and bursts at the surface. */
+  boil(a: string[]): void {
+    const S = this.needSurface('boil');
+    const water = this.stage.regions.water;
+    const air = this.stage.regions.air;
+    const k = a[0] && /^\d+$/.test(a[0]) ? clamp(parseInt(a[0], 10), 2, 6) : 3;
+    const x = this.rng.range(water.x + 120, water.x + water.w - 120);
+    const start = { x, y: water.y + water.h - 70 };
+    const top = { x: x + this.rng.range(-20, 20), y: S + 26 };
+    this.A.bubbles.push({ p0: start, p1: top, r: 38, t0: 0, t1: 0.85 });
+    const pool = allComponents(this.w)
+      .filter((c) => this.w.atoms.get(c[0])!.crowd && formulaOf(this.w, c) === 'H2O' && centerOf(this.w, c).y > S)
+      .sort((p, q) => dist(centerOf(this.w, p), start) - dist(centerOf(this.w, q), start))
+      .slice(0, k);
+    // Timed to the bubble: gather while it grows, rise with it, then escape when it bursts.
+    const riseStart = 0.3 * 0.85;
+    pool.forEach((comp, i) => {
+      this.detach(comp);
+      const c = centerOf(this.w, comp);
+      const off = fromAngle((2 * Math.PI * i) / k, 14);
+      const goal = { x: clamp(x + this.rng.range(-200, 200), air.x + 40, air.x + air.w - 40), y: this.rng.range(air.y + 40, S - 90) };
+      this.moveGroup(comp, c, [c, add(start, off)], this.rng.range(-2, 2), 0, riseStart);
+      const p1 = add(start, off);
+      this.moveGroup(comp, p1, [p1, add(top, off)], 0, riseStart, 0.85);
+      const p2 = add(top, off);
+      this.moveGroup(comp, p2, [p2, add(top, { x: off.x * 2, y: -60 }), goal], this.rng.range(-2, 2), 0.85, 1);
+      this.focusMol(comp);
+    });
+  }
+
   // ------------------------------------------------------------ ops: condensation / hydrolysis
 
   /** Molecules that should slide apart a little more at the end of the step (e.g. released water). */
@@ -2196,10 +2401,7 @@ function arrangeHydrogenBonds(ctx: Ctx): void {
   const waters = comps.filter((c) => formulaOf(w, c) === 'H2O');
   const crowdWaters = waters.filter((c) => w.atoms.get(c[0])!.crowd && inLiquid(centerOf(w, c)));
   if (!crowdWaters.length) return;
-  const acceptors = () =>
-    [...w.atoms.values()].filter((a) => ['O', 'N', 'F'].includes(a.el) && a.lp > 0);
   const oxygenOf = (c: string[]) => c.map((id) => w.atoms.get(id)!).find((a) => a.el === 'O')!;
-  const hsOf = (c: string[]) => c.map((id) => w.atoms.get(id)!).filter((a) => a.el === 'H');
 
   // 1. A water molecule docks onto each O–H of the named (non-background) molecules.
   const used = new Set<string>();
@@ -2268,9 +2470,17 @@ function arrangeHydrogenBonds(ctx: Ctx): void {
   }
 
   // 2. Each background water turns about its O to donate as many hydrogen bonds as it can.
-  const acc = acceptors();
-  for (let pass = 0; pass < 2; pass++) {
-    for (const c of crowdWaters) {
+  orientWaters(w, crowdWaters, 2);
+}
+
+/** Turn each water molecule about its O so its H atoms point at nearby acceptors (O/N/F with lone pairs). */
+function orientWaters(w: World, waters: string[][], passes: number): void {
+  const reach = bondLength('O', 'H') * 1.95;
+  const acc = [...w.atoms.values()].filter((a) => ['O', 'N', 'F'].includes(a.el) && a.lp > 0);
+  const oxygenOf = (c: string[]) => c.map((id) => w.atoms.get(id)!).find((a) => a.el === 'O')!;
+  const hsOf = (c: string[]) => c.map((id) => w.atoms.get(id)!).filter((a) => a.el === 'H');
+  for (let pass = 0; pass < passes; pass++) {
+    for (const c of waters) {
       const O = oxygenOf(c);
       const Hs = hsOf(c);
       const rel = Hs.map((h) => sub(h, O));
@@ -2386,7 +2596,8 @@ function resolveOverlaps(ctx: Ctx, _focus: Set<string>): void {
   const attached = new Set<string>();
   for (const l of w.attached.values()) for (const a of l) if (w.atoms.has(a)) component(w, a).forEach((x) => attached.add(x));
   const comps = allComponents(w);
-  const free = comps.filter((c) => w.atoms.get(c[0])!.crowd && !c.some((x) => attached.has(x)));
+  const inLattice = new Set([...w.crystals.values()].flat());
+  const free = comps.filter((c) => w.atoms.get(c[0])!.crowd && !c.some((x) => attached.has(x) || inLattice.has(x)));
   const solid = comps.filter((c) => !free.includes(c)).flat();
   const S = stage.surfaceY;
   for (let iter = 0; iter < 8; iter++) {

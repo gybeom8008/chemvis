@@ -157,6 +157,10 @@ H2O, H3O+, OH-, NH3, NH4+, CH4, HCl, HF, HBr, H2S, H+, Li+, Na+, K+, Mg2+, Ca2+,
 | `evaporate H2O` | (interface) 수면에 가장 가까운 물 분자가 공기로 나간다 |
 | `condense H2O` | (interface) 공기 중 물 분자가 액체로 내려온다 |
 | `heat water` / `cool water` | 그 구역 입자 움직임이 빨라진다/느려진다 |
+| `precipitate Ag+ Cl- x3` | 녹아 있던 양이온·음이온 짝이 물을 떨치고 고체 결정(침전)을 이룬다. `onto s`로 있던 결정에 덧붙인다. 전하 크기가 같은 짝만 |
+| `freeze water` / `melt water` | 그 구역의 배경 물 분자가 육각형 수소 결합 그물(얼음)로 자리 잡는다 / 그물이 흐트러지며 녹는다. `lens attract on`과 함께 쓴다 |
+| `gas-in CO2` / `gas-out CO2` | (interface) 공기 중 기체 분자가 수면 아래로 녹아든다 / 녹아 있던 기체 분자가 공기로 빠져나간다 |
+| `boil 3` | (interface) 액체 속에 기포가 생겨 물 분자 3개(2~6)를 품고 떠올라 수면에서 터진다 |
 
 ### 토양 (soil)
 

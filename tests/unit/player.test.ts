@@ -37,10 +37,38 @@ describe('Player: each control does one thing', () => {
     expect([p.k, p.t, p.running]).toEqual([1, 0, true]);
   });
 
-  it('play runs to the end, leaving time to read each caption, then stops', () => {
+  it('play never leaves the current step: on a finished step it plays that step again', () => {
     const p = new Player();
     p.load(tl(3));
+    p.seek(1, 1);
     p.play();
+    expect([p.k, p.t, p.running]).toEqual([1, 0, true]);
+    run(p, 10);
+    expect([p.k, p.t, p.playing]).toEqual([1, 1, false]);
+    p.seek(2, 1);
+    p.play();
+    expect([p.k, p.t]).toEqual([2, 0]);
+  });
+
+  it('play after a pause goes on from where it stopped', () => {
+    const p = new Player();
+    p.load(tl(3));
+    p.go(0);
+    run(p, 0.4);
+    p.pause();
+    const t = p.t;
+    run(p, 3);
+    expect([p.k, p.t, p.playing]).toEqual([0, t, false]);
+    p.play();
+    expect(p.t).toBe(t);
+    expect(p.running).toBe(true);
+  });
+
+  it('only the "이어서 재생" setting moves on by itself, after time to read the caption', () => {
+    const p = new Player();
+    p.load(tl(3));
+    p.auto = true;
+    p.go(0);
     run(p, 1.05);
     expect(p.k).toBe(0);
     expect(p.playing).toBe(true);
@@ -49,28 +77,6 @@ describe('Player: each control does one thing', () => {
     run(p, 20);
     expect(p.atEnd).toBe(true);
     expect(p.playing).toBe(false);
-  });
-
-  it('play on a finished step moves on at once; play at the very end starts over', () => {
-    const p = new Player();
-    p.load(tl(3));
-    p.seek(0, 1);
-    p.play();
-    expect([p.k, p.t]).toEqual([1, 0]);
-    p.seek(2, 1);
-    p.play();
-    expect([p.k, p.t, p.auto]).toEqual([0, 0, true]);
-  });
-
-  it('pause stops both the step and the run', () => {
-    const p = new Player();
-    p.load(tl(3));
-    p.play();
-    run(p, 0.4);
-    p.pause();
-    const t = p.t;
-    run(p, 3);
-    expect([p.k, p.t, p.playing]).toEqual([0, t, false]);
   });
 
   it('next on the last step starts over, unless someone else takes it (next chapter)', () => {
@@ -89,6 +95,7 @@ describe('Player: each control does one thing', () => {
   it('scrubbing stops the run', () => {
     const p = new Player();
     p.load(tl(3));
+    p.auto = true;
     p.play();
     p.seek(1, 0.5);
     run(p, 5);

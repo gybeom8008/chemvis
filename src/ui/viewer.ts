@@ -13,6 +13,8 @@ import { Player } from './player';
 export interface Settings {
   lens: Lens;
   speed: number;
+  /** "이어서 재생": after a step, go on to the next one by itself. */
+  continuous: boolean;
   motion: boolean;
 }
 
@@ -58,7 +60,7 @@ export class Viewer {
             <p class="caption" aria-live="polite"><span class="text"></span></p>
             <div class="pill">
               <div class="pg">
-                <button class="icon" data-act="play" aria-label="재생" title="끝까지 재생 (스페이스)">${icon('play')}</button>
+                <button class="icon" data-act="play" aria-label="재생" title="재생 (스페이스)">${icon('play')}</button>
                 <div class="segs" role="slider" aria-label="단계" tabindex="0"></div>
                 <span class="count"></span>
               </div>
@@ -174,6 +176,7 @@ export class Viewer {
 
   tick(dt: number, clock: number): void {
     this.player.speed = this.settings.speed;
+    this.player.auto = this.settings.continuous;
     this.player.tick(dt);
     if (!this.tl) return;
     const m = this.settings.motion;
@@ -244,13 +247,13 @@ export class Viewer {
     text.textContent = step ? step.text : (this.tl?.title ?? '');
     this.segs.setAttribute('aria-valuetext', step ? `${p.n}단계 중 ${p.k + 1}단계` : '');
 
-    // Play and pause: one button, one job.
+    // Play and pause the current step: one button, one job, never another step.
     const playing = p.playing;
     if (this.playBtn.dataset.state !== String(playing)) {
       this.playBtn.dataset.state = String(playing);
       this.playBtn.innerHTML = icon(playing ? 'pause' : 'play');
       this.playBtn.setAttribute('aria-label', playing ? '멈춤' : '재생');
-      this.playBtn.title = playing ? '멈춤 (스페이스)' : '끝까지 재생 (스페이스)';
+      this.playBtn.title = playing ? '멈춤 (스페이스)' : '재생 (스페이스)';
     }
 
     // Forward: the next step, and on the last step whatever comes after the scene.

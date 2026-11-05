@@ -17,6 +17,7 @@ const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').ma
 const settings: Settings = {
   lens: { charge: true, attract: false, numbers: false, oxidation: false },
   speed: 1,
+  continuous: false,
   motion: !params.has('still') && !reducedMotion,
 };
 
@@ -214,7 +215,8 @@ function buildSettings(pop: HTMLElement): void {
     <p class="pop-label">속도</p>
     <div class="speed" role="radiogroup" aria-label="속도">
       ${[0.5, 1, 1.5, 2].map((v) => `<button data-speed="${v}" role="radio">${v}×</button>`).join('')}
-    </div>`;
+    </div>
+    <label class="sw" title="단계가 끝나면 자막을 읽을 시간을 두고 다음 단계로 가요"><input type="checkbox" data-cont><span>이어서 재생</span></label>`;
   pop.querySelectorAll<HTMLInputElement>('[data-lens]').forEach((inp) =>
     inp.addEventListener('change', () => {
       settings.lens[inp.dataset.lens as 'charge'] = inp.checked;
@@ -227,11 +229,16 @@ function buildSettings(pop: HTMLElement): void {
       syncSettings();
     }),
   );
+  pop.querySelector<HTMLInputElement>('[data-cont]')!.addEventListener('change', (e) => {
+    settings.continuous = (e.target as HTMLInputElement).checked;
+    syncSettings();
+  });
 }
 
 function syncSettings(): void {
   document.querySelectorAll<HTMLInputElement>('.popover [data-lens]').forEach((i) => (i.checked = settings.lens[i.dataset.lens as 'charge']));
   document.querySelectorAll<HTMLButtonElement>('.popover [data-speed]').forEach((b) => b.setAttribute('aria-checked', String(+b.dataset.speed! === settings.speed)));
+  document.querySelectorAll<HTMLInputElement>('.popover [data-cont]').forEach((i) => (i.checked = settings.continuous));
 }
 
 function bindPopover(btnId: string, popId: string, build: (pop: HTMLElement) => void = buildSettings): void {

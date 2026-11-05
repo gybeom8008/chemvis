@@ -366,3 +366,57 @@ step "왼쪽 용액은 양이온이 늘고 오른쪽은 줄었어요. 염다리�
     tryIt: `<code>wire 2</code>를 <code>wire 1</code>로 바꾸면 환원 전극에 전자가 모자란다는 오류가 나요. 구리 이온 하나에는 전자 2개가 필요해요.`,
   },
 ];
+
+// Phenomena that need their own stage come after the first five in part 1.
+CHAPTERS.splice(CHAPTERS.findIndex((c) => c.id === 'leaching') + 1, 0,
+  {
+    id: 'membrane',
+    part: 1,
+    title: '막 수송: 통로와 펌프',
+    intro: `<p>세포막은 인지질 두 층으로 되어 있어 이온이 그냥은 지나가지 못해요. 이온은 막에 박힌 단백질을 거쳐 지나가요. 농도가 높은 쪽에서 낮은 쪽으로 통로를 지나는 것은 확산이고, 에너지를 써서 반대 방향으로 옮기는 것은 능동 수송이에요.</p>`,
+    script: s(`
+scene "세포막을 지나는 이온"
+stage membrane
+protein k = channel K+ at 330
+protein p = pump at 680
+crowd H2O in outside 12
+crowd H2O in inside 12
+place K+ in inside x5
+place K+ in outside x1
+place Na+ in outside x5
+place Na+ in inside x3
+
+step "세포 안쪽에는 K+가, 바깥에는 Na+가 많아요"
+  note k "K+ 통로"
+  note p "나트륨-칼륨 펌프"
+step "K+ 하나가 통로를 지나 K+가 적은 바깥으로 나가요(확산)"
+  cross K+ via k
+step "펌프는 ATP의 에너지를 써서 Na+ 세 개를 밖으로, K+ 두 개를 안으로 옮겨요(능동 수송)"
+  pump p 3 Na+ out 2 K+ in
+`),
+    tryIt: `<code>cross K+ via k</code>를 <code>cross Na+ via k</code>로 바꾸면 'K+용 통로'라는 경고가 떠요. 통로는 지나갈 이온을 골라요.`,
+  },
+  {
+    id: 'osmosis',
+    part: 1,
+    title: '삼투',
+    intro: `<p>물 분자는 지나가고 녹아 있는 이온은 못 지나가는 막을 사이에 두면, 물은 이온이 많은 쪽으로 더 많이 건너가요. 이것이 삼투예요. 양쪽으로 물 분자가 다 지나가지만, 이온이 많은 쪽으로 가는 수가 더 많아요.</p>`,
+    script: s(`
+scene "물이 소금 쪽으로 건너갈 때"
+stage membrane
+protein a = channel H2O at 500
+crowd H2O in outside 22
+crowd H2O in inside 22
+place Na+ in inside x4
+place Cl- in inside x4
+
+step "막 아래쪽(안쪽)에 소금 이온이 많아요. 이온은 막을 못 지나가지만 물 분자는 물 통로로 지나가요"
+  note a "물 통로(아쿠아포린)"
+step "물 분자가 이온이 적은 위쪽에서 이온이 많은 아래쪽으로 더 많이 건너가요"
+  osmosis 4
+step "계속 건너가요. 아래쪽이 묽어질수록 건너가는 속도는 줄어들어요"
+  osmosis 4
+`),
+    tryIt: `소금 이온을 <code>in outside</code>로 옮겨 적으면 물이 위쪽으로 건너가요.`,
+  },
+);

@@ -77,6 +77,9 @@ const OP_DURATION: Record<string, number> = {
   exchange: 3.6,
   leach: 5.2,
   oxidize: 3.6,
+  cross: 3.8,
+  pump: 5.0,
+  osmosis: 4.8,
   wire: 3.2,
   reduce: 3.8,
   bridge: 3.6,
@@ -229,6 +232,8 @@ class Ctx {
         return this.crystal(cmd);
       case 'electrode':
         return this.electrode(cmd);
+      case 'protein':
+        return this.protein(cmd);
       case 'mol':
       case 'place':
         return this.declare(cmd, false);
@@ -584,6 +589,12 @@ class Ctx {
         return this.reduce(a);
       case 'bridge':
         return this.bridgeOp(a);
+      case 'cross':
+        return this.cross(a);
+      case 'pump':
+        return this.pump(a);
+      case 'osmosis':
+        return this.osmosis(a);
       case 'heat':
       case 'cool':
         return this.temperature(cmd.op, a);
@@ -725,6 +736,10 @@ class Ctx {
     }
     if (ref === 'surface' && this.stage.surfaceY) return { kind: 'point', p: { x: 500, y: this.stage.surfaceY } };
     if (this.w.crystals.has(ref)) return { kind: 'group', ids: [...this.w.crystals.get(ref)!] };
+    const prot = this.w.proteins.find((p) => p.name === ref);
+    if (prot && this.stage.membrane) {
+      return { kind: 'point', p: { x: prot.x, y: this.stage.membrane.y0 - 30 } };
+    }
     return { kind: 'group', ids: this.mol(ref) };
   }
 
@@ -1641,6 +1656,153 @@ class Ctx {
     chans.forEach((ch, i) => this.A.flows.push({ path: ch, count: 14, t0: 0, t1: 1, seed: i + 11 }));
   }
 
+  // ------------------------------------------------------------ ops: membrane
+
+  needMembrane(op: string) {
+    if (!this.stage.membrane) this.fail(`${op}는 membrane 무대에서 써요. stage membrane`);
+    return this.stage.membrane;
+  }
+
+  /** protein k = channel K+ at 330 / protein p = pump at 680 */
+  protein(cmd: Cmd): void {
+    this.needMembrane('protein');
+    const a = cmd.args;
+    const [name, eq, kind] = a;
+    if (eq !== '=' || !name || (kind !== 'channel' && kind !== 'pump')) {
+      this.fail('막 단백질은 이렇게 적어요: protein k = channel K+ at 330  /  protein p = pump at 680');
+    }
+    const atI = a.indexOf('at');
+    const x = atI >= 0 ? parseFloat(a[atI + 1]) : 500;
+    if (!Number.isFinite(x)) this.fail('단백질 위치는 x 좌표 숫자로 적어 주세요. 예: at 330');
+    const carries = kind === 'channel' ? a[3] && a[3] !== 'at' ? normalizeFormula(a[3]) : undefined : undefined;
+    if (this.w.proteins.some((p) => p.name === name)) this.fail(`이름 '${name}'은(는) 이미 썼어요.`);
+    this.w.proteins.push({ name, kind, x: clamp(x, 60, this.stage.width - 60), carries });
+  }
+
+  proteinNamed(name: string) {
+    const p = this.w.proteins.find((x) => x.name === name);
+    if (!p) this.fail(`'${name}'이라는 막 단백질이 없어요. protein ${name} = channel ... 으로 먼저 놓아 주세요.`);
+    return p;
+  }
+
+  sideOf(p: Vec): 'outside' | 'inside' {
+    const m = this.stage.membrane!;
+    return p.y < (m.y0 + m.y1) / 2 ? 'outside' : 'inside';
+  }
+
+  /** Path through the membrane at x, from one side to a free spot on the other. */
+  crossPath(start: Vec, x: number, to: 'outside' | 'inside', spread = 150): Vec[] {
+    const m = this.stage.membrane!;
+    const down = to === 'inside';
+    const near = down ? m.y0 - 26 : m.y1 + 26;
+    const far = down ? m.y1 + 26 : m.y0 - 26;
+    const region = this.region(down ? m.inside : m.outside);
+    let goal = this.freePoint(region, 36, 50) ?? randomInRegion(region, this.rng);
+    goal = { x: clamp(x + this.rng.range(-spread, spread), region.x + 40, region.x + region.w - 40), y: goal.y };
+    return [start, { x, y: near }, { x, y: (m.y0 + m.y1) / 2 }, { x, y: far }, goal];
+  }
+
+  /** Molecules of a formula (or a name) on one side, nearest to x first. */
+  onSide(ref: string, side: 'outside' | 'inside' | null, x: number): string[][] {
+    if (this.w.names.has(ref)) return [this.mol(ref)];
+    const f = normalizeFormula(ref);
+    const crowdOk = f === 'H2O';
+    const comps = allComponents(this.w).filter((c) => {
+      const at = this.w.atoms.get(c[0])!;
+      if (at.crowd && !crowdOk) return false;
+      if (formulaOf(this.w, c) !== f) return false;
+      return side === null || this.sideOf(centerOf(this.w, c)) === side;
+    });
+    comps.sort((p, q) => Math.abs(centerOf(this.w, p).x - x) - Math.abs(centerOf(this.w, q).x - x));
+    return comps;
+  }
+
+  /** cross K+ via k : one particle passes through a channel to the other side (by default from the crowded side). */
+  cross(a: string[]): void {
+    this.needMembrane('cross');
+    const ref = a[0];
+    if (!ref) this.fail('막 통과는 이렇게 적어요: cross K+ via k  (통로 없이 지나가는 작은 분자는 cross O2)');
+    const viaI = a.indexOf('via');
+    const ch = viaI >= 0 ? this.proteinNamed(a[viaI + 1]) : null;
+    let comp: string[];
+    if (this.w.names.has(ref)) comp = this.mol(ref);
+    else {
+      const outN = this.onSide(ref, 'outside', 0).length;
+      const inN = this.onSide(ref, 'inside', 0).length;
+      const from = outN >= inN ? 'outside' : 'inside';
+      const list = this.onSide(ref, from, ch?.x ?? 500);
+      if (!list.length) this.fail(`${ref}이(가) 막 양쪽 어디에도 없어요.`);
+      comp = list[0];
+    }
+    if (ch?.carries && formulaOf(this.w, comp) !== ch.carries) {
+      this.warn(`통로 ${ch.name}은(는) ${ch.carries}용인데 ${formulaOf(this.w, comp)}이(가) 지나가게 적혔어요.`);
+    }
+    const c = centerOf(this.w, comp);
+    const to = this.sideOf(c) === 'outside' ? 'inside' : 'outside';
+    this.detach(comp); // the water shell stays at the mouth
+    const path = this.crossPath(c, ch ? ch.x : c.x, to);
+    this.moveGroup(comp, c, path, 0, 0, 1);
+    this.A.trails.push(anchorOf(this.w, comp));
+    this.focusMol(comp);
+  }
+
+  /** pump p 3 Na+ out 2 K+ in : active transport through a pump, one group after the other. */
+  pump(a: string[]): void {
+    this.needMembrane('pump');
+    const p = this.proteinNamed(a[0]);
+    if (p.kind !== 'pump') this.fail(`${p.name}은(는) 펌프가 아니라 통로예요.`);
+    const groups: { n: number; f: string; dir: 'out' | 'in' }[] = [];
+    for (let i = 1; i < a.length; i += 3) {
+      const n = parseInt(a[i], 10);
+      const f = a[i + 1];
+      const dir = a[i + 2];
+      if (!(n > 0) || !f || (dir !== 'out' && dir !== 'in')) this.fail('펌프는 이렇게 적어요: pump p 3 Na+ out 2 K+ in');
+      groups.push({ n, f, dir });
+    }
+    if (!groups.length) this.fail('펌프는 이렇게 적어요: pump p 3 Na+ out 2 K+ in');
+    groups.forEach((g, gi) => {
+      const from = g.dir === 'out' ? 'inside' : 'outside';
+      const list = this.onSide(g.f, from, p.x);
+      if (list.length < g.n) this.fail(`${from === 'inside' ? '안쪽' : '바깥'}에 ${g.f}이(가) ${list.length}개뿐이에요. ${g.n}개가 필요해요.`);
+      const span = 1 / groups.length;
+      const t0 = gi * span * 0.9;
+      const t1 = Math.min(1, t0 + span * 1.1);
+      list.slice(0, g.n).forEach((comp, k) => {
+        const c = centerOf(this.w, comp);
+        this.detach(comp);
+        const path = this.crossPath(c, p.x + (k - (g.n - 1) / 2) * 12, g.dir === 'out' ? 'outside' : 'inside', 130);
+        this.moveGroup(comp, c, path, 0, t0, t1);
+        this.focusMol(comp);
+      });
+    });
+  }
+
+  /** osmosis [n] : water moves across toward the side with more dissolved particles. */
+  osmosis(a: string[]): void {
+    this.needMembrane('osmosis');
+    const n = a[0] && /^\d+$/.test(a[0]) ? clamp(parseInt(a[0], 10), 1, 12) : 4;
+    const solutes = (side: 'outside' | 'inside') =>
+      allComponents(this.w).filter((c) => !this.w.atoms.get(c[0])!.crowd && this.sideOf(centerOf(this.w, c)) === side && formulaOf(this.w, c) !== 'H2O')
+        .length;
+    const so = solutes('outside');
+    const si = solutes('inside');
+    if (so === si) this.warn('막 양쪽의 용질 수가 같아서 삼투가 한쪽으로 일어나지 않아요.');
+    const to: 'outside' | 'inside' = si >= so ? 'inside' : 'outside';
+    const from = to === 'inside' ? 'outside' : 'inside';
+    const aq = this.w.proteins.find((p) => p.kind === 'channel' && p.carries === 'H2O');
+    const x = aq?.x ?? 500;
+    const movers = this.onSide('H2O', from, x).filter((c) => this.w.atoms.get(c[0])!.crowd).slice(0, n);
+    const back = n >= 4 ? this.onSide('H2O', to, x).filter((c) => this.w.atoms.get(c[0])!.crowd).slice(0, Math.floor(n / 4)) : [];
+    const all = [...movers.map((c) => [c, to] as const), ...back.map((c) => [c, from] as const)];
+    all.forEach(([comp, dest], k) => {
+      const c = centerOf(this.w, comp);
+      const t0 = (k / Math.max(1, all.length)) * 0.55;
+      const path = this.crossPath(c, aq ? x + this.rng.range(-6, 6) : c.x, dest, 160);
+      this.moveGroup(comp, c, path, this.rng.range(-2, 2), t0, Math.min(1, t0 + 0.45));
+      this.focusMol(comp);
+    });
+  }
+
   // ------------------------------------------------------------ ops: electrodes (cell stage)
 
   needElectrode(name: string) {
@@ -2159,6 +2321,9 @@ function resolveOverlaps(ctx: Ctx, _focus: Set<string>): void {
         let goal = add(cen, push);
         goal = { x: clamp(goal.x, 30, stage.width - 30), y: clamp(goal.y, 30, stage.height - 30) };
         if (S !== undefined) goal.y = cen.y > S ? Math.max(goal.y, S + 18) : Math.min(goal.y, S - 18);
+        const mb = stage.membrane;
+        // Pushed molecules never get shoved into the membrane: they stay on their own side.
+        if (mb) goal.y = cen.y < (mb.y0 + mb.y1) / 2 ? Math.min(goal.y, mb.y0 - 22) : Math.max(goal.y, mb.y1 + 22);
         const d = sub(goal, cen);
         for (const id of c) shift(w.atoms.get(id)!, d);
         moved = true;

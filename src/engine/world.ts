@@ -67,6 +67,16 @@ export interface World {
   counter: number;
   /** Electrons waiting in each electrode (electrode stage). */
   plate: Record<string, number>;
+  /** Membrane proteins (membrane stage). */
+  proteins: Protein[];
+}
+
+export interface Protein {
+  name: string;
+  kind: 'channel' | 'pump';
+  x: number;
+  /** What a channel lets through (formula), e.g. K+ or H2O. */
+  carries?: string;
 }
 
 export const bondKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
@@ -83,6 +93,7 @@ export function emptyWorld(): World {
     lens: { charge: true, attract: false, numbers: false, oxidation: false },
     counter: 0,
     plate: {},
+    proteins: [],
   };
 }
 
@@ -98,6 +109,7 @@ export function cloneWorld(w: World): World {
     lens: { ...w.lens },
     counter: w.counter,
     plate: { ...w.plate },
+    proteins: w.proteins.map((p) => ({ ...p })),
   };
 }
 

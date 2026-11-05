@@ -56,6 +56,8 @@ export interface StageDef {
   electrodes?: Record<string, ElectrodeDef>;
   wire?: Vec[];
   bridge?: { left: Vec; right: Vec };
+  /** Membrane stage: the bilayer band (molecules may only cross it through proteins or on purpose). */
+  membrane?: { y0: number; y1: number; outside: string; inside: string };
   /** Pore channels (soil), top to bottom. */
   channels?: Vec[][];
   plates?: Plate[];
@@ -410,7 +412,52 @@ function cell(): StageDef {
   };
 }
 
-export const STAGES: Record<string, () => StageDef> = { solution, interface: iface, soil, gas, cell };
+// ---------------------------------------------------------------- cell membrane
+
+function membrane(): StageDef {
+  const W = 1000;
+  const H = 640;
+  const Y0 = 272;
+  const Y1 = 368;
+  const regions: Record<string, Region> = {
+    outside: rect('outside', '바깥(세포 밖)', 20, 20, 960, Y0 - 44),
+    inside: rect('inside', '안쪽(세포 안)', 20, Y1 + 24, 960, H - Y1 - 44),
+    membrane: rect('membrane', '세포막', 20, Y0, 960, Y1 - Y0),
+  };
+  const background = () => {
+    let s = `<rect x="8" y="8" width="${W - 16}" height="${Y0 - 4}" rx="18" class="bg-water"/>`;
+    s += `<rect x="8" y="${Y1 + 4}" width="${W - 16}" height="${H - Y1 - 12}" rx="18" class="bg-water inner"/>`;
+    // Phospholipid bilayer: heads on both faces, two tails each pointing to the middle.
+    for (let x = 18; x <= W - 18; x += 21) {
+      for (const [hy, dir] of [
+        [Y0 + 10, 1],
+        [Y1 - 10, -1],
+      ] as const) {
+        const t0 = hy + dir * 9;
+        s += `<path d="M${x - 3},${t0} q-3,${dir * 8} 0,${dir * 16} t0,${dir * 15}" class="tail"/>`;
+        s += `<path d="M${x + 3},${t0} q3,${dir * 8} 0,${dir * 16} t0,${dir * 15}" class="tail"/>`;
+        s += `<circle cx="${x}" cy="${hy}" r="8.5" class="head"/>`;
+      }
+    }
+    s += `<text x="30" y="46" class="bg-label">바깥(세포 밖)</text>`;
+    s += `<text x="30" y="${H - 26}" class="bg-label">안쪽(세포 안)</text>`;
+    return s;
+  };
+  return {
+    name: 'membrane',
+    label: '세포막',
+    width: W,
+    height: H,
+    regions,
+    defaultRegion: 'outside',
+    liquid: ['outside', 'inside'],
+    membrane: { y0: Y0, y1: Y1, outside: 'outside', inside: 'inside' },
+    attractDefault: false,
+    background,
+  };
+}
+
+export const STAGES: Record<string, () => StageDef> = { solution, interface: iface, soil, gas, cell, membrane };
 
 export function getStage(name: string): StageDef | undefined {
   const f = STAGES[name];

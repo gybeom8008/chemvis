@@ -33,6 +33,7 @@ import {
 } from '../util/math';
 import { Rng } from '../util/rng';
 import type { ArrowAnim, Keyframe, NoteTarget, StepAnim, Timeline } from './timeline';
+import { tallyBox } from './timeline';
 import {
   allComponents,
   anchorOf,
@@ -166,6 +167,8 @@ export function compile(src: string): CompileResult {
       photons: [],
       wires: [],
       bubbles: [],
+      events: [],
+      tally: [],
       appear: new Set(),
     };
     ctx.anim = anim;
@@ -182,7 +185,8 @@ export function compile(src: string): CompileResult {
         else throw e;
       }
     }
-    anim.duration = maxDur || STEP_BASE;
+    anim.duration = ctx.durationOverride ?? (maxDur || STEP_BASE);
+    ctx.durationOverride = null;
     ctx.finishStep(before);
     steps.push(anim);
   });
@@ -598,6 +602,8 @@ class Ctx {
         return this.reduce(a);
       case 'bridge':
         return this.bridgeOp(a);
+      case 'ensemble':
+        return this.ensemble(a);
       case 'precipitate':
         return this.precipitate(a);
       case 'freeze':
@@ -1680,6 +1686,232 @@ class Ctx {
   rain(): void {
     const chans = this.needSoil('rain');
     chans.forEach((ch, i) => this.A.flows.push({ path: ch, count: 14, t0: 0, t1: 1, seed: i + 11 }));
+  }
+
+  // ------------------------------------------------------------ ops: collective mode
+
+  durationOverride: number | null = null;
+
+  /**
+   * ensemble H2 + I2 <=> 2 HI for 8s : every molecule of these kinds flies about, bounces,
+   * and reacts when the right pair collides (forward, and backward with <=>). Shows how an
+   * equilibrium is reached and kept by both reactions running at once.
+   */
+  ensemble(a: string[]): void {
+    const arrowI = a.findIndex((x) => x === '<=>' || x === '->' || x === '⇌' || x === '→');
+    const forI = a.indexOf('for');
+    if (arrowI < 0) this.fail('집단 모드는 이렇게 적어요: ensemble H2 + I2 <=> 2 HI for 8s');
+    const reversible = a[arrowI] === '<=>' || a[arrowI] === '⇌';
+    const seconds = forI >= 0 ? parseFloat(a[forI + 1]) : 8;
+    const D = clamp(Number.isFinite(seconds) ? seconds : 8, 3, 15);
+    const left = a.slice(0, arrowI).filter((x) => x !== '+');
+    const right = a.slice(arrowI + 1, forI >= 0 ? forI : undefined).filter((x) => x !== '+');
+    const expand = (side: string[]) => {
+      const out: string[] = [];
+      for (let i = 0; i < side.length; i++) {
+        if (/^\d+$/.test(side[i])) {
+          for (let k = 0; k < parseInt(side[i], 10); k++) out.push(normalizeFormula(side[i + 1]));
+          i++;
+        } else out.push(normalizeFormula(side[i]));
+      }
+      return out;
+    };
+    const L = expand(left);
+    const R = expand(right);
+    const diatomic = (f: string) => {
+      const d = lookupMolecule(f);
+      return d && d.atoms.length === 2 && d.bonds.length === 1 ? d : null;
+    };
+    const dA = diatomic(L[0] ?? '');
+    const dB = diatomic(L[1] ?? '');
+    const dP = diatomic(R[0] ?? '');
+    const ok =
+      L.length === 2 && R.length === 2 && R[0] === R[1] && dA && dB && dP &&
+      dA.atoms[0].el === dA.atoms[1].el && dB.atoms[0].el === dB.atoms[1].el &&
+      new Set(dP.atoms.map((x) => x.el)).size === 2 &&
+      dP.atoms.some((x) => x.el === dA.atoms[0].el) && dP.atoms.some((x) => x.el === dB.atoms[0].el);
+    if (!ok) this.fail('지금 집단 모드는 X2 + Y2 <=> 2 XY 꼴만 그려요(예: H2 + I2 <=> 2 HI, H2 + Cl2 -> 2 HCl).');
+    const elA = dA!.atoms[0].el;
+    const region = this.region(this.stage.defaultRegion);
+    type Mol = { atoms: [string, string]; kind: 'A' | 'B' | 'P'; c: Vec; v: Vec; ang: number; spin: number };
+    const kindOf = (c: string[]): Mol['kind'] | null => {
+      const f = formulaOf(this.w, c);
+      return f === L[0] ? 'A' : f === L[1] ? 'B' : f === R[0] ? 'P' : null;
+    };
+    const mols: Mol[] = [];
+    for (const c of allComponents(this.w)) {
+      if (this.w.atoms.get(c[0])!.crowd || c.length !== 2) continue;
+      const kind = kindOf(c);
+      if (!kind) continue;
+      const [p, q] = c.map((id) => this.w.atoms.get(id)!);
+      // Products keep the A-element atom first so reverse reactions know who goes where.
+      const ordered: [string, string] = kind === 'P' && p.el !== elA ? [q.id, p.id] : [p.id, q.id];
+      const pa = this.w.atoms.get(ordered[0])!;
+      const pb = this.w.atoms.get(ordered[1])!;
+      const speed = 150 * Math.sqrt(this.w.temp[region.name] ?? 1);
+      mols.push({
+        atoms: ordered,
+        kind,
+        c: lerpV(pa, pb, 0.5),
+        v: fromAngle(this.rng.range(0, Math.PI * 2), speed * this.rng.range(0.6, 1.2)),
+        ang: angleOf(sub(pb, pa)),
+        spin: this.rng.range(-3, 3),
+      });
+    }
+    if (mols.length < 2) this.fail(`장면에 ${L[0]}, ${L[1]}, ${R[0]} 분자가 거의 없어요. place ${L[0]} in ${region.name} x10 처럼 먼저 놓아 주세요.`);
+    const blen = (m: Mol) => bondLength(this.w.atoms.get(m.atoms[0])!.el, this.w.atoms.get(m.atoms[1])!.el);
+    const place = (m: Mol) => {
+      const h = fromAngle(m.ang, blen(m) / 2);
+      const p = this.w.atoms.get(m.atoms[0])!;
+      const q = this.w.atoms.get(m.atoms[1])!;
+      p.x = m.c.x - h.x;
+      p.y = m.c.y - h.y;
+      q.x = m.c.x + h.x;
+      q.y = m.c.y + h.y;
+    };
+    const dt = 1 / 40;
+    const steps = Math.round(D / dt);
+    const sampleEvery = 4;
+    const pF = 0.4;
+    const pB = 0.1;
+    const counts = () => {
+      const n = { A: 0, B: 0, P: 0 };
+      for (const m of mols) n[m.kind]++;
+      return [
+        [L[0], n.A],
+        [L[1], n.B],
+        [R[0], n.P],
+      ] as [string, number][];
+    };
+    const kf = (time: number) => {
+      for (const m of mols) {
+        place(m);
+        for (const id of m.atoms) {
+          const at = this.w.atoms.get(id)!;
+          const tr = this.A.tracks.get(id) ?? [];
+          tr.push({ t: time / D, x: at.x, y: at.y });
+          this.A.tracks.set(id, tr);
+        }
+      }
+      this.A.tally.push({ t: time / D, counts: counts() });
+    };
+    const m0 = 26;
+    // The count chart sits in the top-right corner; molecules keep out of it (and leave it if they start there).
+    const chart = tallyBox(this.stage.width);
+    const radius = (id: string) => element(this.w.atoms.get(id)!.el).r;
+    const ends = (m: Mol): [Vec, Vec] => {
+      const h = fromAngle(m.ang, blen(m) / 2);
+      return [sub(m.c, h), add(m.c, h)];
+    };
+    /** Smallest gap between the atom surfaces of two molecules. */
+    const gap = (p: Mol, q: Mol) => {
+      const ep = ends(p);
+      const eq = ends(q);
+      let g = Infinity;
+      for (let u = 0; u < 2; u++) {
+        for (let v = 0; v < 2; v++) g = Math.min(g, dist(ep[u], eq[v]) - radius(p.atoms[u]) - radius(q.atoms[v]));
+      }
+      return g;
+    };
+    kf(0);
+    for (let s = 1; s <= steps; s++) {
+      const time = s * dt;
+      for (const m of mols) {
+        m.c = add(m.c, scale(m.v, dt));
+        m.ang += m.spin * dt;
+        if (m.c.x < region.x + m0 || m.c.x > region.x + region.w - m0) {
+          m.v.x = -m.v.x;
+          m.c.x = clamp(m.c.x, region.x + m0, region.x + region.w - m0);
+        }
+        if (m.c.y < region.y + m0 || m.c.y > region.y + region.h - m0) {
+          m.v.y = -m.v.y;
+          m.c.y = clamp(m.c.y, region.y + m0, region.y + region.h - m0);
+        }
+        const mc = 34;
+        if (m.c.x > chart.x - mc && m.c.y < chart.y + chart.h + mc) {
+          // Head out through the nearer free side (left or bottom).
+          if (m.c.x - (chart.x - mc) < chart.y + chart.h + mc - m.c.y) m.v.x = -Math.abs(m.v.x);
+          else m.v.y = Math.abs(m.v.y);
+        }
+      }
+      for (let i = 0; i < mols.length; i++) {
+        for (let j = i + 1; j < mols.length; j++) {
+          const p = mols[i];
+          const q = mols[j];
+          const d = sub(q.c, p.c);
+          const dd = Math.hypot(d.x, d.y);
+          if (dd > 120 || dd < 1e-6) continue;
+          const g = gap(p, q);
+          if (g > 3) continue;
+          const nrm = scale(d, 1 / dd);
+          // Molecules that spun into each other are eased apart so they never overlap for long.
+          if (g < 0) {
+            p.c = sub(p.c, scale(nrm, -g / 2 + 0.5));
+            q.c = add(q.c, scale(nrm, -g / 2 + 0.5));
+          }
+          const rel = sub(q.v, p.v);
+          if (rel.x * nrm.x + rel.y * nrm.y >= 0) continue; // already separating
+          const forward = (p.kind === 'A' && q.kind === 'B') || (p.kind === 'B' && q.kind === 'A');
+          const backward = reversible && p.kind === 'P' && q.kind === 'P';
+          if ((forward && this.rng.next() < pF) || (backward && this.rng.next() < pB)) {
+            const tn = time / D;
+            const [x1, x2] = p.atoms;
+            const [y1, y2] = q.atoms;
+            for (const [u, w] of [
+              [x1, x2],
+              [y1, y2],
+            ]) {
+              this.A.events.push({ t: tn, a: u, b: w, order: 0 });
+              this.w.bonds.delete(bondKey(u, w));
+            }
+            let np: [string, string];
+            let nq: [string, string];
+            let kp: Mol['kind'];
+            let kq: Mol['kind'];
+            if (forward) {
+              const aMol = p.kind === 'A' ? p : q;
+              const bMol = p.kind === 'A' ? q : p;
+              // Each atom takes the nearer partner, so nothing jumps across the collision.
+              const at = (id: string) => this.w.atoms.get(id)!;
+              const [a0, a1] = aMol.atoms;
+              const [b0, b1] = bMol.atoms;
+              const straight = dist(at(a0), at(b0)) + dist(at(a1), at(b1));
+              const crossed = dist(at(a0), at(b1)) + dist(at(a1), at(b0));
+              np = [a0, straight <= crossed ? b0 : b1];
+              nq = [a1, straight <= crossed ? b1 : b0];
+              kp = 'P';
+              kq = 'P';
+            } else {
+              // Products keep the A-element atom first: the two A atoms pair up, so do the two B atoms.
+              np = [p.atoms[0], q.atoms[0]];
+              nq = [p.atoms[1], q.atoms[1]];
+              kp = 'A';
+              kq = 'B';
+            }
+            for (const [u, w] of [np, nq]) {
+              this.A.events.push({ t: tn, a: u, b: w, order: 1 });
+              this.w.bonds.set(bondKey(u, w), { a: u, b: w, order: 1 });
+            }
+            const pos = (id: string) => this.w.atoms.get(id)!;
+            p.atoms = np;
+            p.kind = kp;
+            q.atoms = nq;
+            q.kind = kq;
+            p.c = lerpV(pos(np[0]), pos(np[1]), 0.5);
+            q.c = lerpV(pos(nq[0]), pos(nq[1]), 0.5);
+            p.ang = angleOf(sub(pos(np[1]), pos(np[0])));
+            q.ang = angleOf(sub(pos(nq[1]), pos(nq[0])));
+          }
+          // Elastic bounce along the line of centres.
+          const k = rel.x * nrm.x + rel.y * nrm.y;
+          p.v = add(p.v, scale(nrm, k));
+          q.v = sub(q.v, scale(nrm, k));
+        }
+      }
+      if (s % sampleEvery === 0) kf(time);
+      else for (const m of mols) place(m);
+    }
+    this.durationOverride = D;
   }
 
   // ------------------------------------------------------------ ops: more phase changes

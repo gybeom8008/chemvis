@@ -38,6 +38,9 @@
   --photon: #e67700;
   --note-bg: #ffffff;
   --note-line: #8b9098;
+  --s0: #3b82c4;
+  --s1: #9c36b5;
+  --s2: #e67700;
   --canvas: #fbfaf7;
   --grid-dot: rgba(24, 25, 27, 0.13);
 
@@ -83,6 +86,9 @@
     --photon: #ffa94d;
     --note-bg: #232428;
     --note-line: #7f848c;
+    --s0: #74b0e6;
+    --s1: #da77f2;
+    --s2: #ffa94d;
     --canvas: #16171a;
     --grid-dot: rgba(236, 235, 231, 0.09);
     color-scheme: dark;
@@ -898,6 +904,38 @@ code {
   border-left: 7px solid var(--bond);
 }
 
+/* small line chart (molecule counts) */
+.g-chart {
+  width: 18px;
+  height: 12px;
+}
+.g-chart svg {
+  display: block;
+  width: 18px;
+  height: 12px;
+  overflow: visible;
+}
+.g-chart polyline {
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.g-chart .up {
+  stroke: var(--s2);
+}
+.g-chart .down {
+  stroke: var(--s0);
+}
+
+.g-spark {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--focus);
+  opacity: 0.8;
+}
+
 /* half-headed (fishhook) arrow */
 .g-hook {
   position: relative;
@@ -1290,6 +1328,51 @@ code {
 }
 .note-dot {
   fill: var(--note-line);
+}
+.spark {
+  fill: none;
+  stroke: var(--focus);
+  stroke-width: 2.5;
+}
+.tally rect {
+  fill: var(--note-bg);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.tally .axis {
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.tally text {
+  fill: var(--ink);
+  font-family: var(--sans);
+}
+.tally text.n {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.tally polyline {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.tally polyline.s0 {
+  stroke: var(--s0);
+}
+.tally polyline.s1 {
+  stroke: var(--s1);
+}
+.tally polyline.s2 {
+  stroke: var(--s2);
+}
+.tally circle.s0 {
+  fill: var(--s0);
+}
+.tally circle.s1 {
+  fill: var(--s1);
+}
+.tally circle.s2 {
+  fill: var(--s2);
 }
 
 /* ================================================================ narrow screens */

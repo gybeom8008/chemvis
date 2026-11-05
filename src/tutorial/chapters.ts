@@ -19,6 +19,7 @@ export const PARTS = [
   { id: 0, title: '0부 · 화면 문법' },
   { id: 1, title: '1부 · 현상' },
   { id: 2, title: '2부 · 반응' },
+  { id: 3, title: '3부 · 평형과 조합' },
 ];
 
 const s = (x: string) => x.replace(/^\n/, '');
@@ -513,3 +514,26 @@ step "계속 건너가요. 아래쪽이 묽어질수록 건너가는 속도는 �
     tryIt: `소금 이온을 <code>in outside</code>로 옮겨 적으면 물이 위쪽으로 건너가요.`,
   },
 );
+
+// Part 3: many molecules at once, and several steps combined into one natural process.
+CHAPTERS.push({
+  id: 'equilibrium',
+  part: 3,
+  title: '화학 평형',
+  intro: `<p>반응물 분자들은 서로 부딪칠 때 반응해요. 생성물이 늘면 생성물끼리 부딪쳐 반응물이 다시 생기는 반응(역반응)도 잦아져요. 두 방향의 빠르기가 같아지면 분자 수가 더 이상 변하지 않는데, 이 상태가 화학 평형이에요. 겉으로는 멈춘 것 같아도 두 반응은 계속 일어나요.</p>
+<ul class="legend"><li><i class="g-chart"><svg viewBox="0 0 18 12"><polyline class="up" points="1,11 6,6 11,4 17,4"/><polyline class="down" points="1,2 6,6 11,8 17,8"/></svg></i>오른쪽 위 그래프: 분자 종류별 개수</li><li><i class="g-spark"></i>방금 반응이 일어난 곳</li></ul>`,
+  script: s(`
+scene "수소와 아이오딘이 평형에 이를 때"
+stage gas
+place H2 in air x10
+place I2 in air x10
+
+step "수소(H2)와 아이오딘(I2) 분자가 섞여 있어요. 분자들은 쉬지 않고 날아다니며 부딪쳐요"
+  wait
+step "H2와 I2가 부딪치면 결합이 바뀌어 HI 두 분자가 돼요. HI끼리 부딪치면 H2와 I2가 다시 생기기도 해요"
+  ensemble H2 + I2 <=> 2 HI for 10s
+step "두 반응의 빠르기가 같아지면 분자 수가 거의 그대로 유지돼요. 이것이 평형이에요"
+  ensemble H2 + I2 <=> 2 HI for 8s
+`),
+  tryIt: `<code>&lt;=&gt;</code>를 <code>-&gt;</code>로 바꾸면 역반응이 빠져서 HI만 계속 늘어요.`,
+});

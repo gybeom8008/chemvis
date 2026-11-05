@@ -73,8 +73,23 @@ export interface StepAnim {
   wires: { path: Vec[]; count: number; t0: number; t1: number }[];
   /** Vapour bubbles rising through a liquid (boiling). */
   bubbles: { p0: Vec; p1: Vec; r: number; t0: number; t1: number }[];
+  /** Bonds that change part-way through a step (collective mode): order 0 removes the bond. */
+  events: { t: number; a: string; b: string; order: number }[];
+  /** Molecule counts over the step (collective mode). */
+  tally: { t: number; counts: [string, number][] }[];
   appear: Set<string>;
   lens?: Partial<Lens>;
+}
+
+/**
+ * Where the molecule-count chart of collective mode sits: the stage's top-right corner.
+ * Shared by the compiler (molecules keep out of it) and the renderer (draws it there).
+ */
+export function tallyBox(stageWidth: number): { x: number; y: number; w: number; h: number } {
+  const s = stageWidth / 1000;
+  const w = 318 * s;
+  const h = 104 * s;
+  return { x: stageWidth - 20 * s - w, y: 20 * s, w, h };
 }
 
 export interface Timeline {

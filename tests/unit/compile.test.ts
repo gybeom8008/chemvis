@@ -117,3 +117,74 @@ step "녹는다"
     expect(w.attached.size).toBe(2);
   });
 });
+
+describe('collective mode', () => {
+  const script = (arrow: string) => `
+stage gas
+place H2 in air x8
+place I2 in air x8
+step "부딪친다"
+  ensemble H2 + I2 ${arrow} 2 HI for 10s
+`;
+  it('conserves atoms, records bond events and keeps counts consistent', () => {
+    const r = compile(script('<=>'));
+    expect(r.errors).toEqual([]);
+    const s = r.timeline!.steps[0];
+    expect(s.duration).toBe(10);
+    expect(s.events.length).toBeGreaterThan(0);
+    expect(s.events.every((e, i) => i === 0 || e.t >= s.events[i - 1].t)).toBe(true);
+    for (const e of s.tally) {
+      const n = Object.fromEntries(e.counts);
+      // Every H atom and every I atom is in exactly one molecule.
+      expect(2 * n.H2 + n.HI).toBe(16);
+      expect(2 * n.I2 + n.HI).toBe(16);
+    }
+    const end = Object.fromEntries(s.tally[s.tally.length - 1].counts);
+    expect(end.HI).toBeGreaterThan(0);
+    // The world at the end agrees with the last count.
+    const sp = species(s.after);
+    expect(sp.filter((f) => f === 'HI').length).toBe(end.HI);
+    // Replaying the events on the starting bonds gives the end bonds.
+    const bonds = new Map([...s.before.bonds.keys()].map((k) => [k, true]));
+    for (const e of s.events) {
+      const k = e.a < e.b ? `${e.a}|${e.b}` : `${e.b}|${e.a}`;
+      if (e.order > 0) bonds.set(k, true);
+      else bonds.delete(k);
+    }
+    expect([...bonds.keys()].sort()).toEqual([...s.after.bonds.keys()].sort());
+  });
+  it('one-way reaction only makes HI', () => {
+    const r = compile(script('->'));
+    expect(r.errors).toEqual([]);
+    const counts = r.timeline!.steps[0].tally.map((e) => Object.fromEntries(e.counts).HI);
+    expect(counts.every((n, i) => i === 0 || n >= counts[i - 1])).toBe(true);
+  });
+  it('works for the other hydrogen halides', () => {
+    for (const [x, p] of [
+      ['Cl2', 'HCl'],
+      ['Br2', 'HBr'],
+      ['F2', 'HF'],
+    ]) {
+      const r = compile(`
+stage gas
+place H2 in air x6
+place ${x} in air x6
+step "x"
+  ensemble H2 + ${x} -> 2 ${p} for 8s
+`);
+      expect(r.errors).toEqual([]);
+      const end = r.timeline!.steps[0].tally.at(-1)!.counts;
+      expect(end[2][0]).toBe(p);
+      expect(end[2][1]).toBeGreaterThan(0);
+    }
+  });
+  it('rejects shapes it cannot draw', () => {
+    const r = compile(`
+stage gas
+place H2 in air x4
+step "x"
+  ensemble H2 + O2 <=> H2O2
+`);
+    expect(r.errors.length).toBeGreaterThan(0);
+  });
+});

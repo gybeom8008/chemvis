@@ -67,6 +67,10 @@ const DEFS: MolDef[] = [
   diatomic('O2', '산소 분자', 'O', 2, 2),
   diatomic('N2', '질소 분자', 'N', 1, 3),
   diatomic('Cl2', '염소 분자', 'Cl', 3, 1),
+  diatomic('Br2', '브로민 분자', 'Br', 3, 1),
+  diatomic('I2', '아이오딘 분자', 'I', 3, 1),
+  diatomic('F2', '플루오린 분자', 'F', 3, 1),
+  hydride('HI', '아이오딘화수소', 'I', 3, 1),
   {
     formula: 'CO2',
     name: '이산화탄소',

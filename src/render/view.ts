@@ -4,7 +4,7 @@
  */
 import { bondLength, element } from '../chem/elements';
 import { electronDomains, lonePairAngles } from '../chem/geometry';
-import type { Keyframe, NoteTarget, StepAnim, Timeline } from '../engine/timeline';
+import { tallyBox, type Keyframe, type NoteTarget, type StepAnim, type Timeline } from '../engine/timeline';
 import { formalCharge, oxidationState, type Atom, type Lens, type World } from '../engine/world';
 import { inRegion } from '../stage/stages';
 import {
@@ -126,6 +126,8 @@ export class StageView {
         pts.push(tg.p);
       }
     }
+    // Collective mode: molecules fly all over, so show the whole stage.
+    if (step.tally.length) full = true;
     if (!pts.length || full) return { x: 0, y: 0, w: st.width, h: st.height };
     let x0 = Infinity;
     let y0 = Infinity;
@@ -212,6 +214,17 @@ export class StageView {
     } else if (step.phase) {
       topo = t < step.phase.b0 ? step.before : t < step.phase.b1 ? step.mid : step.after;
       chargeWorld = t < step.phase.b1 ? step.before : step.after;
+    } else if (step.events.length && t > 0 && t < 1) {
+      // Collective mode: bonds break and form one collision at a time.
+      const m = new Map(step.before.bonds);
+      for (const e of step.events) {
+        if (e.t > t) break;
+        const key = keyOf(e.a, e.b);
+        if (e.order > 0) m.set(key, { a: e.a, b: e.b, order: e.order });
+        else m.delete(key);
+      }
+      topo = { ...step.before, bonds: m };
+      chargeWorld = topo;
     } else {
       topo = t <= 0 ? step.before : step.after;
       chargeWorld = topo;
@@ -351,6 +364,19 @@ export class StageView {
         const a = after.atoms.get(id);
         if (!p || !a) continue;
         out.push(`<circle class="focus" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(element(a.el).r + 7)}" opacity="${opacity(id)}"/>`);
+      }
+      // Collective mode: a short ring where a collision has just made new bonds.
+      for (const e of step.events) {
+        if (e.order <= 0) continue;
+        const since = (t - e.t) * step.duration;
+        if (since < 0) break;
+        if (since > 0.5) continue;
+        const pa = pos.get(e.a);
+        const pb = pos.get(e.b);
+        if (!pa || !pb) continue;
+        const c = lerpV(pa, pb, 0.5);
+        const q = since / 0.5;
+        out.push(`<circle class="spark" cx="${f1(c.x)}" cy="${f1(c.y)}" r="${f1(14 + 26 * q)}" opacity="${f1(0.9 * (1 - q))}"/>`);
       }
     }
 
@@ -587,6 +613,9 @@ export class StageView {
       });
     }
 
+    // Molecule counts over the step (collective mode), in the stage's top-right corner.
+    if (step && step.tally.length) out.push(tallyChart(step.tally, t, tl.stage.width));
+
     this.dyn.innerHTML = out.join('');
   }
 
@@ -778,6 +807,55 @@ export class StageView {
 
 function keyOf(a: string, b: string): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+const SUB = '₀₁₂₃₄₅₆₇₈₉';
+const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+
+/** "H2" → "H₂", "Ca2+" → "Ca²⁺". */
+function prettyFormula(f: string): string {
+  const m = f.match(/^(.*?)(\d*[+-])?$/)!;
+  const body = m[1].replace(/\d/g, (d) => SUB[+d]);
+  const charge = (m[2] ?? '').replace(/\d/g, (d) => SUP[+d]).replace('+', '⁺').replace('-', '⁻');
+  return body + charge;
+}
+
+/** How many molecules of each kind there are, drawn as lines growing over the step. */
+function tallyChart(tally: StepAnim['tally'], t: number, stageWidth: number): string {
+  const box = tallyBox(stageWidth);
+  const fs = stageWidth / 1000;
+  const pad = 14 * fs;
+  const legend = 100 * fs;
+  const cw = box.w - legend - 2 * pad;
+  const ch = box.h - 2 * pad;
+  const cx = box.x + pad;
+  const cy = box.y + pad;
+  const names = tally[0].counts.map((c) => c[0]);
+  const max = Math.max(1, ...tally.flatMap((e) => e.counts.map((c) => c[1])));
+  let last = tally[0];
+  const pts: string[][] = names.map(() => []);
+  for (const e of tally) {
+    if (e.t > t + 1e-9) break;
+    last = e;
+    e.counts.forEach((c, i) => pts[i].push(`${f1(cx + e.t * cw)},${f1(cy + ch - (c[1] / max) * ch)}`));
+  }
+  const size = 15 * fs;
+  let s = `<g class="tally">`;
+  s += `<rect x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" rx="${f1(12 * fs)}"/>`;
+  s += `<line class="axis" x1="${f1(cx)}" y1="${f1(cy + ch)}" x2="${f1(cx + cw)}" y2="${f1(cy + ch)}"/>`;
+  // Earlier series are drawn wider, so lines that coincide still show every colour.
+  names.forEach((_, i) => {
+    const wdt = 2.4 * fs * (1 + 0.9 * (names.length - 1 - i));
+    if (pts[i].length > 1) s += `<polyline class="s${i}" points="${pts[i].join(' ')}" stroke-width="${f1(wdt)}"/>`;
+  });
+  names.forEach((name, i) => {
+    const ly = cy + size * 0.95 + i * size * 1.75;
+    const lx = cx + cw + 16 * fs;
+    s += `<circle class="s${i}" cx="${f1(lx + 4.5 * fs)}" cy="${f1(ly - size * 0.33)}" r="${f1(4.5 * fs)}"/>`;
+    s += `<text x="${f1(lx + 15 * fs)}" y="${f1(ly)}" font-size="${f1(size)}">${esc(prettyFormula(name))}</text>`;
+    s += `<text class="n" x="${f1(lx + legend - 18 * fs)}" y="${f1(ly)}" font-size="${f1(size)}" text-anchor="end">${last.counts[i][1]}</text>`;
+  });
+  return s + '</g>';
 }
 
 function dot(p: Vec, cls: string, op = 1): string {

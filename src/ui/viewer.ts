@@ -64,6 +64,8 @@ export class Viewer {
       }),
     );
     this.bindScrub();
+    this.setEnabled(false);
+    this.segs.innerHTML = '<span class="seg"><i></i></span>';
     this.player.onChange = () => this.update();
     this.player.onStepEnter = (k) => {
       const step = this.tl?.steps[k];
@@ -82,6 +84,7 @@ export class Viewer {
       Object.assign(this.settings.lens, res.timeline.initial.lens);
       this.player.load(res.timeline);
       this.root.classList.remove('is-empty');
+      this.setEnabled(true);
       this.buildSegs();
       this.update();
       this.onLoad?.(res.timeline);
@@ -95,7 +98,8 @@ export class Viewer {
     this.view.clear();
     this.player.unload();
     this.root.classList.add('is-empty');
-    this.segs.innerHTML = '';
+    this.setEnabled(false);
+    this.segs.innerHTML = '<span class="seg"><i></i></span>';
     this.onLoad?.(null);
   }
 
@@ -114,6 +118,11 @@ export class Viewer {
     this.player.seek(k, t, false);
     if (this.tl) this.view.draw(this.player.k, this.player.t, { lens: this.settings.lens, clock: 0, motion: false });
     this.paintSegs();
+  }
+
+  private setEnabled(on: boolean): void {
+    this.root.querySelectorAll<HTMLButtonElement>('.pill button').forEach((b) => (b.disabled = !on));
+    this.segs.tabIndex = on ? 0 : -1;
   }
 
   private buildSegs(): void {

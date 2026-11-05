@@ -33,12 +33,21 @@ function collectErrors(page: Page): string[] {
   return errors;
 }
 
-test('the workspace opens empty', async ({ page }) => {
+test('the workspace opens as an empty canvas with controls waiting', async ({ page }) => {
   await page.goto('./?still');
   await expect(page.locator('#main-viewer .viewer')).toHaveClass(/is-empty/);
-  await expect(page.locator('#main-viewer .dock')).toBeHidden();
   await expect(page.locator('#main-viewer circle.atom')).toHaveCount(0);
+  const canvas = page.locator('#main-viewer svg.stage');
+  await expect(canvas).toBeVisible();
+  expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('radial-gradient');
+  await expect(page.locator('#main-viewer .pill')).toBeVisible();
+  await expect(page.locator('#main-viewer [data-act="play"]')).toBeDisabled();
   await expect(page.locator('#tutorial')).not.toHaveAttribute('open', '');
+  // Loading a scene turns the controls on.
+  await page.evaluate(() =>
+    (window as unknown as { chemvis: Api }).chemvis.main.load('stage solution\nmol w = H2O\nstep "물"\n  wait\n'),
+  );
+  await expect(page.locator('#main-viewer [data-act="play"]')).toBeEnabled();
 });
 
 test('every tutorial chapter plays through without errors', async ({ page }) => {

@@ -36,6 +36,8 @@
   --focus: #f59f00;
   --note-bg: #ffffff;
   --note-line: #8b9098;
+  --canvas: #fbfaf7;
+  --grid-dot: rgba(24, 25, 27, 0.13);
 
   --sans: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
   --mono: 'JetBrains Mono', 'D2Coding', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
@@ -77,6 +79,8 @@
     --focus: #ffc078;
     --note-bg: #232428;
     --note-line: #7f848c;
+    --canvas: #16171a;
+    --grid-dot: rgba(236, 235, 231, 0.09);
     color-scheme: dark;
   }
 }
@@ -324,12 +328,18 @@ code {
   padding: 6px 24px 0;
 }
 
+/* The stage is a canvas: a dotted sheet that is always there, scene or not. */
 .stage {
   display: block;
   width: 100%;
   height: 100%;
   border-radius: 16px;
   overflow: hidden;
+  background-color: var(--canvas);
+  background-image: radial-gradient(circle, var(--grid-dot) 1.1px, transparent 1.5px);
+  background-size: 22px 22px;
+  background-position: center;
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .dock {
@@ -340,8 +350,26 @@ code {
   padding: 6px 16px 20px;
 }
 
-.viewer.is-empty .dock {
-  display: none;
+/* Empty workspace: canvas and controls are shown, controls wait for a scene. */
+.viewer.is-empty .caption {
+  visibility: hidden;
+}
+
+.viewer.is-empty .pill {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.pill button:disabled {
+  cursor: default;
+}
+
+.pill button:disabled:hover {
+  background: none;
+}
+
+.viewer.is-empty .segs {
+  cursor: default;
 }
 
 .caption {

@@ -457,7 +457,7 @@ class Ctx {
     const [kw, arg, ...more] = rest;
     if (kw === 'on' && arg === 'clay') {
       const r = more[0] === 'in' && more[1] ? this.region(more[1]) : null;
-      if (!this.stage.sites) this.fail(`'${this.stage.name}' 무대에는 점토가 없어요. on clay는 soil 무대에서 써요.`);
+      if (!this.stage.plates) this.fail(`'${this.stage.name}' 무대에는 점토가 없어요. on clay는 soil, root 무대에서 써요.`);
       return { kind: 'clay', region: r };
     }
     if (kw === 'at' && arg) {
@@ -509,6 +509,13 @@ class Ctx {
         }
       }
       if (ok && this.stage.grains) ok = !this.inGrain(p, 40);
+      // Keep clear of clay plates.
+      for (const pl of this.stage.plates ?? []) {
+        if (!ok) break;
+        const u = fromAngle(pl.angle);
+        const along = clamp((p.x - pl.center.x) * u.x + (p.y - pl.center.y) * u.y, -pl.length / 2, pl.length / 2);
+        if (dist(p, add(pl.center, scale(u, along))) < 40) ok = false;
+      }
       if (ok) return p;
     }
     return null;
@@ -1671,7 +1678,7 @@ class Ctx {
 
   /** exchange c1 with 2 H+ on clay */
   exchange(a: string[]): void {
-    this.needSoil('exchange');
+    if (!this.stage.plates) this.fail('exchange는 점토가 있는 무대(soil, root)에서 써요.');
     const wi = a.indexOf('with');
     if (wi !== 1 || !a[wi + 1]) this.fail('이온 교환은 이렇게 적어요: exchange Ca2+ with 2 H+ on clay');
     let n = 1;
@@ -1696,19 +1703,39 @@ class Ctx {
         `전하가 맞지 않아요. ${formulaOf(this.w, out)}(${fmt(qOut)}) 하나가 떠난 부위를 ${f}(${fmt(qIn)}) ${n}개(${fmt(qIn * n)})가 대신하게 적혔어요.`,
       );
     }
-    // The outgoing ion leaves the surface into the pore water.
-    const ch = this.nearestChannel(centerOf(this.w, out));
+    // The outgoing ion leaves the surface into the water (in soil: into the pore).
+    const ch = this.stage.channels ? this.nearestChannel(centerOf(this.w, out)) : null;
     for (const s of sites) s.occupant = null;
     const outStart = centerOf(this.w, out);
-    const outGoal = add(ch.point, scale(norm(sub(ch.point, outStart)), 6));
-    this.moveGroup(this.group(out), outStart, [outStart, lerpV(outStart, outGoal, 0.5), add(outGoal, { x: 0, y: 26 })], 0, 0.15, 0.85);
+    const face = norm(sites.reduce((acc, x) => add(acc, { x: x.nx, y: x.ny }), { x: 0, y: 0 }));
+    if (ch) {
+      const outGoal = add(ch.point, scale(norm(sub(ch.point, outStart)), 6));
+      this.moveGroup(this.group(out), outStart, [outStart, lerpV(outStart, outGoal, 0.5), add(outGoal, { x: 0, y: 26 })], 0, 0.15, 0.85);
+    } else {
+      const outGoal = add(outStart, add(scale(face, 80), { x: this.rng.range(-60, 60), y: 0 }));
+      this.moveGroup(this.group(out), outStart, [outStart, lerpV(outStart, outGoal, 0.5), outGoal], 0, 0.15, 0.85);
+    }
     this.focusMol(out);
-    // Incoming ions arrive with the pore water and take the sites.
-    const tangent = norm(sub(ch.point, add(ch.point, { x: 0, y: -1 })));
+    // Incoming ions: ones already free in the water go first; otherwise new ones arrive with the water.
+    const held = new Set(this.w.sites.map((x) => x.occupant).filter(Boolean) as string[]);
+    const waiting = allComponents(this.w)
+      .filter((c) => !this.w.atoms.get(c[0])!.crowd && sameFormula(this.w, c, f) && !held.has(anchorOf(this.w, c)))
+      .sort((p, q) => dist(centerOf(this.w, p), outStart) - dist(centerOf(this.w, q), outStart));
+    const tangent = ch ? norm(sub(ch.point, add(ch.point, { x: 0, y: -1 }))) : { x: 0, y: 1 };
     for (let i = 0; i < n; i++) {
-      const start = add(ch.point, add(scale(tangent, -60 - i * 46), { x: (i % 2 ? 1 : -1) * 14, y: 0 }));
-      const ids = this.spawn(f, this.autoName(f), false, start);
-      for (const id of ids) this.A.appear.add(id);
+      let ids: string[];
+      let start: Vec;
+      if (waiting.length) {
+        ids = waiting.shift()!;
+        start = centerOf(this.w, ids);
+        this.detach(ids);
+      } else {
+        start = ch
+          ? add(ch.point, add(scale(tangent, -60 - i * 46), { x: (i % 2 ? 1 : -1) * 14, y: 0 }))
+          : add(outStart, add(scale(face, 150 + i * 40), { x: (i % 2 ? 1 : -1) * 30, y: 0 }));
+        ids = this.spawn(f, this.autoName(f), false, start);
+        for (const id of ids) this.A.appear.add(id);
+      }
       const mySites = sites.slice(i * qIn, i * qIn + qIn);
       const k2 = anchorOf(this.w, ids);
       for (const s of mySites) s.occupant = k2;

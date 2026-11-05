@@ -651,3 +651,33 @@ step "세포가 일할 때는 ATP가 가수분해되어 인산이 떨어져 나�
 `),
   tryIt: `<code>pump e 4 H+ out</code>의 숫자를 바꿔 보세요. 막 사이 공간에 H+가 많을수록 ATP 합성 효소로 흘러드는 H+도 많아져요.`,
 });
+
+CHAPTERS.push({
+  id: 'root',
+  part: 3,
+  title: '뿌리털이 양분을 얻을 때',
+  intro: `<p>흙 속 칼륨(K+), 칼슘(Ca2+) 같은 양분 이온은 대부분 점토 알갱이 표면의 음전하에 흡착돼 있어요. 뿌리털 세포는 에너지를 써서 H+를 흙 속 물로 내보내고, 그 H+가 점토의 양이온과 자리를 바꾸면(이온 교환) 떨어져 나온 양이온이 뿌리털 세포막의 통로를 지나 세포 안으로 들어가요. 이온 교환과 막 수송을 한 장면에서 이어 써요.</p>`,
+  script: s(`
+scene "뿌리털이 흙에서 칼륨 이온을 얻을 때"
+stage root
+protein p = pump at 260
+protein k = channel K+ at 700
+crowd H2O in outside 10
+crowd H2O in inside 12
+mol c = K+ on clay
+mol d = Ca2+ on clay
+place H+ in inside x3
+
+step "점토 알갱이 표면의 음전하에 K+와 Ca2+가 흡착돼 있어요. 이대로는 뿌리가 가져갈 수 없어요"
+  note c "흡착된 K+"
+  note p "H+ 펌프"
+  note k "K+ 통로"
+step "뿌리털 세포가 ATP의 에너지로 H+를 흙 속 물로 내보내요"
+  pump p 2 H+ out
+step "H+가 점토 표면의 K+ 자리를 차지하고, 떨어져 나온 K+는 흙 속 물로 나와요(이온 교환)"
+  exchange c with H+ on clay
+step "K+가 K+ 통로를 지나 뿌리털 세포 안으로 들어가요"
+  cross c via k
+`),
+  tryIt: `<code>exchange c with H+ on clay</code>를 <code>exchange d with 2 H+ on clay</code>로 바꾸면 Ca2+ 하나가 H+ 두 개와 자리를 바꿔요. 그다음 줄은 <code>cross d</code>로 고쳐 보세요(Ca2+ 통로가 없다는 경고가 떠요).`,
+});

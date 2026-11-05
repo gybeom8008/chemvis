@@ -40,6 +40,7 @@ AI는 HTML·SVG를 직접 만들지 않고 이 대본만 쓴다. 배치, 그리�
 | `gas` | 기체 반응(라디칼, 평형 등) | `air`(전체), `left`, `center`, `right`, `top`, `bottom` |
 | `cell` | 전지(두 전극, 도선, 염다리) | `left`(산화 전극 쪽 용액), `right`(환원 전극 쪽 용액), `top`. 전극 이름은 `left`·`right` |
 | `membrane` | 세포막(인지질 이중층)과 막 단백질 | `outside`(위, 세포 밖), `inside`(아래, 세포 안), `membrane` |
+| `root` | 뿌리털: 위는 흙 속 물과 점토 알갱이(음전하 자리 6개), 아래는 뿌리털 세포. 막 명령(protein, pump, cross)과 점토 명령(`on clay`, exchange)을 함께 쓴다 | `outside`(흙 속 물), `inside`(세포 안), `membrane` |
 | `mito` | 미토콘드리아 내막(membrane과 같고 이름만 다름) | `outside`(위, 막 사이 공간), `inside`(아래, 기질), `membrane` |
 | `battery` | 리튬 이온 전지(흑연 음극, 분리막, 금속 산화물 양극, 바깥 도선) | `anode`(흑연), `cathode`(산화물), `electrolyte`, `left`·`right`(분리막 양쪽 전해질), `top` |
 
@@ -182,7 +183,7 @@ H2O, H3O+, OH-, NH3, NH4+, CH4, HCl, HF, HBr, HI, H2S, H+, Li+, Na+, K+, Mg2+, C
 
 | 명령 | 화면 |
 |---|---|
-| `exchange c with 2 H+ on clay` | 흡착된 c가 떠나고 H+ 2개가 그 음전하 부위를 차지. **전하 합이 같아야 한다** (Ca2+ ↔ 2 H+) |
+| `exchange c with 2 H+ on clay` | 흡착된 c가 떠나고 H+ 2개가 그 음전하 부위를 차지. **전하 합이 같아야 한다** (Ca2+ ↔ 2 H+). 물속에 이미 그 이온(예: 펌프가 내보낸 H+)이 있으면 가까운 것부터 쓰고, 없으면 새로 들어온다. soil과 root 무대에서 쓴다 |
 | `leach c from topsoil to subsoil` | 씻겨 내려감(용탈). 빗물이 공극으로 흐르고, 물 분자가 c를 둘러싸고, c가 물과 함께 아래 구역으로 이동. 흡착돼 있었다면 떨어져 나온다 |
 | `rain` | 빗물이 모든 공극을 따라 흐른다 |
 

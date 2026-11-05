@@ -540,6 +540,25 @@ function battery(): StageDef {
   };
 }
 
+/** A root hair: soil water with a clay particle above, the root cell below its membrane. */
+function root(): StageDef {
+  const st = membrane({ top: '흙 속 물', bottom: '뿌리털 세포 안', name: 'root', label: '뿌리털 세포막' });
+  const center = { x: 500, y: 96 };
+  const length = 340;
+  st.plates = [{ center, angle: 0, length, region: 'outside' }];
+  // Negative sites on the clay's underside, facing the water and the root.
+  st.sites = [-125, -75, -25, 25, 75, 125].map((off) => ({ x: center.x + off, y: center.y + 7, nx: 0, ny: 1, region: 'outside', plate: 0 }));
+  const base = st.background;
+  st.background = () => {
+    let s = base();
+    s += `<rect x="${center.x - length / 2}" y="${center.y - 9}" width="${length}" height="18" rx="6" class="clay"/>`;
+    s += `<text x="${center.x + length / 2 + 14}" y="${center.y + 6}" class="bg-note">점토 알갱이</text>`;
+    for (const x of st.sites!) s += `<g class="site" transform="translate(${x.x},${x.y})"><circle r="5.5"/><text y="3.6">−</text></g>`;
+    return s;
+  };
+  return st;
+}
+
 /** Mitochondrial inner membrane: the same band, between the intermembrane space and the matrix. */
 const mito = () => membrane({ top: '막 사이 공간', bottom: '기질(미토콘드리아 안쪽)', name: 'mito', label: '미토콘드리아 내막' });
 
@@ -551,6 +570,7 @@ export const STAGES: Record<string, () => StageDef> = {
   cell,
   membrane: () => membrane(),
   mito,
+  root,
   battery,
 };
 

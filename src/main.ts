@@ -17,7 +17,6 @@ const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').ma
 const settings: Settings = {
   lens: { charge: true, attract: false, numbers: false, oxidation: false },
   speed: 1,
-  continuous: false,
   motion: !params.has('still') && !reducedMotion,
 };
 
@@ -33,11 +32,11 @@ const icons: [string, string][] = [
   ['btn-tutorial', 'book'],
   ['btn-examples', 'examples'],
   ['btn-script', 'code'],
-  ['btn-view', 'layers'],
+  ['btn-view', 'sliders'],
   ['btn-link', 'link'],
   ['btn-edit', 'edit'],
   ['btn-drawer-close', 'close'],
-  ['tut-view', 'layers'],
+  ['tut-view', 'sliders'],
   ['tut-script', 'code'],
   ['tut-open', 'openIn'],
   ['tut-close', 'close'],
@@ -48,7 +47,7 @@ for (const [id, name] of icons) $(id).innerHTML = icon(name);
 
 const main = new Viewer($('main-viewer'), settings);
 const tut = new Viewer($('tut-viewer'), settings);
-tut.endIcon = 'nextChapter';
+tut.endAction = () => (CHAPTERS[CHAPTERS.indexOf(chapter) + 1] ? 'nextChapter' : 'restart');
 
 // ------------------------------------------------------------------ code panels
 
@@ -100,7 +99,7 @@ let editing = false;
 main.onLoad = (tl) => {
   $('scene-title').textContent = tl ? tl.title : '';
   document.title = tl ? `${tl.title} · chemvis` : 'chemvis';
-  renderCode(codeView, main.src, tl, (k) => main.player.seek(k, 0, true));
+  renderCode(codeView, main.src, tl, (k) => main.player.go(k));
   syncSettings();
 };
 main.onStep = (k) => markStep(codeView, k);
@@ -161,7 +160,7 @@ function loadMain(src: string, play = false): boolean {
     codeEdit.value = src;
     return false;
   }
-  if (play) main.player.play();
+  if (play) main.player.go(0);
   return true;
 }
 
@@ -212,10 +211,10 @@ function buildSettings(pop: HTMLElement): void {
     <label class="sw"><input type="checkbox" data-lens="oxidation"><span>산화수</span></label>
     <label class="sw"><input type="checkbox" data-lens="numbers"><span>원자 일련번호</span></label>
     <hr>
+    <p class="pop-label">속도</p>
     <div class="speed" role="radiogroup" aria-label="속도">
       ${[0.5, 1, 1.5, 2].map((v) => `<button data-speed="${v}" role="radio">${v}×</button>`).join('')}
-    </div>
-    <label class="sw"><input type="checkbox" data-cont><span>이어서 재생</span></label>`;
+    </div>`;
   pop.querySelectorAll<HTMLInputElement>('[data-lens]').forEach((inp) =>
     inp.addEventListener('change', () => {
       settings.lens[inp.dataset.lens as 'charge'] = inp.checked;
@@ -228,16 +227,11 @@ function buildSettings(pop: HTMLElement): void {
       syncSettings();
     }),
   );
-  pop.querySelector<HTMLInputElement>('[data-cont]')!.addEventListener('change', (e) => {
-    settings.continuous = (e.target as HTMLInputElement).checked;
-    syncSettings();
-  });
 }
 
 function syncSettings(): void {
   document.querySelectorAll<HTMLInputElement>('.popover [data-lens]').forEach((i) => (i.checked = settings.lens[i.dataset.lens as 'charge']));
   document.querySelectorAll<HTMLButtonElement>('.popover [data-speed]').forEach((b) => b.setAttribute('aria-checked', String(+b.dataset.speed! === settings.speed)));
-  document.querySelectorAll<HTMLInputElement>('.popover [data-cont]').forEach((i) => (i.checked = settings.continuous));
 }
 
 function bindPopover(btnId: string, popId: string, build: (pop: HTMLElement) => void = buildSettings): void {
@@ -310,12 +304,12 @@ function showChapter(c: Chapter, play = false): void {
   $('tut-tryit').innerHTML = c.tryIt;
   document.querySelectorAll<HTMLElement>('#tut-nav a[data-ch]').forEach((a) => a.classList.toggle('on', a.dataset.ch === c.id));
   tut.load(c.script);
-  renderCode($('tut-code-view'), c.script, tut.tl, (k) => tut.player.seek(k, 0, true));
+  renderCode($('tut-code-view'), c.script, tut.tl, (k) => tut.player.go(k));
   syncSettings();
-  if (play) tut.player.play();
+  if (play) tut.player.go(0);
 }
 tut.onStep = (k) => markStep($('tut-code-view'), k);
-tut.player.onEndPlay = () => {
+tut.player.onEnd = () => {
   const next = CHAPTERS[CHAPTERS.indexOf(chapter) + 1];
   if (!next) return false;
   history.replaceState(null, '', `#/t/${next.id}`);
@@ -391,13 +385,25 @@ window.addEventListener('hashchange', () => void route());
 document.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+  // A button reached with Tab presses itself on Space and Enter.
+  if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   const v = dlg.open ? tut : main;
   if (!v.tl) return;
-  if (e.key === ' ') {
-    e.preventDefault();
-    v.player.toggle();
-  } else if (e.key === 'ArrowRight') v.player.next();
-  else if (e.key === 'ArrowLeft') v.player.prev();
+  const p = v.player;
+  const act: Record<string, () => void> = {
+    ' ': () => p.toggle(),
+    ArrowRight: () => p.next(),
+    ArrowLeft: () => p.prev(),
+    r: () => p.replay(),
+    R: () => p.replay(),
+    ㄱ: () => p.replay(), // R on a Korean keyboard
+    Home: () => p.restart(),
+  };
+  const f = act[e.key];
+  if (!f) return;
+  e.preventDefault();
+  f();
 });
 
 // ------------------------------------------------------------------ loop

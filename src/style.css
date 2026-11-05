@@ -212,8 +212,24 @@ code {
 
 .tools {
   display: flex;
+  align-items: center;
   gap: 2px;
   flex: none;
+}
+
+/* Left of the line: places to go (tutorial, examples). Right: this scene (script, view, link). */
+.tools-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 7px;
+  background: var(--line);
+}
+
+.popover .pop-label {
+  margin: 2px 10px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .pop-wrap {
@@ -595,26 +611,28 @@ code {
 .caption {
   margin: 0;
   max-width: 44em;
-  min-height: 3.2em;
+  min-height: 3em;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
   text-align: center;
   font-size: 17px;
   line-height: 1.5;
   text-wrap: balance;
+  word-break: keep-all;
 }
 
-.caption .count {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-}
-
+/*
+ * Controls in one bar, two groups:
+ *   [play/pause | steps | 3 / 13]   [prev | replay | next]
+ * The left group is about the whole scene, the right one about one step.
+ * Next is the main button: reading a scene is mostly pressing it.
+ */
 .pill {
   display: flex;
   align-items: center;
-  gap: 2px;
-  width: min(640px, 100%);
+  gap: 6px;
+  width: min(720px, 100%);
   padding: 5px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -622,24 +640,83 @@ code {
   box-shadow: var(--shadow);
 }
 
+.pill .pg,
+.pill .nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pill .pg {
+  flex: 1;
+}
+
+.pill .nav {
+  flex: none;
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+}
+
 .pill .icon {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
 }
 
-.pill .play {
-  width: 42px;
-  height: 42px;
-  background: var(--ink);
-  color: var(--surface);
-  margin: 0 2px;
+.pill .count {
+  flex: none;
+  min-width: 3.4em;
+  padding-right: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-.pill .play:hover {
+.pill .lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 38px;
+  padding: 0 13px 0 10px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.pill .lbl:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.pill .lbl .ico {
+  width: 18px;
+  height: 18px;
+}
+
+.pill .primary {
+  height: 42px;
+  padding: 0 12px 0 18px;
   background: var(--ink);
   color: var(--surface);
-  opacity: 0.88;
+}
+
+.pill .primary.end:has(.ico:first-child) {
+  padding: 0 18px 0 13px;
+}
+
+.pill .primary:hover {
+  background: var(--ink);
+  color: var(--surface);
+  opacity: 0.86;
+}
+
+.pill .lbl:disabled {
+  opacity: 0.45;
 }
 
 .segs {
@@ -647,8 +724,8 @@ code {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 36px;
-  padding: 0 14px 0 8px;
+  height: 38px;
+  padding: 0 8px 0 6px;
   cursor: pointer;
   touch-action: none;
   border-radius: 999px;
@@ -1806,5 +1883,24 @@ code {
   .tut.with-code .tut-body {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) 40%;
+  }
+}
+
+/* Phones: the bar takes two rows, scene above and step below, so every button keeps its words. */
+@media (max-width: 560px) {
+  .pill {
+    flex-wrap: wrap;
+    gap: 2px;
+    border-radius: 24px;
+  }
+  .pill .pg {
+    flex: 1 1 100%;
+  }
+  .pill .nav {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    padding: 4px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
 }

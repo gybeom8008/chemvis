@@ -3,7 +3,7 @@ const P: Record<string, string> = {
   play: '<path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"/>',
   pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/>',
   replay: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 4v4.5H8"/>',
-  restart: '<path d="M18 19 9 12l9-7z" fill="currentColor" stroke="none"/><path d="M6 5v14"/>',
+  first: '<path d="M6.5 5.5v13"/><path d="m17.5 6-6.5 6 6.5 6"/>',
   prev: '<path d="m14.5 6-6 6 6 6"/>',
   next: '<path d="m9.5 6 6 6-6 6"/>',
   nextChapter: '<path d="m5 6 6 6-6 6"/><path d="m12 6 6 6-6 6"/>',
@@ -17,6 +17,7 @@ const P: Record<string, string> = {
   openIn: '<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   legend: '<circle cx="5.5" cy="7" r="2" fill="currentColor" stroke="none"/><path d="M10 7h10"/><path d="M3.5 12h4"/><path d="M10 12h10"/><path d="M3.5 17 5.5 15l2 2"/><path d="M10 17h10"/>',
   examples: '<rect x="8" y="3" width="12" height="15" rx="1.8"/><path d="M5 7v12.2A1.8 1.8 0 0 0 6.8 21H16"/><path d="M11.5 8h5M11.5 11.5h5M11.5 15h3"/>',
+  sliders: '<path d="M4 7h8.5M17.5 7H20M4 17h2.5M11.5 17H20"/><circle cx="15" cy="7" r="2.5"/><circle cx="9" cy="17" r="2.5"/>',
   doc: '<path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/>',
 };
 

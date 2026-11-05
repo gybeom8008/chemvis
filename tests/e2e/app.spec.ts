@@ -72,16 +72,48 @@ test('every tutorial chapter plays through without errors', async ({ page }) => 
   expect(errors).toEqual([]);
 });
 
-test('pressing play at the end of a chapter goes to the next chapter', async ({ page }) => {
+test('on the last step of a chapter the forward button offers the next chapter', async ({ page }) => {
   await page.goto('./?still#/t/atoms');
   const c = cv(page);
   const st = await c.tut.state();
+  const next = page.locator('#tut-viewer [data-act="next"]');
+  await expect(next).toHaveAttribute('aria-label', '다음 단계');
   await c.tut.seek(st.n - 1, 1);
-  const play = page.locator('#tut-viewer [data-act="play"]');
-  await expect(play).toHaveAttribute('aria-label', '다음 장');
-  await play.click();
+  await expect(next).toHaveAttribute('aria-label', '다음 장');
+  // Play keeps its one job: it never turns into another button.
+  await expect(page.locator('#tut-viewer [data-act="play"]')).toHaveAttribute('aria-label', '재생');
+  await next.click();
   await expect.poll(() => c.tut.chapter()).toBe('arrows');
   await expect.poll(async () => (await c.tut.state()).t).toBeGreaterThan(0);
+});
+
+test('replay shows the current step again; the last step offers to start over', async ({ page }) => {
+  await page.goto('./?still');
+  const c = cv(page);
+  await c.main.load('stage solution\nmol w = H2O\nstep "하나"\n  wait\nstep "둘"\n  wait\nstep "셋"\n  wait\n');
+  const v = page.locator('#main-viewer');
+  await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.main.seek(1, 1));
+  await expect(v.locator('.count')).toHaveText('2 / 3');
+  await v.locator('[data-act="replay"]').click();
+  let st = await c.main.state();
+  expect(st.k).toBe(1);
+  expect(st.t).toBeLessThan(1);
+  await v.locator('[data-act="next"]').click();
+  await expect(v.locator('[data-act="next"]')).toHaveAttribute('aria-label', '처음부터');
+  await v.locator('[data-act="next"]').click();
+  st = await c.main.state();
+  expect(st.k).toBe(0);
+  // Keys: R replays, → moves on, Space plays and pauses.
+  await page.keyboard.press('ArrowRight');
+  await expect(v.locator('.count')).toHaveText('2 / 3');
+  await page.keyboard.press('r');
+  expect((await c.main.state()).k).toBe(1);
+  await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.main.seek(1, 1));
+  await expect(v.locator('[data-act="play"]')).toHaveAttribute('aria-label', '재생');
+  await page.keyboard.press(' ');
+  await expect(v.locator('[data-act="play"]')).toHaveAttribute('aria-label', '멈춤');
+  await page.keyboard.press(' ');
+  await expect(v.locator('[data-act="play"]')).toHaveAttribute('aria-label', '재생');
 });
 
 test('HCl chapter ends with H3O+ and Cl- charges drawn', async ({ page }) => {

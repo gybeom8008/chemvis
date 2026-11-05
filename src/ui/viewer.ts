@@ -13,9 +13,15 @@ import { Player } from './player';
 export interface Settings {
   lens: Lens;
   speed: number;
-  continuous: boolean;
   motion: boolean;
 }
+
+/** What the forward button does on the last step. */
+type EndAction = 'restart' | 'nextChapter';
+const END: Record<EndAction, { icon: string; text: string; title: string }> = {
+  restart: { icon: 'first', text: '처음부터', title: '처음부터 다시 보기 (→)' },
+  nextChapter: { icon: 'nextChapter', text: '다음 장', title: '다음 장으로 (→)' },
+};
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -25,14 +31,16 @@ export class Viewer {
   readonly view: StageView;
   tl: Timeline | null = null;
   src = '';
-  /** Icon shown on the play button once everything has played (main: replay, tutorial: next chapter). */
-  endIcon: 'replay' | 'nextChapter' = 'replay';
+  /** What the forward button offers on the last step (the tutorial offers the next chapter while there is one). */
+  endAction: () => EndAction = () => 'restart';
   onStep: ((k: number) => void) | null = null;
   onLoad: ((tl: Timeline | null) => void) | null = null;
   private settings: Settings;
   private caption: HTMLElement;
   private segs: HTMLElement;
+  private count: HTMLElement;
   private playBtn: HTMLButtonElement;
+  private nextBtn: HTMLButtonElement;
   private legendBtn: HTMLButtonElement;
   private legendPop: HTMLElement;
 
@@ -47,13 +55,18 @@ export class Viewer {
             <div class="legend-pop" role="dialog" aria-label="범례" hidden></div>
           </div>
           <div class="dock-main">
-            <p class="caption" aria-live="polite"><span class="count"></span><span class="text"></span></p>
+            <p class="caption" aria-live="polite"><span class="text"></span></p>
             <div class="pill">
-              <button class="icon" data-act="restart" aria-label="처음으로" title="처음으로">${icon('restart')}</button>
-              <button class="icon" data-act="prev" aria-label="이전 단계" title="이전 단계 (←)">${icon('prev')}</button>
-              <button class="icon play" data-act="play" aria-label="재생" title="재생 (스페이스)">${icon('play')}</button>
-              <button class="icon" data-act="next" aria-label="다음 단계" title="다음 단계 (→)">${icon('next')}</button>
-              <div class="segs" role="slider" aria-label="진행" tabindex="0"></div>
+              <div class="pg">
+                <button class="icon" data-act="play" aria-label="재생" title="끝까지 재생 (스페이스)">${icon('play')}</button>
+                <div class="segs" role="slider" aria-label="단계" tabindex="0"></div>
+                <span class="count"></span>
+              </div>
+              <div class="nav">
+                <button class="icon" data-act="prev" aria-label="이전 단계" title="이전 단계 (←)">${icon('prev')}</button>
+                <button class="lbl" data-act="replay" aria-label="다시 보기" title="이 단계 다시 보기 (R)">${icon('replay')}<span>다시 보기</span></button>
+                <button class="lbl primary" data-act="next" aria-label="다음 단계" title="다음 단계 (→)"><span>다음</span>${icon('next')}</button>
+              </div>
             </div>
           </div>
           <div class="dock-side"></div>
@@ -62,8 +75,10 @@ export class Viewer {
     this.root = host.querySelector('.viewer')!;
     this.view = new StageView(host.querySelector('svg.stage') as unknown as SVGSVGElement);
     this.caption = host.querySelector('.caption')!;
+    this.count = host.querySelector('.count')!;
     this.segs = host.querySelector('.segs')!;
     this.playBtn = host.querySelector('[data-act="play"]')!;
+    this.nextBtn = host.querySelector('[data-act="next"]')!;
     this.legendBtn = host.querySelector('.legend-btn')!;
     this.legendPop = host.querySelector('.legend-pop')!;
     this.legendBtn.addEventListener('click', (e) => {
@@ -97,11 +112,13 @@ export class Viewer {
     });
 
     host.querySelectorAll<HTMLButtonElement>('[data-act]').forEach((b) =>
-      b.addEventListener('click', () => {
+      b.addEventListener('click', (e) => {
         const p = this.player;
-        ({ restart: () => p.restart(), prev: () => p.prev(), next: () => p.next(), play: () => p.toggle() })[
-          b.dataset.act as 'restart'
+        ({ play: () => p.toggle(), prev: () => p.prev(), replay: () => p.replay(), next: () => p.next() })[
+          b.dataset.act as 'play'
         ]();
+        // After a mouse press, keys go back to the page (Space plays and pauses, not "press again").
+        if (e.detail > 0) b.blur();
       }),
     );
     this.bindScrub();
@@ -157,7 +174,6 @@ export class Viewer {
 
   tick(dt: number, clock: number): void {
     this.player.speed = this.settings.speed;
-    this.player.continuous = this.settings.continuous;
     this.player.tick(dt);
     if (!this.tl) return;
     const m = this.settings.motion;
@@ -167,7 +183,7 @@ export class Viewer {
 
   /** Draw immediately at a position (tests, scrubbing while paused). */
   seek(k: number, t: number): void {
-    this.player.seek(k, t, false);
+    this.player.seek(k, t);
     if (this.tl) this.view.draw(this.player.k, this.player.t, { lens: this.settings.lens, clock: 0, motion: false });
     this.paintSegs();
   }
@@ -218,26 +234,36 @@ export class Viewer {
     const stop = () => (dragging = false);
     this.segs.addEventListener('pointerup', stop);
     this.segs.addEventListener('pointercancel', stop);
-    this.segs.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight') this.player.next();
-      if (e.key === 'ArrowLeft') this.player.prev();
-    });
   }
 
   private update(): void {
     const p = this.player;
     const step = this.tl?.steps[p.k];
-    const count = this.caption.querySelector('.count')!;
     const text = this.caption.querySelector('.text')!;
-    count.textContent = step ? `${p.k + 1} / ${p.n}` : '';
+    this.count.textContent = step ? `${p.k + 1} / ${p.n}` : '';
     text.textContent = step ? step.text : (this.tl?.title ?? '');
-    const name = p.playing ? 'pause' : p.atEnd ? this.endIcon : 'play';
-    if (this.playBtn.dataset.icon !== name) {
-      this.playBtn.dataset.icon = name;
-      this.playBtn.innerHTML = icon(name);
-      const label = { pause: '멈춤', play: '재생', replay: '다시 재생', nextChapter: '다음 장' }[name];
-      this.playBtn.setAttribute('aria-label', label);
-      this.playBtn.title = label;
+    this.segs.setAttribute('aria-valuetext', step ? `${p.n}단계 중 ${p.k + 1}단계` : '');
+
+    // Play and pause: one button, one job.
+    const playing = p.playing;
+    if (this.playBtn.dataset.state !== String(playing)) {
+      this.playBtn.dataset.state = String(playing);
+      this.playBtn.innerHTML = icon(playing ? 'pause' : 'play');
+      this.playBtn.setAttribute('aria-label', playing ? '멈춤' : '재생');
+      this.playBtn.title = playing ? '멈춤 (스페이스)' : '끝까지 재생 (스페이스)';
+    }
+
+    // Forward: the next step, and on the last step whatever comes after the scene.
+    const end = p.onLast ? this.endAction() : null;
+    const key = end ?? 'next';
+    if (this.nextBtn.dataset.state !== key) {
+      this.nextBtn.dataset.state = key;
+      const v = end ? END[end] : { icon: 'next', text: '다음', title: '다음 단계 (→)' };
+      // An arrow that points back goes before the words, one that points ahead after them.
+      this.nextBtn.innerHTML = end === 'restart' ? `${icon(v.icon)}<span>${v.text}</span>` : `<span>${v.text}</span>${icon(v.icon)}`;
+      this.nextBtn.setAttribute('aria-label', end ? v.text : '다음 단계');
+      this.nextBtn.title = v.title;
+      this.nextBtn.classList.toggle('end', !!end);
     }
     this.paintSegs();
   }

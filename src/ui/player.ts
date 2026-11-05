@@ -12,6 +12,15 @@ export class Player {
   private lastK = -1;
   onStepEnter: ((k: number) => void) | null = null;
 
+  unload(): void {
+    this.tl = null;
+    this.k = 0;
+    this.t = 0;
+    this.playing = false;
+    this.lastK = -1;
+    this.emit();
+  }
+
   load(tl: Timeline): void {
     this.tl = tl;
     this.k = 0;
@@ -41,11 +50,18 @@ export class Player {
     this.emit();
   }
 
+  /** Called when play is pressed at the very end; return true if handled (e.g. next chapter). */
+  onEndPlay: (() => boolean) | null = null;
+
+  get atEnd(): boolean {
+    return this.n > 0 && this.k >= this.n - 1 && this.t >= 1;
+  }
+
   play(): void {
     if (!this.n) return;
     if (this.t >= 1) {
       if (this.k < this.n - 1) this.seek(this.k + 1, 0, true);
-      else this.seek(0, 0, true);
+      else if (!this.onEndPlay?.()) this.seek(0, 0, true);
       return;
     }
     this.playing = true;

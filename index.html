@@ -2,66 +2,75 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content="AI가 짧은 대본만 쓰면 화학 반응과 물질 현상을 원자·전자 수준으로 그려 주는 웹앱" />
-    <title>chemvis 화학 반응 시각화</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='12' cy='17' r='8' fill='%23e03131'/%3E%3Ccircle cx='24' cy='10' r='5' fill='%23ddd' stroke='%23999'/%3E%3Ccircle cx='24' cy='24' r='5' fill='%23ddd' stroke='%23999'/%3E%3C/svg%3E" />
+    <title>chemvis</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='13' cy='17' r='8' fill='%23e03131'/%3E%3Ccircle cx='24' cy='9' r='4.5' fill='%23eee' stroke='%23999'/%3E%3Ccircle cx='24' cy='25' r='4.5' fill='%23eee' stroke='%23999'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   </head>
   <body>
-    <header class="top">
-      <a class="brand" href="#/">chemvis</a>
-      <nav class="topnav">
-        <a href="#/" data-nav="tutorial">튜토리얼</a>
-        <a href="#/edit" data-nav="edit">직접 쓰기</a>
-        <a href="./ai-guide.txt" target="_blank" rel="noopener">AI 안내서</a>
-      </nav>
-      <button id="btn-script-toggle" class="script-toggle" aria-controls="script-panel" aria-pressed="false">대본 숨기기</button>
+    <header class="bar">
+      <div class="brand"><span class="logo">chemvis</span><span class="scene-title" id="scene-title"></span></div>
+      <div class="tools">
+        <button class="icon" id="btn-tutorial" aria-label="튜토리얼" title="튜토리얼"></button>
+        <button class="icon" id="btn-script" aria-label="대본" title="대본" aria-pressed="false"></button>
+        <div class="pop-wrap">
+          <button class="icon" id="btn-view" aria-label="보기 설정" title="보기 설정" aria-expanded="false"></button>
+          <div class="popover" id="view-pop" hidden></div>
+        </div>
+        <button class="icon" id="btn-link" aria-label="링크 복사" title="링크 복사"></button>
+      </div>
     </header>
-    <div class="layout" id="layout">
-      <aside class="chapters" id="chapters" aria-label="튜토리얼 목차"></aside>
-      <main class="viewer">
-        <section id="intro" class="intro"></section>
-        <div class="stage-wrap">
-          <svg id="stage" role="img" aria-label="장면"></svg>
-        </div>
-        <div class="narration" id="narration" aria-live="polite"></div>
-        <div class="controls">
-          <button id="btn-restart" title="처음으로" aria-label="처음으로">⏮</button>
-          <button id="btn-prev" title="이전 단계 (←)" aria-label="이전 단계">◀</button>
-          <button id="btn-play" class="primary" title="재생/멈춤 (스페이스)" aria-label="재생">▶ 재생</button>
-          <button id="btn-next" title="다음 단계 (→)" aria-label="다음 단계">▶▶</button>
-          <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="단계 안에서 위치" />
-          <select id="speed" aria-label="속도">
-            <option value="0.5">0.5배</option>
-            <option value="1" selected>1배</option>
-            <option value="1.5">1.5배</option>
-            <option value="2">2배</option>
-          </select>
-          <label class="check"><input id="continuous" type="checkbox" /> 이어서 재생</label>
-        </div>
-        <div class="chips" id="chips"></div>
-        <div class="lenses">
-          <span class="lens-title">보기</span>
-          <label class="check"><input id="lens-charge" type="checkbox" /> 전하</label>
-          <label class="check"><input id="lens-attract" type="checkbox" /> 분자 사이 인력</label>
-          <label class="check"><input id="lens-numbers" type="checkbox" /> 원자 번호</label>
-        </div>
-      </main>
-      <aside class="script" id="script-panel">
-        <div class="script-head">
-          <h2>대본</h2>
-          <div class="script-actions">
-            <button id="btn-edit">고쳐 보기</button>
-            <button id="btn-apply" class="primary" hidden>적용</button>
-            <button id="btn-link">링크 복사</button>
+
+    <main class="work">
+      <div class="viewer-host" id="main-viewer"></div>
+      <aside class="drawer" id="drawer" aria-label="대본" hidden>
+        <div class="drawer-head">
+          <span class="drawer-title">대본</span>
+          <div class="drawer-tools">
+            <button class="icon sm" id="btn-edit" aria-label="고치기" title="고치기"></button>
+            <button class="icon sm" id="btn-drawer-close" aria-label="닫기" title="닫기"></button>
           </div>
         </div>
-        <div id="script-view" class="script-view"></div>
-        <textarea id="script-edit" class="script-edit" spellcheck="false" hidden></textarea>
-        <ul id="diags" class="diags"></ul>
-        <section id="tryit" class="tryit"></section>
+        <div class="code" id="code-view"></div>
+        <textarea class="code-edit" id="code-edit" spellcheck="false" hidden></textarea>
+        <ul class="diags" id="diags"></ul>
       </aside>
-    </div>
+    </main>
+
+    <dialog class="tut" id="tutorial" aria-label="튜토리얼">
+      <div class="tut-shell">
+        <nav class="tut-nav" id="tut-nav"></nav>
+        <section class="tut-main">
+          <header class="tut-head">
+            <div class="tut-heading">
+              <p class="tut-part" id="tut-part"></p>
+              <h2 class="tut-title" id="tut-title"></h2>
+            </div>
+            <div class="tut-tools">
+              <div class="pop-wrap">
+                <button class="icon" id="tut-view" aria-label="보기 설정" title="보기 설정" aria-expanded="false"></button>
+                <div class="popover" id="tut-view-pop" hidden></div>
+              </div>
+              <button class="icon" id="tut-script" aria-label="대본" title="대본" aria-pressed="false"></button>
+              <button class="icon" id="tut-open" aria-label="작업 공간에서 고쳐 보기" title="작업 공간에서 고쳐 보기"></button>
+              <button class="icon" id="tut-close" aria-label="닫기" title="닫기 (Esc)"></button>
+            </div>
+          </header>
+          <div class="tut-intro" id="tut-intro"></div>
+          <div class="tut-body">
+            <div class="viewer-host" id="tut-viewer"></div>
+            <aside class="tut-code" id="tut-code" hidden>
+              <div class="code" id="tut-code-view"></div>
+              <p class="tryit" id="tut-tryit"></p>
+            </aside>
+          </div>
+        </section>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

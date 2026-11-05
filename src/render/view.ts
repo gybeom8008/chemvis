@@ -81,6 +81,15 @@ export class StageView {
     this.dyn = svg.querySelector('.dyn')!;
   }
 
+  clear(): void {
+    this.tl = null;
+    this.boxes = [];
+    this.cam = null;
+    this.notePlace.clear();
+    this.bg.innerHTML = '';
+    this.dyn.innerHTML = '';
+  }
+
   setTimeline(tl: Timeline): void {
     this.tl = tl;
     const st = tl.stage;
@@ -148,9 +157,26 @@ export class StageView {
     };
   }
 
+  /** Stretch a box to the element's shape; if it is wider/taller than the stage, centre the stage in it. */
+  private fitToElement(b: Box): Box {
+    const st = this.tl!.stage;
+    const ew = this.svg.clientWidth;
+    const eh = this.svg.clientHeight;
+    if (!ew || !eh) return b;
+    const aspect = ew / eh;
+    let { w, h } = b;
+    if (w / h < aspect) w = h * aspect;
+    else h = w / aspect;
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    const x = w >= st.width ? (st.width - w) / 2 : clamp(cx - w / 2, 0, st.width - w);
+    const y = h >= st.height ? (st.height - h) / 2 : clamp(cy - h / 2, 0, st.height - h);
+    return { x, y, w, h };
+  }
+
   private updateCamera(k: number, dt: number): Box {
     const st = this.tl!.stage;
-    const target = this.boxes[k] ?? { x: 0, y: 0, w: st.width, h: st.height };
+    const target = this.fitToElement(this.boxes[k] ?? { x: 0, y: 0, w: st.width, h: st.height });
     if (!this.cam || dt <= 0) this.cam = { ...target };
     else {
       const a = 1 - Math.exp(-dt * 3.2);

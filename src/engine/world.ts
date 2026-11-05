@@ -55,6 +55,8 @@ export interface Lens {
   attract: boolean;
   numbers: boolean;
   oxidation: boolean;
+  /** Textbook curved arrows over the moving electrons. */
+  arrows: boolean;
 }
 
 export interface World {
@@ -96,7 +98,7 @@ export function emptyWorld(): World {
     temp: {},
     names: new Map(),
     crystals: new Map(),
-    lens: { charge: true, attract: false, numbers: false, oxidation: false },
+    lens: { charge: true, attract: false, numbers: false, oxidation: false, arrows: false },
     counter: 0,
     plate: {},
     proteins: [],

@@ -61,6 +61,12 @@ export interface CompileResult {
 
 class ScriptError extends Error {}
 
+/**
+ * The change window of a reaction step: what will change is marked until b0, everything changes
+ * together until b1 (electrons travel, bonds grow and shrink, atoms glide), and the result holds after.
+ */
+const CHANGE = { b0: 0.18, b1: 0.86, c0: 0.18, c1: 0.86 };
+
 const STEP_BASE = 2.6;
 const OP_DURATION: Record<string, number> = {
   charge: 4.6,
@@ -265,14 +271,15 @@ class Ctx {
 
   lens(cmd: Cmd): void {
     const [name, val] = cmd.args;
-    const map: Record<string, 'charge' | 'attract' | 'numbers' | 'oxidation'> = {
+    const map: Record<string, 'charge' | 'attract' | 'numbers' | 'oxidation' | 'arrows'> = {
       charge: 'charge',
       attract: 'attract',
       numbers: 'numbers',
       oxidation: 'oxidation',
+      arrows: 'arrows',
     };
     const key = map[name];
-    if (!key) this.fail(`렌즈 '${name}'은(는) 없어요. 쓸 수 있는 렌즈: charge, attract, numbers, oxidation`);
+    if (!key) this.fail(`렌즈 '${name}'은(는) 없어요. 쓸 수 있는 렌즈: charge, attract, numbers, oxidation, arrows`);
     if (val !== 'on' && val !== 'off') this.fail('렌즈는 on 또는 off로 정해 주세요. 예: lens attract on');
     this.w.lens[key] = val === 'on';
     if (this.anim) this.anim.lens = { ...(this.anim.lens ?? {}), [key]: val === 'on' };
@@ -943,7 +950,15 @@ class Ctx {
     if (dist(add(mm, side), cen) < dist(add(mm, scale(side, -1)), cen)) side = scale(side, -1);
     const bow = Math.max(30, dist(p0, p1) * 0.5);
     const c = add(mm, scale(side, bow));
-    const arrow: ArrowAnim = { kind: 'pair', p0, c, p1, line: this.line };
+    const arrow: ArrowAnim = {
+      kind: 'pair',
+      p0,
+      c,
+      p1,
+      line: this.line,
+      src: { kind: src.kind === 'lp' ? 'lp' : 'bond', a: src.a, ...(src.b ? { b: src.b } : {}) },
+      dst: { kind: dst.kind === 'bond' ? 'bond' : 'atom', a: dst.a, ...(dst.b ? { b: dst.b } : {}) },
+    };
     this.A.arrows.push(arrow);
 
     // Topology: remove from source (both in mid and final), add to destination (final only).
@@ -963,7 +978,7 @@ class Ctx {
       else w.bonds.set(k, { a: dst.a, b: dst.b!, order: 1, ...(dative && src.kind === 'lp' ? { dative: src.a } : {}) });
     }
     for (const id of [src.a, src.b, dst.a, dst.b]) if (id) this.touched.add(id);
-    this.A.phase = { b0: 0.22, b1: 0.56, c0: 0.56 };
+    this.A.phase = { ...CHANGE };
     this.focus([...this.touched]);
   }
 
@@ -1127,7 +1142,15 @@ class Ctx {
       if (same % 2 === 1) side = scale(side, -1);
     }
     const bow = Math.max(bondSide ? 22 : 30, dist(p0, p1) * 0.45) * (1 + 0.3 * Math.floor(same / 2));
-    this.A.arrows.push({ kind: 'single', p0, c: add(mm, scale(side, bow)), p1, line: this.line });
+    this.A.arrows.push({
+      kind: 'single',
+      p0,
+      c: add(mm, scale(side, bow)),
+      p1,
+      line: this.line,
+      src: { kind: src.kind, a: src.a, ...(src.b ? { b: src.b } : {}) },
+      dst: { kind: dst.kind === 'bond' ? 'bond' : 'atom', a: dst.a, ...(dst.b ? { b: dst.b } : {}) },
+    });
 
     // Electron bookkeeping: take one from the source (mid and final), give one to the destination.
     const takeOne = (world: World, inFlight: boolean) => {
@@ -1167,7 +1190,7 @@ class Ctx {
       else w.bonds.set(k, { a: dst.a, b: dst.b!, order: 0.5 });
     }
     for (const id of [src.a, src.b, dst.a, dst.b]) if (id) this.touched.add(id);
-    this.A.phase = { b0: 0.22, b1: 0.56, c0: 0.56 };
+    this.A.phase = { ...CHANGE };
     this.focus([...this.touched]);
   }
 
@@ -1891,8 +1914,9 @@ class Ctx {
     }
     const wire = this.stage.wire!;
     this.A.wires.push({ path: charging ? [...wire].reverse() : wire, count: n, t0: 0.1, t1: 0.85 });
-    const sw = charging ? 0.9 : 0.08;
-    this.A.phase = { b0: sw, b1: sw, c0: 0 };
+    // The lithium gains its electron as it arrives (charging) or gives it up as it leaves (discharging).
+    const sw = charging ? 0.9 : 0.1;
+    this.A.phase = { b0: sw - 0.1, b1: sw, c0: 0 };
   }
 
   batteryMode: string | null = null;
@@ -2421,8 +2445,8 @@ class Ctx {
     const water = component(this.w, oh.id);
     this.drift.push({ ids: water, from: lerpV(this.w.atoms.get(A)!, this.w.atoms.get(B)!, 0.5) });
     this.focus([A, B, ...water]);
-    // Bonds switch a little into the step, then the new molecule settles and the water drifts off.
-    this.A.phase = { b0: 0.3, b1: 0.3, c0: 0.3 };
+    // The old bonds shrink and the new ones grow while the pieces move into place and the water leaves.
+    this.A.phase = { ...CHANGE };
   }
 
   /** hydrolysis g1.C2~g2.N [with w] : a water molecule splits the bond: OH goes to the first atom, H to the second. */
@@ -2464,7 +2488,7 @@ class Ctx {
     }
     for (const id of [A, B, O.id, hToB.id]) this.touched.add(id);
     this.focus([A, B, O.id, ...Hs.map((h) => h.id)]);
-    this.A.phase = { b0: 0.3, b1: 0.3, c0: 0.3 };
+    this.A.phase = { ...CHANGE };
   }
 
   // ------------------------------------------------------------ ops: membrane
@@ -2855,8 +2879,18 @@ class Ctx {
     resolveOverlaps(this, new Set(A.focus));
     keepInside(this);
 
-    // Atoms that moved without an explicit path glide over the last part of the step.
+    // Light comes first: what it sets off starts only once it has been absorbed.
+    if (A.phase && A.photons.length) {
+      const hit = Math.max(...A.photons.map((p) => p.t1)) + 0.03;
+      if (A.phase.b0 < hit) {
+        const len = Math.max(0.4, (A.phase.b1 - A.phase.b0) * 0.85);
+        A.phase = { b0: hit, b1: Math.min(0.95, hit + len), c0: Math.max(A.phase.c0, hit), c1: Math.min(0.95, hit + len) };
+      }
+    }
+    // Atoms that moved without an explicit path glide inside the change window, together with the
+    // electrons and bonds that make them move.
     const c0 = A.phase ? A.phase.c0 : 0;
+    const c1 = A.phase?.c1 ?? 1;
     for (const [id, at] of this.w.atoms) {
       const b = before.atoms.get(id);
       const tr = A.tracks.get(id);
@@ -2871,7 +2905,8 @@ class Ctx {
       if (Math.abs(b.x - at.x) > 0.5 || Math.abs(b.y - at.y) > 0.5) {
         A.tracks.set(id, [
           { t: c0, x: b.x, y: b.y },
-          { t: 1, x: at.x, y: at.y, ease: true },
+          { t: c1, x: at.x, y: at.y, ease: true },
+          { t: 1, x: at.x, y: at.y },
         ]);
       }
     }

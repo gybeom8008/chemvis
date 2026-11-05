@@ -522,6 +522,10 @@ code {
   color: var(--ink-2);
 }
 
+.legend-pop li span {
+  word-break: keep-all;
+}
+
 .legend-pop .lg-sw {
   flex: none;
   overflow: visible;
@@ -1135,12 +1139,26 @@ code {
   background: radial-gradient(circle, var(--lp) 1.8px, transparent 2px) 0 0 / 6px 4px repeat-x;
 }
 
+/* A moving electron pair: two electrons at the tip of the bond they are making. */
 .g-arrow {
-  width: 18px;
-  height: 10px;
-  border: 5px double var(--electron);
-  border-bottom: 0;
-  border-radius: 10px 10px 0 0;
+  position: relative;
+  width: 16px;
+  height: 3px;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: var(--electron);
+}
+
+.g-arrow::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: -3.5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--electron);
+  box-shadow: 0 5px 0 var(--electron);
 }
 
 .g-charge {
@@ -1259,23 +1277,24 @@ code {
   opacity: 0.8;
 }
 
-/* half-headed (fishhook) arrow */
+/* One moving electron: a single electron at the tip of the half bond it is making. */
 .g-hook {
   position: relative;
-  width: 18px;
-  height: 10px;
-  border: 2px solid var(--electron);
-  border-bottom: 0;
-  border-radius: 10px 10px 0 0;
+  width: 16px;
+  height: 0;
+  margin-right: 6px;
+  border-top: 2px dashed var(--electron);
 }
 
 .g-hook::after {
   content: '';
   position: absolute;
-  right: -5px;
-  bottom: -2px;
-  border-left: 5px solid transparent;
-  border-top: 6px solid var(--electron);
+  right: -6px;
+  top: -4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--electron);
 }
 
 .g-e {
@@ -1588,6 +1607,19 @@ code {
   stroke-width: 2;
   stroke-dasharray: 3 4;
 }
+/* The part of a bond that moving electrons are making or leaving: the colour of electrons. */
+.bond.hot {
+  stroke: var(--electron);
+}
+/* A bond about to break or being broken in a net reaction (no electrons drawn). */
+.bond.brk {
+  stroke: var(--focus);
+}
+/* Electrons about to move, marked where they sit. */
+.e.cue {
+  stroke-width: 1;
+  filter: drop-shadow(0 0 2px var(--electron));
+}
 .atom {
   stroke: rgba(0, 0, 0, 0.32);
   stroke-width: 1;
@@ -1708,7 +1740,6 @@ code {
   fill: none;
   stroke: var(--focus);
   stroke-width: 3;
-  opacity: 0.9;
 }
 .note line {
   stroke: var(--note-line);

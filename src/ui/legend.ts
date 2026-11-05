@@ -33,10 +33,7 @@ const qbNormal = (a: P, c: P, b: P, u: number): P => {
 };
 const f = (n: number) => n.toFixed(1);
 
-/**
- * Arrow swatch as on the stage: an electron pair on two lines with a full head, one electron
- * on one line with a half head. The electrons wait at the tail and ride their lines on hover.
- */
+/** Textbook curved arrow (shown on the stage only with the lens): two lines and a full head, or one line and a half head. */
 function arrowSwatch(pair: boolean): string {
   const a = { x: 4, y: 18 };
   const c = { x: 15, y: 0 };
@@ -59,13 +56,37 @@ function arrowSwatch(pair: boolean): string {
     ? `${f(tip.x)},${f(tip.y)} ${f(base.x + nn.x * 7.5)},${f(base.y + nn.y * 7.5)} ${f(base.x - nn.x * 7.5)},${f(base.y - nn.y * 7.5)}`
     : `${f(tip.x)},${f(tip.y)} ${f(base.x + nn.x * 6)},${f(base.y + nn.y * 6)} ${f(base.x)},${f(base.y)}`;
   svg += `<polygon points="${head}"/></g>`;
-  for (const o of offs) {
-    const pts = lane(o);
-    const s0 = pts[0];
-    const rel = pts.map((q, i) => `${i ? 'L' : 'M'}${f(q.x - s0.x)},${f(q.y - s0.y)}`).join(' ');
-    svg += `<circle class="e fly" cx="0" cy="0" r="2.8" transform="translate(${f(s0.x)},${f(s0.y)})"><animateMotion ${loop(1.5)} path="${rel}" keyTimes="0;0.75;1" keyPoints="0;1;1" calcMode="linear"/></circle>`;
+  return sw(svg);
+}
+
+/**
+ * Moving electrons as on the stage: the electrons light up on the left atom, travel to the
+ * right one with the bond line growing behind them, and the line becomes an ordinary bond.
+ * A single electron goes halfway and leaves half a bond.
+ */
+function moveSwatch(pair: boolean): string {
+  const anim = (attr: string, values: string, keyTimes: string) => `<animate attributeName="${attr}" values="${values}" keyTimes="${keyTimes}" ${loop(2.2)}/>`;
+  const end = pair ? 27 : 18;
+  let svg = `<circle class="lg-dot" cx="5" cy="11" r="4.5"/><circle class="lg-dot" cx="31" cy="11" r="4.5"/>`;
+  svg += `<line class="bond hot${pair ? '' : ' half'}" x1="5" y1="11" x2="9" y2="11">${anim('x2', `9;9;${end};${end}`, '0;0.2;0.75;1')}</line>`;
+  if (pair) svg += `<line class="bond" x1="5" y1="11" x2="27" y2="11" opacity="0">${anim('opacity', '0;0;1;1', '0;0.7;0.85;1')}</line>`;
+  const dotsAt = pair ? [8.2, 13.8] : [11];
+  for (const y of dotsAt) {
+    svg += `<circle class="e fly" cx="10" cy="${y}" r="2.6">${anim('cx', `10;10;${end - (pair ? 1 : 0)};${end - (pair ? 1 : 0)}`, '0;0.2;0.75;1')}${
+      pair ? anim('opacity', '1;1;1;0;0', '0;0.2;0.72;0.85;1') : ''
+    }</circle>`;
   }
   return sw(svg);
+}
+
+/** A bond broken in a net reaction (electrons not drawn): it splits in the middle and shrinks back into both atoms. */
+function breakSwatch(): string {
+  const anim = (attr: string, values: string) => `<animate attributeName="${attr}" values="${values}" keyTimes="0;0.25;0.8;1" ${loop(2)}/>`;
+  return sw(
+    `<circle class="lg-dot" cx="5" cy="11" r="4.5"/><circle class="lg-dot" cx="31" cy="11" r="4.5"/>` +
+      `<line class="bond brk" x1="5" y1="11" x2="18" y2="11">${anim('x2', '18;18;6;6')}</line>` +
+      `<line class="bond brk" x1="31" y1="11" x2="18" y2="11">${anim('x2', '18;18;30;30')}</line>`,
+  );
 }
 
 const wavePts = () => {
@@ -91,8 +112,8 @@ const REAL: Item[] = [
   { key: 'single', label: '홑전자(짝이 없는 전자 1개)', svg: sw('<circle class="lp single" cx="18" cy="11" r="2.7"/>') },
   { key: 'charge', label: '전하', svg: sw('<g class="charge pos"><circle cx="18" cy="11" r="7.5"/><text x="18" y="11" dy="0.36em">+</text></g>') },
   { key: 'ox', label: '산화수', svg: sw('<text class="ox" x="18" y="11" dy="0.35em">+2</text>') },
-  { key: 'arrow', label: '전자쌍(전자 2개) 이동', svg: arrowSwatch(true) },
-  { key: 'hook', label: '전자 1개 이동', svg: arrowSwatch(false) },
+  { key: 'arrow', label: '교과서 화살표: 전자쌍(전자 2개) 이동', svg: arrowSwatch(true) },
+  { key: 'hook', label: '교과서 화살표: 전자 1개 이동', svg: arrowSwatch(false) },
   {
     key: 'e',
     label: '전자',
@@ -118,6 +139,9 @@ const REAL: Item[] = [
 ];
 
 const APP: Item[] = [
+  { key: 'move', label: '옮겨 가는 전자쌍과, 그 전자쌍이 만들거나 깨는 결합', svg: moveSwatch(true) },
+  { key: 'move1', label: '옮겨 가는 전자 1개와, 그 전자가 만들거나 깨는 결합', svg: moveSwatch(false) },
+  { key: 'brk', label: '깨지는 결합(전자의 움직임은 생략한 반응)', svg: breakSwatch() },
   { key: 'half', label: '반응 도중 전자가 1개만 남은 결합', svg: sw('<line class="bond half" x1="4" y1="11" x2="32" y2="11"/>') },
   { key: 'focus', label: '이번 단계에서 움직이는 것', svg: sw('<circle class="focus" cx="18" cy="11" r="7.5"/>') },
   {
@@ -187,10 +211,23 @@ function used(tl: Timeline | null, lens: Lens): Set<string> {
   }
   if (lensEver('oxidation')) on.add('ox');
   if (lensEver('attract')) on.add('attract');
+  const arrowsLens = lensEver('arrows');
   for (const s of tl.steps) {
-    for (const ar of s.arrows) on.add(ar.kind === 'pair' ? 'arrow' : 'hook');
-    if (s.arrows.some((ar) => ar.kind === 'single')) on.add('half');
-    if (s.arrows.length || s.wires.length) on.add('e');
+    for (const ar of s.arrows) {
+      if (ar.src && ar.dst) on.add(ar.kind === 'pair' ? 'move' : 'move1');
+      else on.add('e');
+      if (arrowsLens) on.add(ar.kind === 'pair' ? 'arrow' : 'hook');
+    }
+    if (s.arrows.some((ar) => ar.kind === 'single' && ar.src && ar.dst)) on.add('half');
+    if (s.wires.length) on.add('e');
+    // A bond broken without moving electrons drawn (a net reaction such as condensation).
+    if (!s.events.length) {
+      const carried = new Set(s.arrows.filter((ar) => ar.src?.kind === 'bond').map((ar) => [ar.src!.a, ar.src!.b].sort().join('|')));
+      for (const [k, b] of s.before.bonds) {
+        const after = s.after.bonds.get(k)?.order ?? 0;
+        if (after < b.order && !carried.has([b.a, b.b].sort().join('|'))) on.add('brk');
+      }
+    }
     if (s.focus.size) on.add('focus');
     if (s.trails.length) on.add('trail');
     if (s.photons.length) on.add('photon');

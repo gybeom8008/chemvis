@@ -284,3 +284,27 @@ test('phone: the legend button sits above the step bar, and electrons stay big e
     .poll(() => page.evaluate(() => document.querySelector('#main-viewer circle.wire-e')?.getBoundingClientRect().width ?? 0))
     .toBeGreaterThanOrEqual(7);
 });
+
+test('a reaction is one motion: electrons light up, then carry the bond line; textbook arrows only on request', async ({ page }) => {
+  await page.goto('./?still#/t/arrows');
+  const c = cv(page);
+  const v = page.locator('#tut-viewer');
+  // Before the change: the lone pair about to move is marked where it sits, nothing has moved yet.
+  await c.tut.seek(2, 0.1);
+  await expect(v.locator('circle.e.cue')).toHaveCount(2);
+  await expect(v.locator('line.bond.hot')).toHaveCount(0);
+  // During the change: the pair travels as the tip of the growing bond line; no separate arrow.
+  await c.tut.seek(2, 0.5);
+  await expect(v.locator('circle.e.fly')).toHaveCount(2);
+  await expect(v.locator('line.bond.hot')).toHaveCount(1);
+  await expect(v.locator('g.arrow')).toHaveCount(0);
+  // The textbook arrow can be laid over it from the view settings.
+  await page.locator('#tut-view').click();
+  await page.locator('#tut-view-pop [data-lens="arrows"]').check();
+  await c.tut.seek(2, 0.5);
+  await expect(v.locator('g.arrow')).toHaveCount(1);
+  // After: an ordinary bond, no moving electrons left.
+  await c.tut.seek(2, 1);
+  await expect(v.locator('circle.e.fly')).toHaveCount(0);
+  await expect(v.locator('line.bond.hot')).toHaveCount(0);
+});

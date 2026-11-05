@@ -298,3 +298,28 @@ step "ATP"
     expect(species(atp.after)).toEqual(expect.arrayContaining(['ATP', 'H2O']));
   });
 });
+
+describe('one change window per reaction step', () => {
+  it('electron moves know where they start and end, and atoms glide while they travel', () => {
+    const r = compile('stage solution\nmol n = NH3 at left\nmol h = H+ at right\nstep "a"\n  approach n.N h.H\nstep "b"\n  arrow n.N:lp -> n.N~h.H\n');
+    expect(r.errors).toEqual([]);
+    const st = r.timeline!.steps[1];
+    expect(st.arrows[0].src).toEqual({ kind: 'lp', a: 'n.N' });
+    expect(st.arrows[0].dst).toMatchObject({ kind: 'bond' });
+    const ph = st.phase!;
+    expect(ph.b0).toBeGreaterThan(0);
+    expect(ph.c1).toBe(ph.b1);
+    // The H moves inside the window, not after it.
+    const tr = st.tracks.get('h.H')!;
+    expect(tr[0].t).toBeCloseTo(ph.b0);
+    expect(tr.find((k) => k.ease)!.t).toBeCloseTo(ph.b1);
+  });
+
+  it('light comes first: the bond breaks only after the light is absorbed', () => {
+    const r = compile('stage gas\nmol c = Cl2 at center\nstep "a"\n  light c\n  hop c.Cl1~c.Cl2 -> c.Cl1\n  hop c.Cl1~c.Cl2 -> c.Cl2\n');
+    expect(r.errors).toEqual([]);
+    const st = r.timeline!.steps[0];
+    expect(st.phase!.b0).toBeGreaterThan(st.photons[0].t1);
+  });
+});
+

@@ -11,7 +11,18 @@ export interface Keyframe {
   ease?: boolean;
 }
 
-/** A curved electron arrow and the electrons travelling along it. */
+/** Where moving electrons start or end, when that is on atoms (lone pair, unpaired electron, bond, atom). */
+export interface ElectronEnd {
+  kind: 'lp' | 'e' | 'atom' | 'bond';
+  a: string;
+  b?: string;
+}
+
+/**
+ * Electrons moving in a step. With `src` and `dst` the electrons belong to atoms: the renderer
+ * moves them as the tip of the bond they leave or form. Without, they fly freely from p0 to p1
+ * (electrons going into or out of an electrode). p0/c/p1 also give the textbook curved arrow.
+ */
 export interface ArrowAnim {
   /** 'pair' = two electrons (full arrowhead), 'single' = one electron (fishhook). */
   kind: 'pair' | 'single';
@@ -19,6 +30,8 @@ export interface ArrowAnim {
   c: Vec;
   p1: Vec;
   line: number;
+  src?: ElectronEnd;
+  dst?: ElectronEnd;
 }
 
 export type NoteTarget =
@@ -62,8 +75,12 @@ export interface StepAnim {
   after: World;
   tracks: Map<string, Keyframe[]>;
   arrows: ArrowAnim[];
-  /** Phase boundaries when electron arrows are present. */
-  phase: { b0: number; b1: number; c0: number } | null;
+  /**
+   * The change window. Before b0 the things about to change are marked where they are; between
+   * b0 and b1 everything changes together (electrons travel, bonds grow or shrink, lone pairs and
+   * charges turn over, atoms glide from c0 to c1); after b1 the result holds.
+   */
+  phase: { b0: number; b1: number; c0: number; c1?: number } | null;
   notes: NoteAnim[];
   focus: Set<string>;
   trails: string[];

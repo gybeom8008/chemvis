@@ -298,4 +298,37 @@ step "염화수소(HCl)와 메틸 라디칼(CH3·)이 생겨요. 메틸 라디�
 `),
     tryIt: `<code>light c</code> 줄을 지워도 화면은 그려져요. 실제로는 빛이나 열이 있어야 Cl–Cl 결합이 깨져요.`,
   },
+  {
+    id: 'coordination',
+    part: 2,
+    title: '배위 결합: 착이온',
+    intro: `<p>배위 결합은 한 원자가 비공유 전자쌍을 통째로 내주어 만드는 결합이에요. 금속 이온과 물·암모니아 같은 분자 사이에 흔히 생기고, 그렇게 생긴 이온을 착이온이라고 해요.</p>
+<ul class="legend"><li><i class="g-dative"></i>배위 결합(화살촉 쪽이 전자쌍을 얻은 원자)</li></ul>`,
+    script: s(`
+scene "구리 이온과 암모니아가 착이온을 만들 때"
+stage solution
+crowd H2O in water 18
+mol c = Cu2+ at center
+mol n1 = NH3 at 320,310
+mol n2 = NH3 at 680,310
+mol n3 = NH3 at 500,130
+mol n4 = NH3 at 500,490
+
+step "구리 이온(Cu2+)은 다른 분자의 비공유 전자쌍과 결합할 수 있어요"
+  note c.Cu "Cu2+"
+step "암모니아 네 분자가 N의 비공유 전자쌍을 앞세워 다가가요"
+  approach n1.N c.Cu
+  approach n2.N c.Cu
+  approach n3.N c.Cu
+  approach n4.N c.Cu
+step "N의 비공유 전자쌍이 N과 Cu 사이로 옮겨 가 배위 결합 네 개가 생겨요"
+  ligand n1.N -> c.Cu
+  ligand n2.N -> c.Cu
+  ligand n3.N -> c.Cu
+  ligand n4.N -> c.Cu
+step "착이온 [Cu(NH3)4]2+가 됐어요. 전자쌍은 모두 N에서 왔으니 전하 +2는 구리에 그대로 있어요"
+  note c.Cu "전하 +2"
+`),
+    tryIt: `<code>NH3</code>를 <code>H2O</code>로, <code>.N</code>을 모두 <code>.O</code>로 바꿔 보세요. 물 분자도 같은 방식으로 구리 이온과 결합해요.`,
+  },
 ];

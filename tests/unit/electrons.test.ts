@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../src/engine/compile';
-import { allComponents, formulaOf, oxidationState, type World } from '../../src/engine/world';
+import { allComponents, formalCharge, formulaOf, oxidationState, type World } from '../../src/engine/world';
 
 const species = (w: World) =>
   allComponents(w)
@@ -81,6 +81,39 @@ step "잘못"
   hop c.Cu -> z.Zn
 `);
     expect(r.errors[0].message).toContain('옮길 비결합 전자가 없어요');
+  });
+});
+
+describe('coordination bonds', () => {
+  it('Cu2+ + 4 NH3 → [Cu(NH3)4]2+ keeps +2 on copper and 0 on nitrogen', () => {
+    const r = compile(`
+stage solution
+mol c = Cu2+ at center
+mol n1 = NH3 at 320,310
+mol n2 = NH3 at 680,310
+step "결합"
+  ligand n1.N -> c.Cu
+  ligand n2.N -> c.Cu
+`);
+    expect(r.errors).toEqual([]);
+    const w = r.timeline!.steps[0].after;
+    expect(formalCharge(w, w.atoms.get('c.Cu')!)).toBe(2);
+    expect(formalCharge(w, w.atoms.get('n1.N')!)).toBe(0);
+    expect(oxidationState(w, w.atoms.get('c.Cu')!)).toBe(2);
+    expect(species(w)).toEqual(['CuH6N22+']);
+  });
+  it('unligand returns the pair to the ligand', () => {
+    const r = compile(`
+stage solution
+mol c = Cu2+ at center
+mol n = NH3 at 320,310
+step "결합"
+  ligand n.N -> c.Cu
+step "풀림"
+  unligand c.Cu~n.N
+`);
+    expect(r.errors).toEqual([]);
+    expect(species(r.timeline!.steps[1].after)).toEqual(['Cu2+', 'NH3']);
   });
 });
 

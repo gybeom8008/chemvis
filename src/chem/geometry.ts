@@ -181,9 +181,24 @@ function ringLayout(w: World, ids: string[], nb: (id: string) => { id: string; o
   });
   // Substituents on neighbouring ring atoms can bump into each other: nudge them apart,
   // keeping bond lengths and leaving the ring itself in place.
-  const pinned = new Set(rings.flat());
+  relaxLayout(w, ids, pos, nb, new Set(rings.flat()));
+  return pos;
+}
+
+/**
+ * Push apart atoms that are not bonded but sit too close, while springs keep
+ * bond lengths. Atoms in `pinned` stay put. Leaves well-spaced molecules untouched.
+ */
+function relaxLayout(
+  w: World,
+  ids: string[],
+  pos: Map<string, Vec>,
+  nb: (id: string) => { id: string; order: number }[],
+  pinned: Set<string>,
+): void {
+  const L = (a: string, b: string, order: number) => bondLength(w.atoms.get(a)!.el, w.atoms.get(b)!.el, order);
   const bonds: [string, string, number][] = [];
-  for (const id of ids) for (const n of nb(id)) if (id < n.id) bonds.push([id, n.id, L(id, n.id)]);
+  for (const id of ids) for (const n of nb(id)) if (id < n.id) bonds.push([id, n.id, L(id, n.id, n.order)]);
   const bonded = new Set(bonds.map(([a, b]) => `${a}|${b}`));
   const r = (id: string) => element(w.atoms.get(id)!.el).r;
   for (let iter = 0; iter < 120; iter++) {
@@ -225,7 +240,6 @@ function ringLayout(w: World, ids: string[], nb: (id: string) => { id: string; o
     }
     if (moved < 0.05) break;
   }
-  return pos;
 }
 
 function centroidOf(ps: Vec[]): Vec {
@@ -309,6 +323,7 @@ export function relativeLayout(w: World, ids: string[]): Map<string, Vec> {
   const c = Math.cos(rot);
   const s = Math.sin(rot);
   for (const [k, p] of pos) pos.set(k, { x: p.x * c - p.y * s, y: p.x * s + p.y * c });
+  if (ids.length >= 5) relaxLayout(w, ids, pos, nb, new Set([root]));
   return pos;
 }
 

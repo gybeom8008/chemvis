@@ -63,6 +63,8 @@ export const ELEMENTS: Record<string, ElementInfo> = {
   Ag: E('Ag', '은', 1, 5, '#b8b8b8', '#222', 16),
 };
 
+export const METALS = new Set(['Li', 'Na', 'K', 'Mg', 'Ca', 'Al', 'Zn', 'Cu', 'Ag']);
+
 /** Pauling electronegativity, for oxidation states. */
 export const ELECTRONEGATIVITY: Record<string, number> = {
   H: 2.2,
@@ -95,6 +97,8 @@ export function element(symbol: string): ElementInfo {
 
 /** Ideal drawn bond length between two atoms. */
 export function bondLength(a: string, b: string, order = 1): number {
-  const base = 12 + element(a).r + element(b).r;
+  let base = 12 + element(a).r + element(b).r;
+  // Bonds to metal ions (coordinate bonds) are noticeably longer, which also gives ligands room.
+  if (METALS.has(a) || METALS.has(b)) base *= 1.45;
   return order >= 2 ? base * 0.9 : base;
 }

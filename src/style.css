@@ -880,6 +880,24 @@ code {
   border-top: 2px dotted var(--trail);
 }
 
+.g-dative {
+  position: relative;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bond);
+}
+
+.g-dative::after {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: -4px;
+  border-top: 5.5px solid transparent;
+  border-bottom: 5.5px solid transparent;
+  border-left: 7px solid var(--bond);
+}
+
 /* half-headed (fishhook) arrow */
 .g-hook {
   position: relative;
@@ -1063,6 +1081,9 @@ code {
 }
 .bond.crowd {
   stroke-width: 2.4;
+}
+.dative {
+  fill: var(--bond);
 }
 /* A bond left with one electron while electrons are moving. */
 .bond.half {

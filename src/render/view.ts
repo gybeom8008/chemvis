@@ -348,6 +348,19 @@ export class StageView {
           `<line class="${cls}" x1="${f1(q0.x)}" y1="${f1(q0.y)}" x2="${f1(q1.x)}" y2="${f1(q1.y)}" opacity="${f1(op * fade)}"/>`,
         );
       });
+      // Coordinate bond: a small arrowhead pointing at the atom that gained the pair.
+      const dv = (b as { dative?: string }).dative;
+      if (dv) {
+        const from = dv === b.a ? pa : pb;
+        const to = dv === b.a ? pb : pa;
+        const u = norm(sub(to, from));
+        const tip = add(from, scale(sub(to, from), 0.62));
+        const base = sub(tip, scale(u, 8));
+        const pn = perp(u);
+        out.push(
+          `<polygon class="dative" points="${f1(tip.x)},${f1(tip.y)} ${f1(base.x + pn.x * 4.5)},${f1(base.y + pn.y * 4.5)} ${f1(base.x - pn.x * 4.5)},${f1(base.y - pn.y * 4.5)}" opacity="${f1(op * fade)}"/>`,
+        );
+      }
     }
 
     // Atoms.

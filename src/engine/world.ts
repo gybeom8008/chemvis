@@ -27,6 +27,8 @@ export interface Bond {
   a: string;
   b: string;
   order: number;
+  /** Coordinate (dative) bond: the atom that supplied both electrons. */
+  dative?: string;
 }
 
 export interface Site {
@@ -111,8 +113,18 @@ export function bondOrderSum(w: World, id: string): number {
   return neighbors(w, id).reduce((s, n) => s + n.order, 0);
 }
 
+/**
+ * Formal charge. A coordinate (dative) bond is counted the way chemists write complexes:
+ * its pair still belongs to the donor (as if a lone pair), so the metal keeps its ionic charge.
+ */
 export function formalCharge(w: World, atom: Atom): number {
-  return element(atom.el).valence - atom.lp * 2 - atom.rad - bondOrderSum(w, atom.id);
+  let bonded = 0;
+  for (const b of w.bonds.values()) {
+    if (b.order <= 0 || (b.a !== atom.id && b.b !== atom.id)) continue;
+    if (b.dative) bonded += b.dative === atom.id ? 2 : 0;
+    else bonded += b.order;
+  }
+  return element(atom.el).valence - atom.lp * 2 - atom.rad - bonded;
 }
 
 /** Electrons around an atom (bonding pairs count fully, as in the octet rule). */
@@ -246,11 +258,17 @@ export function formulaOf(w: World, ids: string[]): string {
 export function oxidationState(w: World, atom: Atom): number {
   const en = (el: string) => ELECTRONEGATIVITY[el] ?? 2;
   let owned = atom.lp * 2 + atom.rad;
-  for (const n of neighbors(w, atom.id)) {
-    const other = w.atoms.get(n.id)!;
+  for (const b of w.bonds.values()) {
+    if (b.order <= 0 || (b.a !== atom.id && b.b !== atom.id)) continue;
+    const other = w.atoms.get(b.a === atom.id ? b.b : b.a)!;
+    if (b.dative) {
+      // Ligand electrons stay with the ligand (ionic convention for complexes).
+      if (b.dative === atom.id) owned += 2;
+      continue;
+    }
     const d = en(atom.el) - en(other.el);
-    if (Math.abs(d) < 1e-9) owned += n.order;
-    else if (d > 0) owned += n.order * 2;
+    if (Math.abs(d) < 1e-9) owned += b.order;
+    else if (d > 0) owned += b.order * 2;
   }
   return element(atom.el).valence - owned;
 }

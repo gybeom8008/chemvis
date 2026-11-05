@@ -4,7 +4,7 @@
  * where; the compiler derives products, charges and drawing positions, and
  * checks the chemistry (electron counts, charge balance) as it goes.
  */
-import { bondLength, element } from '../chem/elements';
+import { METALS, bondLength, element } from '../chem/elements';
 import { domainsInWorld, lonePairDirsInWorld, placeNew, relayout } from '../chem/geometry';
 import { SmilesError } from '../chem/smiles';
 import { formulaCharge, lookupMolecule, normalizeFormula } from '../chem/library';
@@ -66,6 +66,8 @@ const OP_DURATION: Record<string, number> = {
   transfer: 2.8,
   hop: 3.0,
   light: 3.0,
+  ligand: 2.8,
+  unligand: 2.8,
   solvate: 2.8,
   diffuse: 4.5,
   spread: 4.5,
@@ -539,6 +541,10 @@ class Ctx {
         return this.transfer(a);
       case 'hop':
         return this.hop(a);
+      case 'ligand':
+        return this.ligand(a);
+      case 'unligand':
+        return this.unligand(a);
       case 'light':
         return this.light(a);
       case 'approach':
@@ -725,7 +731,7 @@ class Ctx {
     this.applyArrow(src, dst);
   }
 
-  applyArrow(src: ArrowEnd, dst: ArrowEnd): void {
+  applyArrow(src: ArrowEnd, dst: ArrowEnd, dative = false): void {
     const w = this.w;
     const before = this.A.before;
     const mid = this.ensureMid();
@@ -813,11 +819,32 @@ class Ctx {
       const k = bondKey(dst.a, dst.b!);
       const b = w.bonds.get(k);
       if (b) b.order += 1;
-      else w.bonds.set(k, { a: dst.a, b: dst.b!, order: 1 });
+      else w.bonds.set(k, { a: dst.a, b: dst.b!, order: 1, ...(dative && src.kind === 'lp' ? { dative: src.a } : {}) });
     }
     for (const id of [src.a, src.b, dst.a, dst.b]) if (id) this.touched.add(id);
     this.A.phase = { b0: 0.22, b1: 0.56, c0: 0.56 };
     this.focus([...this.touched]);
+  }
+
+  /** ligand n.N -> c.Cu : the ligand's lone pair forms a coordinate bond to the metal. */
+  ligand(a: string[]): void {
+    if (a.length !== 3 || (a[1] !== '->' && a[1] !== '→')) this.fail('배위 결합은 이렇게 적어요: ligand n.N -> c.Cu  (전자쌍을 내주는 원자 -> 금속)');
+    const donor = this.atom(a[0].replace(/:lp$/, ''));
+    const metal = this.atom(a[2]);
+    if (this.w.atoms.get(donor)!.lp <= 0) this.fail(`${a[0]}에는 내줄 비공유 전자쌍이 없어요.`);
+    if (getBond(this.w, donor, metal)) this.fail(`${a[0]}와 ${a[2]}는 이미 결합해 있어요.`);
+    this.applyArrow({ kind: 'lp', a: donor }, { kind: 'bond', a: donor, b: metal }, true);
+  }
+
+  /** unligand c.Cu~n.N : a coordinate bond breaks; the pair returns to the ligand. */
+  unligand(a: string[]): void {
+    const ref = a[0];
+    if (!ref || !ref.includes('~')) this.fail('배위 결합 풀기는 이렇게 적어요: unligand c.Cu~n.N');
+    const [x, y] = ref.split('~').map((r) => this.atom(r));
+    const b = getBond(this.w, x, y);
+    if (!b) this.fail(`${ref}는 결합해 있지 않아요.`);
+    const donor = b.dative ?? (METALS.has(this.w.atoms.get(x)!.el) ? y : x);
+    this.applyArrow({ kind: 'bond', a: x, b: y }, { kind: 'atom', a: donor });
   }
 
   /** transfer a.H to w.O : the acceptor's lone pair takes the H, the old bond's pair stays behind. */

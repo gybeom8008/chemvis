@@ -614,3 +614,40 @@ step "쓸 수 있는 리튬이 줄어든 만큼 전지가 저장할 수 있는 �
 `),
   tryIt: `<code>sei 1</code> 줄을 지우면 리튬이 하나도 갇히지 않아 아래쪽 '쓸 수 있는 리튬'이 10/10 그대로예요.`,
 });
+
+CHAPTERS.push({
+  id: 'mitochondria',
+  part: 3,
+  title: '미토콘드리아의 ATP 합성',
+  intro: `<p>미토콘드리아는 음식에서 얻은 에너지를 ATP라는 분자에 저장해요. 먼저 전자 전달계가 전자의 에너지로 H+를 막 사이 공간으로 옮겨 H+가 한쪽에 많아지게 해요. H+가 ATP 합성 효소의 통로를 지나 되돌아올 때, 그 흐름의 에너지로 ADP와 인산이 축합해 ATP가 돼요. 막 수송, 축합, 에너지 그래프를 한 장면에서 이어 써요.</p>
+<ul class="legend"><li><i class="g-energy"></i>오른쪽 위: 에너지 변화</li><li><i class="g-ad">Ad</i>아데노신 부분(줄여 그림)</li></ul>`,
+  script: s(`
+scene "미토콘드리아가 ATP를 만들 때"
+stage mito
+protein e = pump at 240
+protein a = synthase at 640
+crowd H2O in outside 10
+crowd H2O in inside 12
+place H+ in outside x3
+place H+ in inside x5
+mol d = ADP at 380,515
+mol p = H2PO4- at 700,520
+
+step "미토콘드리아 내막이에요. 위는 막 사이 공간, 아래는 기질이에요"
+  note e "전자 전달계"
+  note a "ATP 합성 효소"
+step "음식에서 온 전자가 전자 전달계를 지나며 내놓는 에너지로, H+가 기질에서 막 사이 공간으로 옮겨져요"
+  pump e 4 H+ out
+step "막 사이 공간에 H+가 많아졌어요. H+는 ATP 합성 효소의 통로를 지나 기질로 들어와요"
+  cross 3 H+ via a
+step "그 흐름의 에너지로 ATP 합성 효소가 ADP와 인산을 가까이 모아요"
+  approach d.O7 p.P
+step "ADP 끝의 O가 인산의 P와 결합하고, 인산의 -OH와 ADP의 H는 물 분자가 되어 떨어져 나와요(축합). ATP가 됐어요"
+  condensation p.P d.O7
+  energy +30 kJ/mol
+step "세포가 일할 때는 ATP가 가수분해되어 인산이 떨어져 나가며 이 에너지를 다시 내놓아요"
+  hydrolysis p.P~d.O7
+  energy -30
+`),
+  tryIt: `<code>pump e 4 H+ out</code>의 숫자를 바꿔 보세요. 막 사이 공간에 H+가 많을수록 ATP 합성 효소로 흘러드는 H+도 많아져요.`,
+});

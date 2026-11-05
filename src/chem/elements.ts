@@ -61,6 +61,8 @@ export const ELEMENTS: Record<string, ElementInfo> = {
   Zn: E('Zn', '아연', 2, 4, '#7d80b0', '#fff', 15),
   Cu: E('Cu', '구리', 2, 4, '#c88033', '#fff', 15),
   Ag: E('Ag', '은', 1, 5, '#b8b8b8', '#222', 16),
+  // Not an element: the adenosine part of ADP/ATP drawn as one ball, so the phosphates stay readable.
+  Ad: E('Ad', '아데노신 부분(줄여 그림)', 1, 2, '#748ffc', '#fff', 24),
 };
 
 export const METALS = new Set(['Li', 'Na', 'K', 'Mg', 'Ca', 'Al', 'Zn', 'Cu', 'Ag']);
@@ -87,6 +89,7 @@ export const ELECTRONEGATIVITY: Record<string, number> = {
   Zn: 1.65,
   Cu: 1.9,
   Ag: 1.93,
+  Ad: 2.55,
 };
 
 export function element(symbol: string): ElementInfo {

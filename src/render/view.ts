@@ -320,10 +320,16 @@ export class StageView {
       for (const p of after.proteins) {
         const y0 = mb.y0 - 22;
         const h = mb.y1 - mb.y0 + 44;
-        if (p.kind === 'channel') {
+        if (p.kind === 'channel' || p.kind === 'synthase') {
           // Two halves with a pore between them.
-          out.push(`<rect class="protein" x="${f1(p.x - 36)}" y="${f1(y0)}" width="26" height="${f1(h)}" rx="11"/>`);
-          out.push(`<rect class="protein" x="${f1(p.x + 10)}" y="${f1(y0)}" width="26" height="${f1(h)}" rx="11"/>`);
+          const cls = p.kind === 'synthase' ? 'protein synthase' : 'protein';
+          out.push(`<rect class="${cls}" x="${f1(p.x - 36)}" y="${f1(y0)}" width="26" height="${f1(h)}" rx="11"/>`);
+          out.push(`<rect class="${cls}" x="${f1(p.x + 10)}" y="${f1(y0)}" width="26" height="${f1(h)}" rx="11"/>`);
+          if (p.kind === 'synthase') {
+            // ATP synthase: a stalk and a round head on the inner side, where ATP is made.
+            out.push(`<rect class="${cls}" x="${f1(p.x - 7)}" y="${f1(y0 + h - 4)}" width="14" height="30" rx="5"/>`);
+            out.push(`<circle class="${cls} head" cx="${f1(p.x)}" cy="${f1(y0 + h + 52)}" r="34"/>`);
+          }
         } else {
           out.push(`<rect class="protein pump" x="${f1(p.x - 44)}" y="${f1(y0 - 6)}" width="88" height="${f1(h + 12)}" rx="22"/>`);
           out.push(`<line class="pore" x1="${f1(p.x)}" y1="${f1(y0)}" x2="${f1(p.x)}" y2="${f1(y0 + h)}"/>`);

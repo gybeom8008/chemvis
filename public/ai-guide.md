@@ -40,6 +40,7 @@ AI는 HTML·SVG를 직접 만들지 않고 이 대본만 쓴다. 배치, 그리�
 | `gas` | 기체 반응(라디칼, 평형 등) | `air`(전체), `left`, `center`, `right`, `top`, `bottom` |
 | `cell` | 전지(두 전극, 도선, 염다리) | `left`(산화 전극 쪽 용액), `right`(환원 전극 쪽 용액), `top`. 전극 이름은 `left`·`right` |
 | `membrane` | 세포막(인지질 이중층)과 막 단백질 | `outside`(위, 세포 밖), `inside`(아래, 세포 안), `membrane` |
+| `mito` | 미토콘드리아 내막(membrane과 같고 이름만 다름) | `outside`(위, 막 사이 공간), `inside`(아래, 기질), `membrane` |
 | `battery` | 리튬 이온 전지(흑연 음극, 분리막, 금속 산화물 양극, 바깥 도선) | `anode`(흑연), `cathode`(산화물), `electrolyte`, `left`·`right`(분리막 양쪽 전해질), `top` |
 
 ## 장면 준비 (첫 step 앞)
@@ -64,7 +65,8 @@ AI는 HTML·SVG를 직접 만들지 않고 이 대본만 쓴다. 배치, 그리�
 
 H2O, H3O+, OH-, NH3, NH4+, CH4, HCl, HF, HBr, HI, H2S, H+, Li+, Na+, K+, Mg2+, Ca2+, Al3+, F-, Cl-, Br-, I-, H2, O2, N2, F2, Cl2, Br2, I2, CO2.
 라디칼(홑전자 `·`): H·, Cl·, Br·, OH·, CH3·. 금속 원자와 이온: Li, Na, Zn, Zn2+, Cu, Cu2+, Ag, Ag+.
-더 큰 분자(이름으로 쓴다): Gly(글라이신), Ala(알라닌), CH3OH, C2H5OH, CH3COOH, CH3COO-, CH3Br, CH3Cl, C2H4, C6H6(벤젠), C6H12O6(포도당 고리형), H2CO3, HCO3-, CO32-(또는 CO3--), NO3-, H3PO4, H2PO4-, SO42-, H2O2, EC(에틸렌 카보네이트, 전지 전해질 용매).
+더 큰 분자(이름으로 쓴다): Gly(글라이신), Ala(알라닌), CH3OH, C2H5OH, CH3COOH, CH3COO-, CH3Br, CH3Cl, C2H4, C6H6(벤젠), C6H12O6(포도당 고리형), H2CO3, HCO3-, CO32-(또는 CO3--), NO3-, H3PO4, H2PO4-, SO42-, H2O2, EC(에틸렌 카보네이트, 전지 전해질 용매), ADP, ATP(아데노신 부분은 `Ad` 공 하나로 줄여 그린다. 인산 사슬은 그대로: ADP = `[Ad]OP(=O)([O-])OP(=O)([O-])O` → Ad, O1, P1, O2, O3, O4, P2, O5, O6, O7(끝 OH), H1).
+세포 에너지 장면 예: `condensation p.P d.O7`(인산 H2PO4- + ADP → ATP + 물), 되돌릴 때 `hydrolysis p.P~d.O7`.
 `Ca++`, `Ca+2`도 `Ca2+`로 읽고, `Cl.`, `Cl*`도 `Cl·`로 읽는다.
 
 **목록에 없는 분자는 SMILES로 쓴다**: `mol x = smiles:CC(=O)OC at center`.
@@ -99,7 +101,9 @@ H2O, H3O+, OH-, NH3, NH4+, CH4, HCl, HF, HBr, HI, H2S, H+, Li+, Na+, K+, Mg2+, C
 | 명령 | 화면 |
 |---|---|
 | `protein k = channel K+ at 330` | (첫 step 앞) x=330에 K+ 통로 단백질. `channel H2O`는 물 통로(아쿠아포린) |
-| `protein p = pump at 680` | (첫 step 앞) 펌프 단백질 |
+| `protein p = pump at 680` | (첫 step 앞) 펌프 단백질. 전자 전달계처럼 H+를 퍼 올리는 단백질도 이것으로 그린다 |
+| `protein a = synthase at 700` | (첫 step 앞) ATP 합성 효소: H+ 통로와 안쪽(기질 쪽) 머리 |
+| `cross 3 H+ via a` | 같은 통과를 3번 차례로 |
 | `cross K+ via k` | K+ 하나가 통로를 지나 반대쪽으로(화학식이면 그 입자가 더 많은 쪽에서 출발 = 확산). 수화 껍질은 입구에 남는다. `via` 없이 쓰면 막을 바로 통과(O2, CO2 같은 작은 분자) |
 | `pump p 3 Na+ out 2 K+ in` | 펌프로 능동 수송: 안쪽 Na+ 3개가 밖으로, 그다음 바깥 K+ 2개가 안으로 |
 | `osmosis 4` | 물 분자 4개가 용질이 적은 쪽에서 많은 쪽으로 건너간다(물 통로가 있으면 그곳으로). 4개 이상이면 반대로 가는 분자도 조금 그린다 |

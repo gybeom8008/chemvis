@@ -274,3 +274,27 @@ step "방전"
     expect(compile(`stage solution\nstep "x"\n  charge 1\n`).errors[0].message).toContain('battery');
   });
 });
+
+describe('mitochondria', () => {
+  it('H+ through ATP synthase, then ADP + phosphate condense into ATP', () => {
+    const r = compile(`
+stage mito
+protein a = synthase at 640
+place H+ in outside x3
+mol d = ADP at 380,515
+mol p = H2PO4- at 700,520
+step "H+"
+  cross 2 H+ via a
+step "ATP"
+  condensation p.P d.O7
+`);
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([]);
+    const [h, atp] = r.timeline!.steps;
+    const insideH = (w: World) => species(w).filter((f) => f === 'H+').length;
+    expect(insideH(h.before)).toBe(3);
+    const ys = [...h.after.atoms.values()].filter((x) => x.el === 'H' && !x.crowd && x.id.startsWith('H+')).map((x) => x.y);
+    expect(ys.filter((y) => y > 400).length).toBe(2);
+    expect(species(atp.after)).toEqual(expect.arrayContaining(['ATP', 'H2O']));
+  });
+});

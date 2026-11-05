@@ -9,7 +9,7 @@ import { domainsInWorld, lonePairDirsInWorld, placeNew, relayout } from '../chem
 import { SmilesError } from '../chem/smiles';
 import { formulaCharge, lookupMolecule, normalizeFormula } from '../chem/library';
 import { parse, type Cmd, type Diag } from '../dsl/parser';
-import { channelArcAtY, getStage, inRegion, randomInRegion, regionCenter, type Region, type StageDef } from '../stage/stages';
+import { STAGES, channelArcAtY, getStage, inRegion, randomInRegion, regionCenter, type Region, type StageDef } from '../stage/stages';
 import {
   add,
   angleOf,
@@ -120,7 +120,7 @@ export function compile(src: string): CompileResult {
   if (!stage) {
     ctx.errors.push({
       line: stageCmd?.line ?? 1,
-      message: `무대 '${stageName}'은(는) 없어요. 쓸 수 있는 무대: solution, interface, soil, gas`,
+      message: `무대 '${stageName}'은(는) 없어요. 쓸 수 있는 무대: ${Object.keys(STAGES).join(', ')}`,
     });
     return { timeline: null, errors: ctx.errors, warnings: ctx.warnings };
   }
@@ -2446,13 +2446,14 @@ class Ctx {
     this.needMembrane('protein');
     const a = cmd.args;
     const [name, eq, kind] = a;
-    if (eq !== '=' || !name || (kind !== 'channel' && kind !== 'pump')) {
-      this.fail('막 단백질은 이렇게 적어요: protein k = channel K+ at 330  /  protein p = pump at 680');
+    if (eq !== '=' || !name || (kind !== 'channel' && kind !== 'pump' && kind !== 'synthase')) {
+      this.fail('막 단백질은 이렇게 적어요: protein k = channel K+ at 330  /  protein p = pump at 680  /  protein a = synthase at 700');
     }
     const atI = a.indexOf('at');
     const x = atI >= 0 ? parseFloat(a[atI + 1]) : 500;
     if (!Number.isFinite(x)) this.fail('단백질 위치는 x 좌표 숫자로 적어 주세요. 예: at 330');
-    const carries = kind === 'channel' ? a[3] && a[3] !== 'at' ? normalizeFormula(a[3]) : undefined : undefined;
+    const carries =
+      kind === 'synthase' ? 'H+' : kind === 'channel' ? (a[3] && a[3] !== 'at' ? normalizeFormula(a[3]) : undefined) : undefined;
     if (this.w.proteins.some((p) => p.name === name)) this.fail(`이름 '${name}'은(는) 이미 썼어요.`);
     this.w.proteins.push({ name, kind, x: clamp(x, 60, this.stage.width - 60), carries });
   }
@@ -2498,6 +2499,16 @@ class Ctx {
   /** cross K+ via k : one particle passes through a channel to the other side (by default from the crowded side). */
   cross(a: string[]): void {
     this.needMembrane('cross');
+    // cross 3 H+ via a : the same crossing several times, one after another.
+    if (/^\d+$/.test(a[0] ?? '')) {
+      const n = clamp(parseInt(a[0], 10), 1, 8);
+      for (let i = 0; i < n; i++) this.crossOne(a.slice(1), i, n);
+      return;
+    }
+    this.crossOne(a, 0, 1);
+  }
+
+  crossOne(a: string[], i: number, n: number): void {
     const ref = a[0];
     if (!ref) this.fail('막 통과는 이렇게 적어요: cross K+ via k  (통로 없이 지나가는 작은 분자는 cross O2)');
     const viaI = a.indexOf('via');
@@ -2519,7 +2530,8 @@ class Ctx {
     const to = this.sideOf(c) === 'outside' ? 'inside' : 'outside';
     this.detach(comp); // the water shell stays at the mouth
     const path = this.crossPath(c, ch ? ch.x : c.x, to);
-    this.moveGroup(comp, c, path, 0, 0, 1);
+    const t0 = n > 1 ? (i / n) * 0.55 : 0;
+    this.moveGroup(comp, c, path, 0, t0, n > 1 ? t0 + 0.45 : 1);
     this.A.trails.push(anchorOf(this.w, comp));
     this.focusMol(comp);
   }
@@ -2775,7 +2787,8 @@ class Ctx {
             line: where,
             message: `${label(this.w, id)} 주위 전자가 ${e}개가 돼요(${info.name}은 최대 ${info.maxElectrons}개). 화살표를 다시 확인해 주세요.`,
           });
-        } else if (e > info.maxElectrons) {
+        } else if (e > info.maxElectrons && at.el !== 'P' && at.el !== 'S') {
+          // P and S in phosphates and sulfates are usually drawn with P=O / S=O, so that is not worth a note.
           this.warnings.push({ line: where, message: `${label(this.w, id)} 주위 전자가 ${e}개예요(옥텟 확장).` });
         }
       }
@@ -2807,6 +2820,7 @@ class Ctx {
     this.lastHopLine = 0;
     separateSolutes(this);
     resolveOverlaps(this, new Set(A.focus));
+    keepInside(this);
 
     // Atoms that moved without an explicit path glide over the last part of the step.
     const c0 = A.phase ? A.phase.c0 : 0;
@@ -3073,6 +3087,34 @@ function separateSolutes(ctx: Ctx): void {
       }
     }
     if (!moved) break;
+  }
+}
+
+/** Molecules that grew or moved past the stage edge (or into a membrane) come back to where they can be seen. */
+function keepInside(ctx: Ctx): void {
+  const w = ctx.w;
+  const st = ctx.stage;
+  const pinned = new Set<string>([...w.crystals.values()].flat());
+  for (const s of w.sites) if (s.occupant) pinned.add(s.occupant);
+  for (const c of allComponents(w)) {
+    if (c.some((x) => pinned.has(x) || w.atoms.get(x)!.sei || w.atoms.get(x)!.gone)) continue;
+    const ids = ctx.group(c);
+    const atoms = ids.map((x) => w.atoms.get(x)!);
+    const x0 = Math.min(...atoms.map((a) => a.x - element(a.el).r));
+    const x1 = Math.max(...atoms.map((a) => a.x + element(a.el).r));
+    const y0 = Math.min(...atoms.map((a) => a.y - element(a.el).r));
+    const y1 = Math.max(...atoms.map((a) => a.y + element(a.el).r));
+    const m = 14;
+    let dx = x0 < m ? m - x0 : x1 > st.width - m ? st.width - m - x1 : 0;
+    let dy = y0 < m ? m - y0 : y1 > st.height - m ? st.height - m - y1 : 0;
+    const mb = st.membrane;
+    if (mb && !atoms[0].crowd) {
+      const cy = (y0 + y1) / 2;
+      if (cy > (mb.y0 + mb.y1) / 2 && y0 + dy < mb.y1 + 10) dy = mb.y1 + 10 - y0;
+      if (cy <= (mb.y0 + mb.y1) / 2 && y1 + dy > mb.y0 - 10) dy = mb.y0 - 10 - y1;
+    }
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+    for (const a of atoms) shift(a, { x: dx, y: dy });
   }
 }
 

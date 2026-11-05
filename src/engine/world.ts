@@ -78,7 +78,8 @@ export interface World {
 
 export interface Protein {
   name: string;
-  kind: 'channel' | 'pump';
+  /** synthase = ATP synthase: an H+ channel with the head that makes ATP on the inner side. */
+  kind: 'channel' | 'pump' | 'synthase';
   x: number;
   /** What a channel lets through (formula), e.g. K+ or H2O. */
   carries?: string;

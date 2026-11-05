@@ -315,7 +315,8 @@ export function relativeLayout(w: World, ids: string[]): Map<string, Vec> {
         free.forEach((f, k) => {
           const p = add(here, fromAngle(f.a, l));
           let near = Infinity;
-          for (const q of pos.values()) near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y));
+          // The atom itself is the same distance from every slot, so it does not count.
+          for (const [qid, q] of pos) if (qid !== id) near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y));
           if (near > best + 1e-6) {
             best = near;
             pickIdx = k;
@@ -323,6 +324,18 @@ export function relativeLayout(w: World, ids: string[]): Map<string, Vec> {
         });
       }
       const slot = free.splice(pickIdx, 1)[0] ?? { a: 0, i: 0 };
+      // A bent atom (–O–, –S–) passing a chain on: bend whichever way is more open, so chains
+      // zigzag instead of curling back on themselves.
+      if (parent !== null && children.length === 1 && (branchSize.get(c.id) ?? 0) > 0) {
+        const mirror = 2 * inAngle - slot.a;
+        const room = (a: number) => {
+          const p = add(here, fromAngle(a, l));
+          let near = Infinity;
+          for (const [qid, q] of pos) if (qid !== id) near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y));
+          return near;
+        };
+        if (room(mirror) > room(slot.a) + 1e-6) slot.a = mirror;
+      }
       pos.set(c.id, add(here, fromAngle(slot.a, l)));
       queue.push({ id: c.id, parent: id, inAngle: slot.a + Math.PI });
     });

@@ -908,6 +908,20 @@ code {
   border-left: 7px solid var(--bond);
 }
 
+/* adenosine ball (ADP/ATP) */
+.g-ad {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #748ffc;
+  color: #fff;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
 /* SEI film blob */
 .g-sei {
   width: 16px;
@@ -1176,6 +1190,13 @@ code {
   stroke: #6741d9;
   stroke-width: 1.5;
   opacity: 0.85;
+}
+.protein.synthase {
+  fill: #ffa8a8;
+  stroke: #e03131;
+}
+.protein.synthase.head {
+  opacity: 0.7;
 }
 .protein.pump {
   fill: #63e6be;

@@ -128,6 +128,9 @@ const NAMED_SMILES: [string, string, string][] = [
   ['SO42-', '황산 이온', '[O-]S(=O)(=O)[O-]'],
   ['H2O2', '과산화수소', 'OO'],
   ['EC', '에틸렌 카보네이트(전해질 용매)', 'O=C1OCCO1'],
+  // ADP/ATP with the adenosine part drawn as one ball (Ad); the phosphate chain is complete.
+  ['ADP', 'ADP(아데노신 이인산)', '[Ad]OP(=O)([O-])OP(=O)([O-])O'],
+  ['ATP', 'ATP(아데노신 삼인산)', '[Ad]OP(=O)([O-])OP(=O)([O-])OP(=O)([O-])O'],
 ];
 
 export const LIBRARY: Map<string, MolDef> = new Map(DEFS.map((d) => [d.formula, d]));

@@ -416,15 +416,15 @@ function cell(): StageDef {
 
 // ---------------------------------------------------------------- cell membrane
 
-function membrane(): StageDef {
+function membrane(names = { top: '바깥(세포 밖)', bottom: '안쪽(세포 안)', name: 'membrane', label: '세포막' }): StageDef {
   const W = 1000;
   const H = 640;
   const Y0 = 272;
   const Y1 = 368;
   const regions: Record<string, Region> = {
-    outside: rect('outside', '바깥(세포 밖)', 20, 20, 960, Y0 - 44),
-    inside: rect('inside', '안쪽(세포 안)', 20, Y1 + 24, 960, H - Y1 - 44),
-    membrane: rect('membrane', '세포막', 20, Y0, 960, Y1 - Y0),
+    outside: rect('outside', names.top, 20, 20, 960, Y0 - 44),
+    inside: rect('inside', names.bottom, 20, Y1 + 24, 960, H - Y1 - 44),
+    membrane: rect('membrane', names.label, 20, Y0, 960, Y1 - Y0),
   };
   const background = () => {
     let s = `<rect x="8" y="8" width="${W - 16}" height="${Y0 - 4}" rx="18" class="bg-water"/>`;
@@ -441,13 +441,13 @@ function membrane(): StageDef {
         s += `<circle cx="${x}" cy="${hy}" r="8.5" class="head"/>`;
       }
     }
-    s += `<text x="30" y="46" class="bg-label">바깥(세포 밖)</text>`;
-    s += `<text x="30" y="${H - 26}" class="bg-label">안쪽(세포 안)</text>`;
+    s += `<text x="30" y="46" class="bg-label">${names.top}</text>`;
+    s += `<text x="30" y="${H - 26}" class="bg-label">${names.bottom}</text>`;
     return s;
   };
   return {
-    name: 'membrane',
-    label: '세포막',
+    name: names.name,
+    label: names.label,
     width: W,
     height: H,
     regions,
@@ -540,7 +540,19 @@ function battery(): StageDef {
   };
 }
 
-export const STAGES: Record<string, () => StageDef> = { solution, interface: iface, soil, gas, cell, membrane, battery };
+/** Mitochondrial inner membrane: the same band, between the intermembrane space and the matrix. */
+const mito = () => membrane({ top: '막 사이 공간', bottom: '기질(미토콘드리아 안쪽)', name: 'mito', label: '미토콘드리아 내막' });
+
+export const STAGES: Record<string, () => StageDef> = {
+  solution,
+  interface: iface,
+  soil,
+  gas,
+  cell,
+  membrane: () => membrane(),
+  mito,
+  battery,
+};
 
 export function getStage(name: string): StageDef | undefined {
   const f = STAGES[name];

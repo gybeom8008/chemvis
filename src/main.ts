@@ -210,7 +210,7 @@ function buildSettings(pop: HTMLElement): void {
     <label class="sw"><input type="checkbox" data-lens="charge"><span>전하</span></label>
     <label class="sw"><input type="checkbox" data-lens="attract"><span>분자 사이 인력</span></label>
     <label class="sw"><input type="checkbox" data-lens="oxidation"><span>산화수</span></label>
-    <label class="sw"><input type="checkbox" data-lens="numbers"><span>원자 번호</span></label>
+    <label class="sw"><input type="checkbox" data-lens="numbers"><span>원자 일련번호</span></label>
     <hr>
     <div class="speed" role="radiogroup" aria-label="속도">
       ${[0.5, 1, 1.5, 2].map((v) => `<button data-speed="${v}" role="radio">${v}×</button>`).join('')}
@@ -380,7 +380,7 @@ async function route(): Promise<void> {
       const src = await decodeHash(h);
       if (src) loadMain(src);
     } catch {
-      toast('링크에 든 대본을 읽지 못했어요');
+      toast('링크 속 대본을 읽지 못했어요');
     }
     return;
   }

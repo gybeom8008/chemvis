@@ -59,7 +59,7 @@ export function tokenize(src: string, line: number, errors: Diag[]): { words: st
         j++;
       }
       if (j >= src.length) {
-        errors.push({ line, message: '따옴표가 닫히지 않았어요.' });
+        errors.push({ line, message: '따옴표 짝이 맞지 않아요.' });
       }
       words.push(out);
       quoted.push(true);
@@ -90,13 +90,13 @@ export function parse(src: string): ScriptAst {
     if (words.length === 0) return;
     const op = quoted[0] ? '' : words[0].toLowerCase();
     if (!op) {
-      errors.push({ line, message: '줄이 명령어로 시작하지 않았어요.' });
+      errors.push({ line, message: '줄 맨 앞에 명령어가 없어요.' });
       return;
     }
     const cmd: Cmd = { line, op, args: words.slice(1), quoted: quoted.slice(1), text: raw.trim() };
     if (op === 'step') {
       if (cmd.args.length === 0) {
-        errors.push({ line, message: 'step 뒤에 설명 문장을 따옴표로 적어 주세요. 예: step "물 분자가 다가간다"' });
+        errors.push({ line, message: 'step 뒤에 설명 문장을 따옴표로 적어 주세요. 예: step "물 분자가 다가가요"' });
       }
       current = { line, text: cmd.args.join(' '), cmds: [], endLine: line };
       steps.push(current);

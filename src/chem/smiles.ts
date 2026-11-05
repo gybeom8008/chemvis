@@ -78,7 +78,7 @@ export function parseSmiles(src: string): MolDef {
       continue;
     }
     if (ch === ')') {
-      if (!stack.length) throw new SmilesError('닫는 괄호가 더 많아요.');
+      if (!stack.length) throw new SmilesError("괄호 ')'가 '('보다 많아요.");
       prev = stack.pop()!;
       i++;
       continue;
@@ -118,7 +118,7 @@ export function parseSmiles(src: string): MolDef {
     }
     if (ch === '[') {
       const end = s.indexOf(']', i);
-      if (end < 0) throw new SmilesError('대괄호가 닫히지 않았어요.');
+      if (end < 0) throw new SmilesError("대괄호 '['의 짝인 ']'가 없어요.");
       addAtom(parseBracket(s.slice(i + 1, end)));
       i = end + 1;
       continue;
@@ -141,8 +141,8 @@ export function parseSmiles(src: string): MolDef {
     }
     throw new SmilesError(`SMILES에서 '${ch}'(${i + 1}번째 글자)를 읽지 못했어요.`);
   }
-  if (stack.length) throw new SmilesError('여는 괄호가 닫히지 않았어요.');
-  if (rings.size) throw new SmilesError(`고리 번호 ${[...rings.keys()].join(', ')}이(가) 닫히지 않았어요.`);
+  if (stack.length) throw new SmilesError("괄호 '('의 짝인 ')'가 없어요.");
+  if (rings.size) throw new SmilesError(`고리 번호 ${[...rings.keys()].join(', ')}의 짝이 없어요.`);
 
   kekulize(atoms, bonds);
 
@@ -239,6 +239,6 @@ function kekulize(atoms: PAtom[], bonds: PBond[]): void {
     }
     return false;
   };
-  if (!solve(0)) throw new SmilesError('방향족 고리의 이중 결합 배치를 정하지 못했어요. 이중 결합(=)을 직접 적어 주세요.');
+  if (!solve(0)) throw new SmilesError('방향족 고리에서 이중 결합 위치를 정하지 못했어요. 이중 결합(=)을 직접 적어 주세요.');
   for (const b of chosen) b.order = 2;
 }

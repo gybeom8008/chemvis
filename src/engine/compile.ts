@@ -419,7 +419,7 @@ class Ctx {
       const mult = head.find((x) => /^x\d+$/.test(x));
       if (mult) count = parseInt(mult.slice(1), 10);
       const base = head[0];
-      if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(base)) this.fail(`이름 '${base}'은(는) 영문자로 시작하는 영문·숫자로 지어 주세요.`);
+      if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(base)) this.fail(`이름 '${base}'은(는) 영문자로 시작하고 영문자와 숫자만 써서 지어 주세요.`);
       formula = a[eq + 1];
       rest = a.slice(eq + 2);
       names = count === 1 ? [base] : Array.from({ length: count }, (_, i) => `${base}${i + 1}`);
@@ -579,9 +579,9 @@ class Ctx {
       comps.sort((p, q) => this.w.atoms.get(anchorOf(this.w, p))!.num - this.w.atoms.get(anchorOf(this.w, q))!.num);
       const hit = prefer ? comps.find(prefer) ?? comps[0] : comps[0];
       if (hit) return hit;
-      this.fail(`장면에 ${f}이(가) 없어요. 먼저 mol 또는 place로 놓아 주세요.`);
+      this.fail(`장면에 ${f}이(가) 없어요. 먼저 mol이나 place로 넣어 주세요.`);
     }
-    this.fail(`'${word}'이(가) 무엇인지 몰라요. mol로 지은 이름이나 화학식을 적어 주세요.`);
+    this.fail(`'${word}'이(가) 뭔지 알 수 없어요. mol로 지은 이름이나 화학식을 적어 주세요.`);
   }
 
   /** "w.O" → atom id. */
@@ -601,7 +601,7 @@ class Ctx {
       this.fail(`'${ref}'이(가) 여러 개예요(${cands.map((c) => `${name}.${c.label}`).join(', ')}). 번호까지 적어 주세요.`);
     }
     const labels = [...this.w.atoms.values()].filter((a) => a.owner === owner).map((a) => a.label);
-    if (labels.length === 0) this.fail(`'${name}'이라는 이름의 분자가 없어요.`);
+    if (labels.length === 0) this.fail(`'${name}'이라는 분자가 없어요.`);
     this.fail(`'${name}'에는 '${label}' 원자가 없어요. 있는 원자: ${labels.join(', ')}`);
   }
 
@@ -877,25 +877,25 @@ class Ctx {
     const before = this.A.before;
     const mid = this.ensureMid();
     // Validate shape.
-    if (src.kind === 'atom') this.fail('화살표의 출발점은 비공유 전자쌍(w.O:lp)이나 결합(a.H~a.Cl)이어야 해요.');
-    if (dst.kind === 'lp') this.fail('도착점에는 :lp를 붙이지 않아요. 원자(a.Cl)나 새 결합(w.O~a.H)으로 적어 주세요.');
+    if (src.kind === 'atom') this.fail('화살표는 비공유 전자쌍(w.O:lp)이나 결합(a.H~a.Cl)에서 출발해야 해요.');
+    if (dst.kind === 'lp') this.fail('도착점은 :lp 없이 원자(a.Cl)나 새 결합(w.O~a.H)으로 적어 주세요.');
     if (src.kind === 'lp') {
       if (w.atoms.get(src.a)!.lp <= 0) this.fail(`${label(w, src.a)}에는 옮길 비공유 전자쌍이 없어요.`);
       if (dst.kind === 'atom') {
-        this.fail('비공유 전자쌍은 다른 원자로 홀로 옮겨 갈 수 없어요. 새 결합(예: w.O~a.H)으로 보내 주세요.');
+        this.fail('비공유 전자쌍은 다른 원자로 통째로 옮겨 갈 수 없어요. 새 결합(예: w.O~a.H)으로 보내 주세요.');
       }
       if (dst.a !== src.a && dst.b !== src.a) {
-        this.fail(`비공유 전자쌍은 그 원자(${label(w, src.a)})가 포함된 결합으로만 갈 수 있어요.`);
+        this.fail(`비공유 전자쌍은 ${label(w, src.a)}에서 이어지는 결합으로만 갈 수 있어요.`);
       }
     } else {
       const bnd = getBond(w, src.a, src.b!);
       if (!bnd || bnd.order <= 0) this.fail(`${label(w, src.a)}와 ${label(w, src.b!)}는 결합해 있지 않아요.`);
       if (dst.kind === 'atom' && dst.a !== src.a && dst.a !== src.b) {
-        this.fail('결합의 전자쌍은 그 결합의 두 원자 중 하나로만 갈 수 있어요.');
+        this.fail('결합 전자쌍은 그 결합을 이루는 두 원자 가운데 하나로만 갈 수 있어요.');
       }
       if (dst.kind === 'bond') {
         const share = [dst.a, dst.b].some((x) => x === src.a || x === src.b);
-        if (!share) this.fail('결합의 전자쌍은 그 결합의 원자가 포함된 새 결합으로만 갈 수 있어요.');
+        if (!share) this.fail('결합 전자쌍은 그 결합을 이루는 원자에서 이어지는 새 결합으로만 갈 수 있어요.');
       }
     }
 
@@ -980,7 +980,7 @@ class Ctx {
   /** unligand c.Cu~n.N : a coordinate bond breaks; the pair returns to the ligand. */
   unligand(a: string[]): void {
     const ref = a[0];
-    if (!ref || !ref.includes('~')) this.fail('배위 결합 풀기는 이렇게 적어요: unligand c.Cu~n.N');
+    if (!ref || !ref.includes('~')) this.fail('배위 결합을 없애려면 이렇게 적어요: unligand c.Cu~n.N');
     const [x, y] = ref.split('~').map((r) => this.atom(r));
     const b = getBond(this.w, x, y);
     if (!b) this.fail(`${ref}는 결합해 있지 않아요.`);
@@ -1004,7 +1004,7 @@ class Ctx {
 
   hopEnd(word: string, isSource: boolean): HopEnd {
     if (word.endsWith(':lp') || word.endsWith(':e')) {
-      if (!isSource) this.fail('도착점에는 :lp나 :e를 붙이지 않아요. 원자(c.Cu)나 결합(c.Cl~m.H)으로 적어 주세요.');
+      if (!isSource) this.fail('도착점은 :lp나 :e 없이 원자(c.Cu)나 결합(c.Cl~m.H)으로 적어 주세요.');
       const kind = word.endsWith(':lp') ? 'lp' : 'e';
       return { kind, a: this.atom(word.slice(0, word.lastIndexOf(':'))) };
     }
@@ -1052,11 +1052,11 @@ class Ctx {
       const b = getBond(w, src.a, src.b!);
       if (!b || b.order < 0.5) this.fail(`${label(w, src.a)}와 ${label(w, src.b!)} 사이에 옮길 결합 전자가 없어요.`);
     }
-    if (dst.kind === 'atom' && src.kind !== 'bond' && dst.a === src.a) this.fail('전자가 같은 원자로 옮겨 가게 적혔어요.');
+    if (dst.kind === 'atom' && src.kind !== 'bond' && dst.a === src.a) this.fail('전자가 출발한 원자로 다시 가게 적혔어요.');
     if (dst.kind === 'bond') {
       const srcAtoms = src.kind === 'bond' ? [src.a, src.b!] : [src.a];
       if (!srcAtoms.some((x) => x === dst.a || x === dst.b)) {
-        this.fail('전자는 출발한 원자(또는 결합의 원자)가 포함된 결합으로만 갈 수 있어요.');
+        this.fail('전자는 출발한 원자(결합에서 출발했다면 그 결합의 원자)에서 이어지는 결합으로만 갈 수 있어요.');
       }
     }
 
@@ -1366,7 +1366,7 @@ class Ctx {
     } else {
       const c = this.mol(ref);
       if (componentCharge(this.w, c) === 0) {
-        this.warn(`${formulaOf(this.w, c)}는 전하가 없어서 지금은 물 분자를 둘러싸게 하지 않았어요.`);
+        this.warn(`${formulaOf(this.w, c)}는 전하가 없어서 물 분자가 둘러싸지 않아요.`);
         return;
       }
       comps = [c];
@@ -1624,7 +1624,7 @@ class Ctx {
   /** Put a new cation on free clay sites (one site per unit of charge). */
   adsorbNew(ids: string[], region: Region | null): void {
     const q = componentCharge(this.w, ids);
-    if (q <= 0) this.fail('점토 표면(음전하)에는 양이온만 흡착시킬 수 있어요.');
+    if (q <= 0) this.fail('점토 표면(음전하)에는 양이온만 흡착할 수 있어요.');
     const need = q;
     const byPlate = new Map<number, typeof this.w.sites>();
     for (const s of this.w.sites) {
@@ -1855,7 +1855,7 @@ class Ctx {
   shuttle(op: string, a: string[]): void {
     const B = this.needBattery(op);
     const charging = op === 'charge';
-    if (this.A.phase && this.batteryMode && this.batteryMode !== op) this.fail('한 단계에 charge와 discharge를 같이 쓰지 않아요. 단계를 나눠 주세요.');
+    if (this.A.phase && this.batteryMode && this.batteryMode !== op) this.fail('charge와 discharge는 한 단계에 함께 쓸 수 없어요. 단계를 나눠 주세요.');
     this.batteryMode = op;
     const n = clamp(parseInt(a[0] ?? '1', 10) || 1, 1, 12);
     const src = charging ? 'cathode' : 'anode';
@@ -1945,7 +1945,7 @@ class Ctx {
     for (let i = 1; i < a.length; i++) {
       if (a[i] === 'barrier') {
         barrier = parseFloat(a[++i] ?? '');
-        if (!(barrier >= 0)) this.fail('barrier 뒤에는 0 이상의 숫자를 적어요(출발점에서 언덕 꼭대기까지의 높이).');
+        if (!(barrier >= 0)) this.fail('barrier 뒤에는 0 이상인 숫자를 적어요(출발점에서 언덕 꼭대기까지 높이).');
       } else unit = a[i];
     }
     const cur = this.A.energy;
@@ -2026,7 +2026,7 @@ class Ctx {
         spin: this.rng.range(-3, 3),
       });
     }
-    if (mols.length < 2) this.fail(`장면에 ${L[0]}, ${L[1]}, ${R[0]} 분자가 거의 없어요. place ${L[0]} in ${region.name} x10 처럼 먼저 놓아 주세요.`);
+    if (mols.length < 2) this.fail(`장면에 ${L[0]}, ${L[1]}, ${R[0]} 분자가 거의 없어요. place ${L[0]} in ${region.name} x10 처럼 먼저 넣어 주세요.`);
     const blen = (m: Mol) => bondLength(this.w.atoms.get(m.atoms[0])!.el, this.w.atoms.get(m.atoms[1])!.el);
     const place = (m: Mol) => {
       const h = fromAngle(m.ang, blen(m) / 2);
@@ -2191,7 +2191,7 @@ class Ctx {
     const ontoI = a.indexOf('onto');
     const onto = ontoI >= 0 ? a[ontoI + 1] : null;
     const [catF, anF] = a.filter((x, i) => !/^x\d+$/.test(x) && x !== 'onto' && (ontoI < 0 || i !== ontoI + 1));
-    if (!catF || !anF) this.fail('석출은 이렇게 적어요: precipitate Ag+ Cl- x3  (결정에 덧붙이려면 onto s)');
+    if (!catF || !anF) this.fail('석출은 이렇게 적어요: precipitate Ag+ Cl- x3  (있던 결정에 더하려면 onto s)');
     if (formulaCharge(catF) <= 0 || formulaCharge(anF) >= 0) this.fail('precipitate는 양이온, 음이온 순서로 적어요. 예: precipitate Ag+ Cl-');
     if (formulaCharge(catF) !== -formulaCharge(anF)) this.fail('지금은 전하 크기가 같은 이온 짝(Ag+와 Cl-, Ca2+와 CO32- 등)만 석출할 수 있어요.');
     const inLattice = new Set([...this.w.crystals.values()].flat());
@@ -2391,18 +2391,18 @@ class Ctx {
    */
   condensation(a: string[]): void {
     const [ra, rb] = a;
-    if (!ra || !rb) this.fail('축합은 이렇게 적어요: condensation g1.C2 g2.N  (OH를 내놓는 원자, H를 내놓는 원자)');
+    if (!ra || !rb) this.fail('축합은 이렇게 적어요: condensation g1.C2 g2.N  (OH를 내보내는 원자, H를 내보내는 원자)');
     const A = this.atom(ra);
     const B = this.atom(rb);
     if (component(this.w, A).includes(B)) this.fail('같은 분자 안의 두 원자는 축합으로 잇지 않아요.');
     const oh = neighbors(this.w, A)
       .map((n) => this.w.atoms.get(n.id)!)
       .find((o) => o.el === 'O' && neighbors(this.w, o.id).length === 2 && neighbors(this.w, o.id).some((x) => this.w.atoms.get(x.id)!.el === 'H'));
-    if (!oh) this.fail(`${ra}에 붙은 -OH가 없어요. 축합은 -OH를 가진 원자를 먼저 적어요.`);
+    if (!oh) this.fail(`${ra}에 결합한 -OH가 없어요. 축합은 -OH와 결합한 원자를 먼저 적어요.`);
     const hb = neighbors(this.w, B)
       .map((n) => this.w.atoms.get(n.id)!)
       .find((h) => h.el === 'H');
-    if (!hb) this.fail(`${rb}에 붙은 H가 없어요.`);
+    if (!hb) this.fail(`${rb}에 결합한 H가 없어요.`);
     for (const [x, y] of [
       [A, oh.id],
       [B, hb.id],
@@ -2487,7 +2487,7 @@ class Ctx {
 
   proteinNamed(name: string) {
     const p = this.w.proteins.find((x) => x.name === name);
-    if (!p) this.fail(`'${name}'이라는 막 단백질이 없어요. protein ${name} = channel ... 으로 먼저 놓아 주세요.`);
+    if (!p) this.fail(`'${name}'이라는 막 단백질이 없어요. protein ${name} = channel ... 으로 먼저 넣어 주세요.`);
     return p;
   }
 
@@ -2603,7 +2603,7 @@ class Ctx {
         .length;
     const so = solutes('outside');
     const si = solutes('inside');
-    if (so === si) this.warn('막 양쪽의 용질 수가 같아서 삼투가 한쪽으로 일어나지 않아요.');
+    if (so === si) this.warn('막 양쪽에 녹아 있는 입자 수가 같아서 물이 어느 한쪽으로 더 건너가지 않아요.');
     const to: 'outside' | 'inside' = si >= so ? 'inside' : 'outside';
     const from = to === 'inside' ? 'outside' : 'inside';
     const aq = this.w.proteins.find((p) => p.kind === 'channel' && p.carries === 'H2O');
@@ -2657,7 +2657,7 @@ class Ctx {
     const name = a[0] ?? 'left';
     const e = this.needElectrode(name);
     const lattice = this.w.crystals.get(name);
-    if (!lattice?.length) this.fail(`${name} 전극에 금속 원자가 없어요. electrode ${name} = Zn 처럼 먼저 놓아 주세요.`);
+    if (!lattice?.length) this.fail(`${name} 전극에 금속 원자가 없어요. electrode ${name} = Zn 처럼 먼저 만들어 주세요.`);
     const liquidTop = this.region(e.region).y + 10;
     const faceX = (id: string) => this.w.atoms.get(id)!.x * e.face;
     const cands = lattice.filter((id) => this.w.atoms.get(id)!.y > liquidTop + 20);
@@ -2767,8 +2767,8 @@ class Ctx {
     const n = mult ? parseInt(mult.slice(1), 10) : 1;
     const [anion, cation] = a.filter((x) => !/^x\d+$/.test(x));
     if (!anion || !cation) this.fail('염다리는 이렇게 적어요: bridge Cl- K+ x2 (음이온은 왼쪽, 양이온은 오른쪽으로)');
-    if (formulaCharge(anion) >= 0) this.fail(`${anion}은(는) 음이온이 아니에요. 첫째 자리에 음이온을 적어 주세요.`);
-    if (formulaCharge(cation) <= 0) this.fail(`${cation}은(는) 양이온이 아니에요. 둘째 자리에 양이온을 적어 주세요.`);
+    if (formulaCharge(anion) >= 0) this.fail(`${anion}은(는) 음이온이 아니에요. 음이온을 앞에 적어 주세요.`);
+    if (formulaCharge(cation) <= 0) this.fail(`${cation}은(는) 양이온이 아니에요. 양이온을 뒤에 적어 주세요.`);
     for (let k = 0; k < n; k++) {
       for (const [f, mouth, regionName] of [
         [anion, br.left, 'left'],
@@ -2812,11 +2812,11 @@ class Ctx {
         if (e > info.softMax) {
           this.errors.push({
             line: where,
-            message: `${label(this.w, id)} 주위 전자가 ${e}개가 돼요(${info.name}은 최대 ${info.maxElectrons}개). 화살표를 다시 확인해 주세요.`,
+            message: `${label(this.w, id)} 둘레의 전자가 ${e}개가 돼요(${info.name}${josa(info.name, '은', '는')} 최대 ${info.maxElectrons}개). 화살표를 다시 확인해 주세요.`,
           });
         } else if (e > info.maxElectrons && at.el !== 'P' && at.el !== 'S') {
           // P and S in phosphates and sulfates are usually drawn with P=O / S=O, so that is not worth a note.
-          this.warnings.push({ line: where, message: `${label(this.w, id)} 주위 전자가 ${e}개예요(옥텟 확장).` });
+          this.warnings.push({ line: where, message: `${label(this.w, id)} 둘레의 전자가 ${e}개예요(옥텟 확장).` });
         }
       }
       // Molecules that just split apart drift a little away from each other.
@@ -3233,6 +3233,13 @@ function saltIons(f: string): [string, string] | null {
   return null;
 }
 
+/** 은/는, 이/가 … picked by whether the Korean word ends in a final consonant. */
+function josa(word: string, withFinal: string, without: string): string {
+  const c = word.charCodeAt(word.length - 1);
+  if (c < 0xac00 || c > 0xd7a3) return `${withFinal}(${without})`;
+  return (c - 0xac00) % 28 ? withFinal : without;
+}
+
 function angDiff(a: number, b: number): number {
   const d = Math.abs(wrap(a) - wrap(b));
   return Math.min(d, Math.PI * 2 - d);
@@ -3256,5 +3263,5 @@ function label(w: World, id: string): string {
 }
 
 function unknownFormula(f: string | undefined): string {
-  return `'${f ?? ''}'은(는) 아직 등록되지 않은 분자예요. 등록된 분자: H2O, H3O+, OH-, HCl, Cl-, Na+, K+, Ca2+, Mg2+, H+, NH3, NH4+, CO2, CH4, O2, N2, H2, Cl2 등 (안내서 참고)`;
+  return `'${f ?? ''}'은(는) 아직 등록되지 않은 분자예요. 자주 쓰는 분자: H2O, H3O+, OH-, HCl, Cl-, Na+, K+, Ca2+, Mg2+, H+, NH3, NH4+, CO2, CH4, O2, N2, H2, Cl2(전체 목록은 안내서에 있어요). 목록에 없는 분자는 smiles:로 적을 수 있어요.`;
 }

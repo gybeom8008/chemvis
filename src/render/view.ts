@@ -950,7 +950,7 @@ function energyChart(steps: StepAnim[], k: number, t: number, stageWidth: number
       const d = e.to - e.from;
       const num = (v: number) => (Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(Math.abs(v))) : Math.abs(v).toFixed(1));
       let label = `${d < 0 ? '−' : d > 0 ? '+' : '±'}${num(d)}${e.unit ? ` ${e.unit}` : ''}`;
-      if (e.barrier !== undefined) label = `활성화 ${num(e.barrier)} · ${label}`;
+      if (e.barrier !== undefined) label = `활성화 에너지 ${num(e.barrier)} · ${label}`;
       const cls = d < 0 ? 'down' : d > 0 ? 'up' : '';
       s += `<text class="delta ${cls}" x="${f1(box.x + box.w - pad)}" y="${f1(box.y + 21 * fs)}" font-size="${f1(size)}" text-anchor="end">${esc(label)}</text>`;
     }

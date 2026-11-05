@@ -75,7 +75,7 @@ const wavePts = () => {
 };
 
 const REAL: Item[] = [
-  { key: 'bond1', label: '공유 결합(전자쌍 1개를 두 원자가 함께 씀)', svg: sw('<line class="bond" x1="4" y1="11" x2="32" y2="11"/>') },
+  { key: 'bond1', label: '공유 결합(두 원자가 전자쌍 하나를 함께 씀)', svg: sw('<line class="bond" x1="4" y1="11" x2="32" y2="11"/>') },
   { key: 'bond2', label: '이중 결합(전자쌍 2개)', svg: sw('<line class="bond" x1="4" y1="8" x2="32" y2="8"/><line class="bond" x1="4" y1="14" x2="32" y2="14"/>') },
   {
     key: 'bond3',
@@ -88,11 +88,11 @@ const REAL: Item[] = [
     svg: sw('<line class="bond" x1="4" y1="11" x2="32" y2="11"/><polygon class="dative" points="22,11 14,6.5 14,15.5"/>'),
   },
   { key: 'lp', label: '비공유 전자쌍(결합에 쓰이지 않은 전자 2개)', svg: sw('<circle class="lp" cx="15" cy="11" r="2.3"/><circle class="lp" cx="21" cy="11" r="2.3"/>') },
-  { key: 'single', label: '홑전자(짝 없는 전자 1개, 라디칼)', svg: sw('<circle class="lp single" cx="18" cy="11" r="2.7"/>') },
+  { key: 'single', label: '홑전자(짝이 없는 전자 1개)', svg: sw('<circle class="lp single" cx="18" cy="11" r="2.7"/>') },
   { key: 'charge', label: '전하', svg: sw('<g class="charge pos"><circle cx="18" cy="11" r="7.5"/><text x="18" y="11" dy="0.36em">+</text></g>') },
   { key: 'ox', label: '산화수', svg: sw('<text class="ox" x="18" y="11" dy="0.35em">+2</text>') },
-  { key: 'arrow', label: '전자쌍(전자 2개)의 이동', svg: arrowSwatch(true) },
-  { key: 'hook', label: '전자 1개의 이동', svg: arrowSwatch(false) },
+  { key: 'arrow', label: '전자쌍(전자 2개) 이동', svg: arrowSwatch(true) },
+  { key: 'hook', label: '전자 1개 이동', svg: arrowSwatch(false) },
   {
     key: 'e',
     label: '전자',
@@ -113,7 +113,7 @@ const REAL: Item[] = [
       `<circle class="bubble" cx="18" cy="11" r="7"><animate attributeName="cy" values="19;4" ${loop(1.6)}/><animate attributeName="r" values="3;7.5" ${loop(1.6)}/></circle>`,
     ),
   },
-  { key: 'sei', label: 'SEI 막(전지 흑연 표면에 생기는 막)', svg: sw('<circle class="sei" cx="18" cy="11" r="9"/>') },
+  { key: 'sei', label: 'SEI 막(전지의 흑연 표면에 생기는 막)', svg: sw('<circle class="sei" cx="18" cy="11" r="9"/>') },
   { key: 'protein', label: '막 단백질(통로·펌프·ATP 합성 효소)', svg: sw('<rect class="protein" x="10" y="2" width="16" height="18" rx="5"/>') },
 ];
 
@@ -129,7 +129,7 @@ const APP: Item[] = [
   },
   {
     key: 'crowd',
-    label: '배경의 용매 분자(물 등)',
+    label: '배경에 깔린 용매 분자(물 등)',
     svg: sw(
       `<circle class="atom crowd" cx="18" cy="11" r="7.5" fill="#e03131" opacity="0.5"><animateTransform attributeName="transform" type="translate" values="0 0;1.6 -1;-1.2 1.2;0.8 0.6;0 0" ${loop(1.2)}/></circle>`,
     ),
@@ -159,7 +159,7 @@ const APP: Item[] = [
 
 const GROUPS: { title: string; items: Item[] }[] = [
   { title: '실제 물질과 화학 표기', items: REAL },
-  { title: '이 앱만의 표시', items: APP },
+  { title: '이 앱에서만 쓰는 표시', items: APP },
 ];
 
 /** Which marks a timeline uses (with the current lens). Null timeline: none. */

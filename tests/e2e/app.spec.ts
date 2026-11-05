@@ -167,3 +167,15 @@ test('phone width: no sideways scrolling in workspace or tutorial', async ({ pag
   await expect(page.locator('#tutorial')).toHaveAttribute('open', '');
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
+
+test('attraction lines do not blink while nothing moves', async ({ page }) => {
+  await page.goto('./#/t/forces');
+  await cv(page).tut.seek(0, 1);
+  const counts = new Set<number>();
+  for (let i = 0; i < 15; i++) {
+    counts.add(await page.locator('#tut-viewer line.attract').count());
+    await page.waitForTimeout(50);
+  }
+  expect(counts.size).toBe(1);
+  expect([...counts][0]).toBeGreaterThan(10);
+});

@@ -118,6 +118,8 @@ export function compile(src: string): CompileResult {
     }
   }
   resolveOverlaps(ctx, new Set());
+  arrangeHydrogenBonds(ctx);
+  resolveOverlaps(ctx, new Set());
   const initial = cloneWorld(ctx.w);
   if (ast.steps.length === 0) {
     ctx.warnings.push({ line: 1, message: 'step이 하나도 없어서 처음 모습만 보여요.' });
@@ -1492,6 +1494,147 @@ function separateComponents(ctx: Ctx, ids: string[]): void {
       }
     }
     if (!moved) break;
+  }
+}
+
+/**
+ * Liquid water is a network of hydrogen bonds, but randomly scattered molecules form few of
+ * them. Turn the background water so its H atoms point at neighbouring O atoms, and bring a
+ * water molecule next to each free O–H of the named molecules. Uses the same test as the
+ * renderer (H···acceptor within reach, O–H pointing at the acceptor within 40°).
+ */
+function arrangeHydrogenBonds(ctx: Ctx): void {
+  const w = ctx.w;
+  const st = ctx.stage;
+  const liquid = st.liquid.map((n) => st.regions[n]).filter(Boolean);
+  const inLiquid = (p: Vec) => liquid.some((r) => inRegion(r, p));
+  const reach = bondLength('O', 'H') * 1.95;
+  const comps = allComponents(w);
+  const waters = comps.filter((c) => formulaOf(w, c) === 'H2O');
+  const crowdWaters = waters.filter((c) => w.atoms.get(c[0])!.crowd && inLiquid(centerOf(w, c)));
+  if (!crowdWaters.length) return;
+  const acceptors = () =>
+    [...w.atoms.values()].filter((a) => ['O', 'N', 'F'].includes(a.el) && a.lp > 0);
+  const oxygenOf = (c: string[]) => c.map((id) => w.atoms.get(id)!).find((a) => a.el === 'O')!;
+  const hsOf = (c: string[]) => c.map((id) => w.atoms.get(id)!).filter((a) => a.el === 'H');
+
+  // 1. A water molecule docks onto each O–H of the named (non-background) molecules.
+  const used = new Set<string>();
+  for (const a of [...w.atoms.values()]) {
+    if (a.crowd || a.el !== 'H') continue;
+    const ns = neighbors(w, a.id);
+    if (ns.length !== 1) continue;
+    const d = w.atoms.get(ns[0].id)!;
+    if (!['O', 'N', 'F'].includes(d.el)) continue;
+    const u = norm(sub(a, d));
+    const spot = add(a, scale(u, reach * 0.82));
+    if (!inLiquid(spot)) continue;
+    const blocked = [...w.atoms.values()].some((o) => !o.crowd && component(w, a.id).indexOf(o.id) < 0 && dist(o, spot) < 40);
+    if (blocked) continue;
+    let best: string[] | null = null;
+    let bestD = Infinity;
+    for (const c of crowdWaters) {
+      if (used.has(c[0])) continue;
+      const dd = dist(oxygenOf(c), spot);
+      if (dd < bestD) {
+        bestD = dd;
+        best = c;
+      }
+    }
+    if (!best || bestD > 260) continue;
+    used.add(best[0]);
+    const O = oxygenOf(best);
+    const shiftBy = sub(spot, O);
+    for (const id of best) {
+      const at = w.atoms.get(id)!;
+      at.x += shiftBy.x;
+      at.y += shiftBy.y;
+    }
+  }
+
+  // 1b. ... and onto each lone pair of their O/N, so the named molecule also accepts bonds.
+  for (const a of [...w.atoms.values()]) {
+    if (a.crowd || !['O', 'N'].includes(a.el) || a.lp <= 0) continue;
+    if (!inLiquid(a)) continue;
+    for (const ang of lonePairDirsInWorld(w, a.id, a.lp)) {
+      const u = fromAngle(ang);
+      const spot = add(a, scale(u, reach * 0.82 + bondLength('O', 'H')));
+      if (!inLiquid(spot)) continue;
+      const mine = component(w, a.id);
+      if ([...w.atoms.values()].some((o) => !o.crowd && !mine.includes(o.id) && dist(o, spot) < 40)) continue;
+      let best: string[] | null = null;
+      let bestD = Infinity;
+      for (const c of crowdWaters) {
+        if (used.has(c[0])) continue;
+        const dd = dist(oxygenOf(c), spot);
+        if (dd < bestD) {
+          bestD = dd;
+          best = c;
+        }
+      }
+      if (!best || bestD > 260) continue;
+      used.add(best[0]);
+      const O = oxygenOf(best);
+      const by = sub(spot, O);
+      for (const id of best) {
+        const at = w.atoms.get(id)!;
+        at.x += by.x;
+        at.y += by.y;
+      }
+    }
+  }
+
+  // 2. Each background water turns about its O to donate as many hydrogen bonds as it can.
+  const acc = acceptors();
+  for (let pass = 0; pass < 2; pass++) {
+    for (const c of crowdWaters) {
+      const O = oxygenOf(c);
+      const Hs = hsOf(c);
+      const rel = Hs.map((h) => sub(h, O));
+      const score = (ang: number) => {
+        let n = 0;
+        let near = 0;
+        for (const r of rel) {
+          const hp = add(O, rotate(r, ang));
+          const along = norm(rotate(r, ang));
+          let bestHere = Infinity;
+          for (const m of acc) {
+            if (c.includes(m.id)) continue;
+            const dd = dist(hp, m);
+            if (dd > reach || dd < 4) continue;
+            const u = norm(sub(m, hp));
+            if (along.x * u.x + along.y * u.y < Math.cos((40 * Math.PI) / 180)) continue;
+            bestHere = Math.min(bestHere, dd);
+          }
+          if (bestHere < Infinity) {
+            n++;
+            near += bestHere;
+          }
+          for (const o of w.atoms.values()) {
+            if (c.includes(o.id)) continue;
+            if (dist(hp, o) < element('H').r + element(o.el).r + 4) n -= 2;
+          }
+        }
+        return n * 1000 - near;
+      };
+      let bestAng = 0;
+      let bestScore = score(0);
+      for (let k = 1; k < 36; k++) {
+        const ang = (k * Math.PI) / 18;
+        const sc = score(ang);
+        if (sc > bestScore) {
+          bestScore = sc;
+          bestAng = ang;
+        }
+      }
+      if (bestAng !== 0) {
+        Hs.forEach((h, i) => {
+          const q = add(O, rotate(rel[i], bestAng));
+          h.x = q.x;
+          h.y = q.y;
+        });
+      }
+    }
   }
 }
 

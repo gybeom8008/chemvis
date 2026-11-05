@@ -235,6 +235,10 @@ export class StageView {
       pos.set(a.id, tr ? trackAt(tr, t) : { x: after.atoms.get(a.id)!.x, y: after.atoms.get(a.id)!.y });
     }
 
+    // Positions before thermal motion: used to decide which attractions exist, so that the
+    // decorative jiggle alone never makes a line appear or vanish.
+    const basePos = new Map(pos);
+
     // Thermal motion, molecule by molecule.
     if (opt.motion) {
       const parent = new Map<string, string>();
@@ -308,7 +312,7 @@ export class StageView {
     }
 
     // Attractions between molecules (hydrogen bonds, ion–water).
-    if (opt.lens.attract) out.push(this.attractions(atoms, pos, chargeWorld, topo));
+    if (opt.lens.attract) out.push(this.attractions(atoms, pos, basePos, chargeWorld, topo));
 
     // Focus rings.
     if (step) {
@@ -440,7 +444,7 @@ export class StageView {
       const baseBonds = [...step.after.bonds.values()].filter((b) => b.order > 0);
       const baseAtoms = [...step.after.atoms.values()];
       const placed: Box[] = [];
-      const obstacles = baseAtoms.filter((a) => !a.crowd).map((a) => ({ p: basePos.get(a.id)!, r: element(a.el).r + 6 }));
+      const obstacles = baseAtoms.map((a) => ({ p: basePos.get(a.id)!, r: element(a.el).r + 6, w: a.crowd ? 12 : 60 }));
       step.notes.forEach((nt, i) => {
         const target = this.notePoint(nt.target, pos, bonds, atoms);
         if (!target) return;
@@ -515,9 +519,13 @@ export class StageView {
     return 1;
   }
 
-  private attractions(atoms: Atom[], pos: Map<string, Vec>, w: World, topo: World): string {
-    // δ+ ends: H on O/N/F, and cations. δ− ends: O/N/F with lone pairs, and anions.
-    const owner = new Map<string, string>();
+  /**
+   * Hydrogen bonds and ion–water attractions. Which pairs are attracted is decided from the
+   * positions without thermal motion (base), so lines change only when molecules really move.
+   * Each H holds at most one hydrogen bond and only when it points at the acceptor; an O or N
+   * accepts at most one per lone pair.
+   */
+  private attractions(atoms: Atom[], pos: Map<string, Vec>, base: Map<string, Vec>, w: World, topo: World): string {
     const nbs = new Map<string, string[]>();
     for (const b of topo.bonds.values()) {
       if (b.order <= 0) continue;
@@ -526,7 +534,7 @@ export class StageView {
       nbs.get(b.a)!.push(b.b);
       nbs.get(b.b)!.push(b.a);
     }
-    // Molecule membership via flood fill.
+    const owner = new Map<string, string>();
     const seen = new Set<string>();
     for (const a of atoms) {
       if (seen.has(a.id)) continue;
@@ -539,31 +547,62 @@ export class StageView {
       }
     }
     const byId = new Map(atoms.map((a) => [a.id, a]));
-    const plus: Atom[] = [];
-    const minus: Atom[] = [];
-    for (const a of atoms) {
+    const charge = (a: Atom) => {
       const ww = w.atoms.has(a.id) ? w : topo;
-      const q = ww.atoms.has(a.id) ? formalCharge(ww, ww.atoms.get(a.id)!) : 0;
+      return ww.atoms.has(a.id) ? formalCharge(ww, ww.atoms.get(a.id)!) : 0;
+    };
+    const polar = ['O', 'N', 'F'];
+    const donors: { h: Atom; d: Atom }[] = [];
+    const cations: Atom[] = [];
+    const acceptors: Atom[] = [];
+    for (const a of atoms) {
       const ns = nbs.get(a.id) ?? [];
-      if (a.el === 'H' && ns.length === 1 && ['O', 'N', 'F'].includes(byId.get(ns[0])?.el ?? '')) plus.push(a);
-      else if (q > 0 && ns.length === 0) plus.push(a);
-      if ((['O', 'N', 'F'].includes(a.el) && a.lp > 0) || (q < 0 && ns.length === 0)) minus.push(a);
+      if (a.el === 'H' && ns.length === 1 && polar.includes(byId.get(ns[0])?.el ?? '')) donors.push({ h: a, d: byId.get(ns[0])! });
+      else if (ns.length === 0 && charge(a) > 0) cations.push(a);
+      if ((polar.includes(a.el) && a.lp > 0) || (ns.length === 0 && charge(a) < 0)) acceptors.push(a);
     }
-    let s = '';
-    for (const p of plus) {
-      const pp = pos.get(p.id)!;
-      for (const m of minus) {
-        if (owner.get(p.id) === owner.get(m.id)) continue;
-        const pm = pos.get(m.id)!;
-        const d = dist(pp, pm);
-        const ion = p.el !== 'H' || (nbs.get(m.id) ?? []).length === 0;
-        const cutoff = ion ? element(p.el).r + element(m.el).r + 26 : bondLength('O', 'H') * 1.95;
-        if (d > cutoff || d < 4) continue;
-        const u = norm(sub(pm, pp));
-        const a0 = add(pp, scale(u, element(p.el).r + 1));
-        const a1 = sub(pm, scale(u, element(m.el).r + 1));
-        s += `<line class="attract" x1="${f1(a0.x)}" y1="${f1(a0.y)}" x2="${f1(a1.x)}" y2="${f1(a1.y)}"/>`;
+    const capacity = new Map(acceptors.map((a) => [a.id, Math.max(1, a.lp)]));
+    const pairs: { p: Atom; m: Atom; d: number }[] = [];
+    const reach = bondLength('O', 'H') * 1.95;
+    for (const { h, d } of donors) {
+      const ph = base.get(h.id)!;
+      const along = norm(sub(ph, base.get(d.id)!));
+      let best: { m: Atom; d: number } | null = null;
+      for (const m of acceptors) {
+        if (owner.get(m.id) === owner.get(h.id)) continue;
+        const pm = base.get(m.id)!;
+        const dd = dist(ph, pm);
+        if (dd > reach || dd < 4) continue;
+        const u = norm(sub(pm, ph));
+        if (along.x * u.x + along.y * u.y < Math.cos((40 * Math.PI) / 180)) continue;
+        if (!best || dd < best.d) best = { m, d: dd };
       }
+      if (best) pairs.push({ p: h, m: best.m, d: best.d });
+    }
+    for (const c of cations) {
+      const pc = base.get(c.id)!;
+      for (const m of acceptors) {
+        if (owner.get(m.id) === owner.get(c.id)) continue;
+        const dd = dist(pc, base.get(m.id)!);
+        if (dd <= element(c.el).r + element(m.el).r + 26) pairs.push({ p: c, m, d: dd - 1000 });
+      }
+    }
+    // Closest pairs first; an acceptor takes no more partners than it has lone pairs (ions excepted).
+    pairs.sort((x, y) => x.d - y.d);
+    let s = '';
+    for (const { p, m } of pairs) {
+      const isIon = p.el !== 'H' || (nbs.get(m.id) ?? []).length === 0;
+      if (!isIon) {
+        const left = capacity.get(m.id) ?? 0;
+        if (left <= 0) continue;
+        capacity.set(m.id, left - 1);
+      }
+      const pp = pos.get(p.id)!;
+      const pm = pos.get(m.id)!;
+      const u = norm(sub(pm, pp));
+      const a0 = add(pp, scale(u, element(p.el).r + 1));
+      const a1 = sub(pm, scale(u, element(m.el).r + 1));
+      s += `<line class="attract" x1="${f1(a0.x)}" y1="${f1(a0.y)}" x2="${f1(a1.x)}" y2="${f1(a1.y)}"/>`;
     }
     return s;
   }
@@ -663,7 +702,7 @@ function placeNote(
   fs: number,
   avoid: number | null,
   placed: Box[],
-  obstacles: { p: Vec; r: number }[],
+  obstacles: { p: Vec; r: number; w: number }[],
 ): Box {
   const { w, h } = noteBox(text, fs);
   const dirs: Vec[] = [
@@ -685,7 +724,7 @@ function placeNote(
         const cx = clamp(o.p.x, bx, bx + w);
         const cy = clamp(o.p.y, by, by + h);
         // Margin keeps borderline cases decided the same way every time.
-        if (Math.hypot(cx - o.p.x, cy - o.p.y) < o.r + 8) score += 60;
+        if (Math.hypot(cx - o.p.x, cy - o.p.y) < o.r + 8) score += o.w;
       }
       if (avoid !== null) {
         const a = Math.atan2(d.y, d.x);

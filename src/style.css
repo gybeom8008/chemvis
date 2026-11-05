@@ -41,6 +41,8 @@
   --s0: #3b82c4;
   --s1: #9c36b5;
   --s2: #e67700;
+  --electrolyte: #fbf6e3;
+  --graphene: #495057;
   --canvas: #fbfaf7;
   --grid-dot: rgba(24, 25, 27, 0.13);
 
@@ -89,6 +91,8 @@
     --s0: #74b0e6;
     --s1: #da77f2;
     --s2: #ffa94d;
+    --electrolyte: #26241c;
+    --graphene: #ced4da;
     --canvas: #16171a;
     --grid-dot: rgba(236, 235, 231, 0.09);
     color-scheme: dark;
@@ -904,6 +908,15 @@ code {
   border-left: 7px solid var(--bond);
 }
 
+/* SEI film blob */
+.g-sei {
+  width: 16px;
+  height: 12px;
+  border-radius: 7px;
+  background: #a9744f;
+  opacity: 0.6;
+}
+
 /* energy step (energy diagram) */
 .g-energy {
   width: 18px;
@@ -1212,6 +1225,57 @@ code {
   fill: var(--track);
   stroke: var(--muted);
   stroke-width: 1.5;
+}
+/* lithium-ion battery stage */
+.bg-electrolyte {
+  fill: var(--electrolyte);
+}
+.separator {
+  stroke: var(--muted);
+  stroke-width: 7;
+  stroke-dasharray: 10 7;
+  opacity: 0.7;
+}
+.foil.cu {
+  fill: #d9895b;
+}
+.foil.al {
+  fill: #adb5bd;
+}
+.graphene {
+  fill: none;
+  stroke: var(--graphene);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.oxide {
+  fill: #748ffc;
+  stroke: #4263eb;
+  stroke-width: 1;
+  opacity: 0.75;
+}
+.device {
+  fill: var(--surface);
+  stroke: var(--ink-2);
+  stroke-width: 2.5;
+}
+.sei {
+  fill: #a9744f;
+  fill-opacity: 0.55;
+}
+.bat-count rect {
+  fill: var(--note-bg);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.bat-count text {
+  fill: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 15px;
+}
+.bat-count text.cap {
+  fill: var(--ink);
+  font-weight: 700;
 }
 /* A bond left with one electron while electrons are moving. */
 .bond.half {

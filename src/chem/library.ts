@@ -96,6 +96,7 @@ const DEFS: MolDef[] = [
     ],
   },
   // Metal atoms and their ions (outer electrons drawn as dots).
+  { formula: 'Li', name: '리튬 원자', atoms: [a('Li', 'Li', 0, 1)], bonds: [] },
   { formula: 'Na', name: '나트륨 원자', atoms: [a('Na', 'Na', 0, 1)], bonds: [] },
   { formula: 'Zn', name: '아연 원자', atoms: [a('Zn', 'Zn', 1)], bonds: [] },
   ion('Zn2+', '아연 이온', 'Zn', 0),
@@ -126,6 +127,7 @@ const NAMED_SMILES: [string, string, string][] = [
   ['H2PO4-', '인산이수소 이온', 'OP(=O)(O)[O-]'],
   ['SO42-', '황산 이온', '[O-]S(=O)(=O)[O-]'],
   ['H2O2', '과산화수소', 'OO'],
+  ['EC', '에틸렌 카보네이트(전해질 용매)', 'O=C1OCCO1'],
 ];
 
 export const LIBRARY: Map<string, MolDef> = new Map(DEFS.map((d) => [d.formula, d]));

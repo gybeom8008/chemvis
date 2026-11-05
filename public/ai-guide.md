@@ -40,6 +40,7 @@ AI는 HTML·SVG를 직접 만들지 않고 이 대본만 쓴다. 배치, 그리�
 | `gas` | 기체 반응(라디칼, 평형 등) | `air`(전체), `left`, `center`, `right`, `top`, `bottom` |
 | `cell` | 전지(두 전극, 도선, 염다리) | `left`(산화 전극 쪽 용액), `right`(환원 전극 쪽 용액), `top`. 전극 이름은 `left`·`right` |
 | `membrane` | 세포막(인지질 이중층)과 막 단백질 | `outside`(위, 세포 밖), `inside`(아래, 세포 안), `membrane` |
+| `battery` | 리튬 이온 전지(흑연 음극, 분리막, 금속 산화물 양극, 바깥 도선) | `anode`(흑연), `cathode`(산화물), `electrolyte`, `left`·`right`(분리막 양쪽 전해질), `top` |
 
 ## 장면 준비 (첫 step 앞)
 
@@ -62,8 +63,8 @@ AI는 HTML·SVG를 직접 만들지 않고 이 대본만 쓴다. 배치, 그리�
 ## 등록된 분자
 
 H2O, H3O+, OH-, NH3, NH4+, CH4, HCl, HF, HBr, HI, H2S, H+, Li+, Na+, K+, Mg2+, Ca2+, Al3+, F-, Cl-, Br-, I-, H2, O2, N2, F2, Cl2, Br2, I2, CO2.
-라디칼(홑전자 `·`): H·, Cl·, Br·, OH·, CH3·. 금속 원자와 이온: Na, Zn, Zn2+, Cu, Cu2+, Ag, Ag+.
-더 큰 분자(이름으로 쓴다): Gly(글라이신), Ala(알라닌), CH3OH, C2H5OH, CH3COOH, CH3COO-, CH3Br, CH3Cl, C2H4, C6H6(벤젠), C6H12O6(포도당 고리형), H2CO3, HCO3-, CO32-(또는 CO3--), NO3-, H3PO4, H2PO4-, SO42-, H2O2.
+라디칼(홑전자 `·`): H·, Cl·, Br·, OH·, CH3·. 금속 원자와 이온: Li, Na, Zn, Zn2+, Cu, Cu2+, Ag, Ag+.
+더 큰 분자(이름으로 쓴다): Gly(글라이신), Ala(알라닌), CH3OH, C2H5OH, CH3COOH, CH3COO-, CH3Br, CH3Cl, C2H4, C6H6(벤젠), C6H12O6(포도당 고리형), H2CO3, HCO3-, CO32-(또는 CO3--), NO3-, H3PO4, H2PO4-, SO42-, H2O2, EC(에틸렌 카보네이트, 전지 전해질 용매).
 `Ca++`, `Ca+2`도 `Ca2+`로 읽고, `Cl.`, `Cl*`도 `Cl·`로 읽는다.
 
 **목록에 없는 분자는 SMILES로 쓴다**: `mol x = smiles:CC(=O)OC at center`.
@@ -114,6 +115,17 @@ H2O, H3O+, OH-, NH3, NH4+, CH4, HCl, HF, HBr, HI, H2S, H+, Li+, Na+, K+, Mg2+, C
 | `bridge Cl- K+ x2` | 염다리에서 음이온은 왼쪽, 양이온은 오른쪽 용액으로 들어가 전하를 맞춘다 |
 
 앱은 전극마다 남은 전자 수를 센다(판 위쪽 분홍 점). 순서: oxidize → wire → reduce → bridge.
+
+### 리튬 이온 전지 (battery 무대)
+
+| 명령 | 화면 |
+|---|---|
+| `load cathode 10` / `load anode 3` | (첫 step 앞) 전극의 층 사이에 리튬을 넣어 둔다. 양극에서는 Li+, 흑연에서는 전자를 품은 Li(점 하나) |
+| `charge 4` | 충전: 양극의 Li+ 4개가 전해질과 분리막을 지나 흑연 층 사이로 들어가고, 전자 4개가 도선으로 양극에서 음극으로 간다 |
+| `discharge 4` | 방전: 흑연 속 리튬이 전자를 도선으로 내보내고 Li+가 되어 양극으로 간다 |
+| `sei 1` | 흑연 표면에서 전해질이 분해되며 막(SEI)이 생기고 리튬 1개가 그 안에 갇힌다(다시 못 쓴다). 전해질 용매(`crowd EC in electrolyte 5`)가 있으면 하나가 막에 닿으며 사라진다. charge와 같은 단계에 써도 된다 |
+
+무대 아래 띠에 흑연·산화물·SEI 속 리튬 수와 '쓸 수 있는 리튬 n/전체'가 늘 표시된다(용량 감소를 보여 줄 때 쓴다).
 
 ### 배위 결합 (금속 착이온)
 

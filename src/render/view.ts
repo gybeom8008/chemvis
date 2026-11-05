@@ -118,6 +118,7 @@ export class StageView {
     for (const id of step.trails) for (const kf of step.tracks.get(id) ?? []) pts.push(kf);
     for (const fl of step.flows) pts.push(...fl.path);
     for (const ph of step.photons) pts.push(ph.p0, ph.p1);
+    for (const wr of step.wires) pts.push(...wr.path);
     for (const n of step.notes) {
       const tg = n.target;
       if (tg.kind === 'point') {
@@ -232,6 +233,8 @@ export class StageView {
 
     const atoms: Atom[] = [];
     for (const [id, a] of after.atoms) {
+      // Used-up atoms fade out in their step and are gone afterwards.
+      if (a.gone && (!step || step.before.atoms.get(id)?.gone)) continue;
       const ta = topo.atoms.get(id);
       atoms.push(ta ?? a);
     }
@@ -294,7 +297,10 @@ export class StageView {
       }
     }
 
-    const opacity = (id: string) => (step && step.appear.has(id) ? clamp(t / 0.18, 0, 1) : 1);
+    const opacity = (id: string) => {
+      if (step && after.atoms.get(id)?.gone) return clamp((0.86 - t) / 0.26, 0, 1);
+      return step && step.appear.has(id) ? clamp(t / 0.18, 0, 1) : 1;
+    };
     const isCrowd = (a: Atom) => a.crowd && !(step && step.focus.has(a.id));
 
     // Vapour bubbles (boiling): grow in place, rise, burst at the surface.
@@ -352,6 +358,17 @@ export class StageView {
           out.push(waterSvg(p, ang, a));
         }
       }
+    }
+
+    // The film (SEI) on a battery's graphite: lithium and used-up electrolyte locked together.
+    for (const a of atoms) {
+      if (!after.atoms.get(a.id)?.sei) continue;
+      const p = pos.get(a.id)!;
+      const was = step?.before.atoms.get(a.id);
+      const old = was ? !!was.sei : true;
+      const alpha = old ? 1 : clamp((t - 0.78) / 0.18, 0, 1);
+      if (alpha <= 0) continue;
+      out.push(`<circle class="sei" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(element(a.el).r + 20)}" opacity="${f1(alpha)}"/>`);
     }
 
     // Attractions between molecules (hydrogen bonds, ion–water).
@@ -534,14 +551,14 @@ export class StageView {
           out.push(dot({ x: e.x - 9 + (i % 2) * 18, y: e.top + 12 + Math.floor(i / 2) * 11 }, 'e'));
         }
       }
-      for (const wf of step?.wires ?? []) {
-        const u = clamp((t - wf.t0) / (wf.t1 - wf.t0), 0, 1);
-        const gap = Math.min(0.12, 0.6 / wf.count);
-        for (let i = 0; i < wf.count; i++) {
-          const f = clamp((u - i * gap) / (1 - (wf.count - 1) * gap), 0, 1);
-          if (f <= 0 || f >= 1) continue;
-          out.push(dot(polyAt(wf.path, f), 'e wire-e'));
-        }
+    }
+    for (const wf of step?.wires ?? []) {
+      const u = clamp((t - wf.t0) / (wf.t1 - wf.t0), 0, 1);
+      const gap = Math.min(0.12, 0.6 / wf.count);
+      for (let i = 0; i < wf.count; i++) {
+        const f = clamp((u - i * gap) / (1 - (wf.count - 1) * gap), 0, 1);
+        if (f <= 0 || f >= 1) continue;
+        out.push(dot(polyAt(wf.path, f), 'e wire-e'));
       }
     }
 
@@ -612,6 +629,9 @@ export class StageView {
         out.push(drawNote(target, nt.text, bx, by, nfs, alpha, rr));
       });
     }
+
+    // Battery: where the lithium is, and how much of it can still move (capacity).
+    if (tl.stage.battery) out.push(batteryCount(tl, step && t >= 0.88 ? step.after : step ? step.before : tl.initial));
 
     // Molecule counts over the step (collective mode), in the stage's top-right corner.
     if (step && step.tally.length) out.push(tallyChart(step.tally, t, tl.stage.width));
@@ -820,6 +840,23 @@ function prettyFormula(f: string): string {
   const body = m[1].replace(/\d/g, (d) => SUB[+d]);
   const charge = (m[2] ?? '').replace(/\d/g, (d) => SUP[+d]).replace('+', '⁺').replace('-', '⁻');
   return body + charge;
+}
+
+/** Lithium in each electrode and in the SEI film, with the share that can still carry charge. */
+function batteryCount(tl: Timeline, w: World): string {
+  const count = (world: World, region: string) => world.sites.filter((x) => x.region === region && x.occupant).length;
+  const sei = (world: World) => [...world.atoms.values()].filter((a) => a.sei && a.el === 'Li').length;
+  const total = (world: World) => count(world, 'anode') + count(world, 'cathode') + sei(world);
+  const all = total(tl.initial) || total(w);
+  const usable = count(w, 'anode') + count(w, 'cathode');
+  const text = `흑연 속 리튬 ${count(w, 'anode')} · 산화물 속 리튬 ${count(w, 'cathode')} · SEI에 갇힌 리튬 ${sei(w)}`;
+  const cx = tl.stage.width / 2;
+  const y = tl.stage.height - 26;
+  let s = `<g class="bat-count">`;
+  s += `<rect x="${f1(cx - 330)}" y="${f1(y - 22)}" width="660" height="34" rx="17"/>`;
+  s += `<text x="${f1(cx - 310)}" y="${f1(y)}">${esc(text)}</text>`;
+  s += `<text class="cap" x="${f1(cx + 310)}" y="${f1(y)}" text-anchor="end">쓸 수 있는 리튬 ${usable}/${all}</text>`;
+  return s + '</g>';
 }
 
 /** Energy over the whole scene: one stretch per step, drawn up to the current moment. */

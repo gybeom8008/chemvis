@@ -24,6 +24,10 @@ export interface Atom {
   skip?: number;
   /** Part of a metal electrode: its outer electrons belong to the metal as a whole, so no dots are drawn. */
   lattice?: boolean;
+  /** Locked into the film that grows on a battery's graphite (SEI): this lithium no longer takes part. */
+  sei?: boolean;
+  /** Used up (electrolyte broken down into the SEI): fades out during its step and is not drawn after. */
+  gone?: boolean;
 }
 
 export interface Bond {
@@ -271,6 +275,15 @@ function hillFormula(els: string[], q: number, unpaired: number): string {
   if (q === 0) return f;
   const mag = Math.abs(q) === 1 ? '' : String(Math.abs(q));
   return f + mag + (q > 0 ? '+' : '-');
+}
+
+/** Whether a molecule has the make-up of a formula or library name (C2H5OH matches C2H6O). */
+export function sameFormula(w: World, ids: string[], f: string): boolean {
+  const got = formulaOf(w, ids);
+  if (got === f) return true;
+  const def = LIBRARY.get(f);
+  if (!def) return false;
+  return got === hillFormula(def.atoms.map((a) => a.el), formulaCharge(f), def.atoms.reduce((n, a) => n + (a.rad ?? 0), 0));
 }
 
 let libIndex: Map<string, string> | null = null;

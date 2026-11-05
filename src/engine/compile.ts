@@ -17,6 +17,7 @@ import {
   clamp,
   dist,
   fromAngle,
+  lerp,
   lerpV,
   norm,
   perp,
@@ -35,6 +36,7 @@ import { Rng } from '../util/rng';
 import type { ArrowAnim, Keyframe, NoteTarget, StepAnim, Timeline } from './timeline';
 import { tallyBox } from './timeline';
 import {
+  sameFormula,
   allComponents,
   anchorOf,
   bondKey,
@@ -61,6 +63,9 @@ class ScriptError extends Error {}
 
 const STEP_BASE = 2.6;
 const OP_DURATION: Record<string, number> = {
+  charge: 4.6,
+  discharge: 4.6,
+  sei: 4.2,
   approach: 2.2,
   move: 2.6,
   arrow: 2.8,
@@ -174,6 +179,7 @@ export function compile(src: string): CompileResult {
     ctx.anim = anim;
     ctx.mid = null;
     ctx.touched = new Set();
+    ctx.batteryMode = null;
     let maxDur = 0;
     for (const cmd of s.cmds) {
       ctx.line = cmd.line;
@@ -247,6 +253,8 @@ class Ctx {
         return this.electrode(cmd);
       case 'protein':
         return this.protein(cmd);
+      case 'load':
+        return this.load(cmd.args);
       case 'mol':
       case 'place':
         return this.declare(cmd, false);
@@ -560,7 +568,7 @@ class Ctx {
     }
     const f = normalizeFormula(word);
     if (lookupMolecule(f) || /^[A-Z]/.test(f)) {
-      const comps = allComponents(this.w).filter((c) => !this.w.atoms.get(c[0])!.crowd && formulaOf(this.w, c) === f);
+      const comps = allComponents(this.w).filter((c) => !this.w.atoms.get(c[0])!.crowd && sameFormula(this.w, c, f));
       comps.sort((p, q) => this.w.atoms.get(anchorOf(this.w, p))!.num - this.w.atoms.get(anchorOf(this.w, q))!.num);
       const hit = prefer ? comps.find(prefer) ?? comps[0] : comps[0];
       if (hit) return hit;
@@ -688,10 +696,16 @@ class Ctx {
         return this.temperature(cmd.op, a);
       case 'energy':
         return this.energy(a);
+      case 'charge':
+      case 'discharge':
+        return this.shuttle(cmd.op, a);
+      case 'sei':
+        return this.sei(a);
       case 'wait':
         return;
       case 'crowd':
       case 'crystal':
+      case 'load':
       case 'scene':
       case 'stage':
         this.fail(`${cmd.op}은(는) 첫 step 앞에 적어야 해요.`);
@@ -1385,7 +1399,7 @@ class Ctx {
       if (this.w.names.has(ref)) comps.push(this.mol(ref));
       else {
         const f = normalizeFormula(ref);
-        const hits = allComponents(this.w).filter((c) => !this.w.atoms.get(c[0])!.crowd && formulaOf(this.w, c) === f);
+        const hits = allComponents(this.w).filter((c) => !this.w.atoms.get(c[0])!.crowd && sameFormula(this.w, c, f));
         if (!hits.length) this.fail(`장면에 ${f}이(가) 없어요.`);
         comps.push(...hits);
       }
@@ -1426,7 +1440,7 @@ class Ctx {
   pickSolvent(ref: string, pred: (c: string[]) => boolean, score: (c: string[]) => number): string[] {
     if (this.w.names.has(ref)) return this.mol(ref);
     const f = normalizeFormula(ref);
-    const cands = allComponents(this.w).filter((c) => formulaOf(this.w, c) === f && pred(c));
+    const cands = allComponents(this.w).filter((c) => sameFormula(this.w, c, f) && pred(c));
     if (!cands.length) this.fail(`조건에 맞는 ${f}이(가) 없어요.`);
     cands.sort((p, q) => score(p) - score(q));
     return cands[0];
@@ -1766,6 +1780,130 @@ class Ctx {
     chans.forEach((ch, i) => this.A.flows.push({ path: ch, count: 14, t0: 0, t1: 1, seed: i + 11 }));
   }
 
+  // ------------------------------------------------------------ ops: lithium-ion battery
+
+  needBattery(op: string): NonNullable<StageDef['battery']> {
+    const b = this.stage.battery;
+    if (!b) this.fail(`${op}는 battery 무대에서 써요.`);
+    return b;
+  }
+
+  batteryName(region: string): string {
+    return region === 'anode' ? '음극(흑연)' : '양극(금속 산화물)';
+  }
+
+  /** load cathode 8 / load anode 3 : lithium already sitting between an electrode's sheets. */
+  load(a: string[]): void {
+    this.needBattery('load');
+    const where = a[0];
+    if (where !== 'anode' && where !== 'cathode') this.fail('load는 이렇게 적어요: load cathode 8  (또는 load anode 3)');
+    const n = clamp(parseInt(a[1] ?? '1', 10) || 1, 1, 25);
+    const free = this.w.sites.filter((x) => x.region === where && !x.occupant);
+    if (free.length < n) this.fail(`${this.batteryName(where)}에는 리튬이 ${free.length}개까지만 더 들어가요.`);
+    // Spread the lithium over the gaps instead of filling one row after another.
+    for (let i = free.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rng.next() * (i + 1));
+      [free[i], free[j]] = [free[j], free[i]];
+    }
+    // In graphite the lithium holds the electron it came with (Li); in the oxide it is an ion (Li+).
+    const f = where === 'anode' ? 'Li' : 'Li+';
+    for (const site of free.slice(0, n)) {
+      const ids = this.spawn(f, this.autoName(f), false, { x: site.x, y: site.y });
+      site.occupant = ids[0];
+    }
+  }
+
+  /** The way a lithium ion takes through the electrolyte, crossing the separator. */
+  ionPath(from: Vec, to: Vec, fromFace: number, toFace: number): Vec[] {
+    const B = this.stage.battery!;
+    const dir = Math.sign(toFace - fromFace);
+    const region = this.region('electrolyte');
+    const exit = { x: fromFace + dir * 30, y: from.y };
+    const cross = { x: B.separatorX, y: clamp(lerp(from.y, to.y, 0.5) + this.rng.range(-40, 40), B.top + 30, B.bottom - 30) };
+    const entry = { x: toFace - dir * 30, y: to.y };
+    return [from, exit, ...this.wander(exit, cross, region, 0.5).slice(1), ...this.wander(cross, entry, region, 0.5).slice(1), to];
+  }
+
+  /** charge 2 / discharge 2 : lithium ions move between the electrodes through the electrolyte; electrons go round the wire. */
+  shuttle(op: string, a: string[]): void {
+    const B = this.needBattery(op);
+    const charging = op === 'charge';
+    if (this.A.phase && this.batteryMode && this.batteryMode !== op) this.fail('한 단계에 charge와 discharge를 같이 쓰지 않아요. 단계를 나눠 주세요.');
+    this.batteryMode = op;
+    const n = clamp(parseInt(a[0] ?? '1', 10) || 1, 1, 12);
+    const src = charging ? 'cathode' : 'anode';
+    const dst = charging ? 'anode' : 'cathode';
+    const srcFace = charging ? B.cathodeFace : B.anodeFace;
+    const dstFace = charging ? B.anodeFace : B.cathodeFace;
+    const full = this.w.sites.filter((x) => x.region === src && x.occupant && this.w.atoms.has(x.occupant));
+    const free = this.w.sites.filter((x) => x.region === dst && !x.occupant);
+    if (full.length < n) this.fail(`${this.batteryName(src)}에 리튬이 ${full.length}개뿐이에요.`);
+    if (free.length < n) this.fail(`${this.batteryName(dst)}에 리튬이 들어갈 빈 곳이 ${free.length}개뿐이에요.`);
+    // Lithium nearest the electrolyte leaves first, and goes into the free gap nearest the other face.
+    full.sort((p, q) => Math.abs(p.x - srcFace) - Math.abs(q.x - srcFace) || p.y - q.y);
+    free.sort((p, q) => Math.abs(p.x - dstFace) - Math.abs(q.x - dstFace) || p.y - q.y);
+    for (let i = 0; i < n; i++) {
+      const from = full[i];
+      const to = free[i];
+      const id = from.occupant!;
+      from.occupant = null;
+      to.occupant = id;
+      const at = this.w.atoms.get(id)!;
+      const start = { x: at.x, y: at.y };
+      this.moveGroup([id], start, this.ionPath(start, to, srcFace, dstFace), 0, 0.06 + i * 0.05, Math.min(0.95, 0.8 + i * 0.03));
+      // In graphite the ion takes an electron from the wire; leaving it, it gives one back.
+      at.rad = charging ? 1 : 0;
+      this.A.trails.push(id);
+      this.focus([id]);
+    }
+    const wire = this.stage.wire!;
+    this.A.wires.push({ path: charging ? [...wire].reverse() : wire, count: n, t0: 0.1, t1: 0.85 });
+    const sw = charging ? 0.9 : 0.08;
+    this.A.phase = { b0: sw, b1: sw, c0: 0 };
+  }
+
+  batteryMode: string | null = null;
+
+  /** sei 1 : on the graphite surface, lithium and electrolyte react into a film; that lithium is lost for good. */
+  sei(a: string[]): void {
+    const B = this.needBattery('sei');
+    if (this.batteryMode === 'discharge') this.fail('sei는 충전 때 생겨요. discharge와 다른 단계에 적어 주세요.');
+    this.batteryMode = 'charge';
+    const n = clamp(parseInt(a[0] ?? '1', 10) || 1, 1, 6);
+    const full = this.w.sites.filter((x) => x.region === 'cathode' && x.occupant && this.w.atoms.has(x.occupant));
+    if (full.length < n) this.fail(`양극에 리튬이 ${full.length}개뿐이에요.`);
+    full.sort((p, q) => Math.abs(p.x - B.cathodeFace) - Math.abs(q.x - B.cathodeFace) || p.y - q.y);
+    const trapped = [...this.w.atoms.values()].filter((x) => x.sei && x.el === 'Li').length;
+    const gap = 80;
+    const rows = Math.floor((B.bottom - B.top - 70) / gap);
+    const solvent = allComponents(this.w).filter((c) => sameFormula(this.w, c, 'EC') && !this.w.atoms.get(c[0])!.gone);
+    for (let i = 0; i < n; i++) {
+      const site = full[i];
+      const id = site.occupant!;
+      site.occupant = null;
+      const k = trapped + i;
+      const layer = Math.floor(k / rows);
+      // Film spots line the graphite face from top to bottom, then a second layer further out.
+      const spot = { x: B.anodeFace + 22 + layer * 34, y: B.top + 70 + (k % rows) * gap + (layer % 2 ? gap / 2 : 0) };
+      const at = this.w.atoms.get(id)!;
+      const start = { x: at.x, y: at.y };
+      this.moveGroup([id], start, this.ionPath(start, spot, B.cathodeFace, B.anodeFace), 0, 0.06 + i * 0.05, Math.min(0.95, 0.8 + i * 0.03));
+      at.sei = true;
+      this.A.trails.push(id);
+      this.focus([id]);
+      // A solvent molecule reacts there too: it comes to the surface and is used up into the film.
+      if (solvent.length) {
+        solvent.sort((p, q) => dist(centerOf(this.w, p), spot) - dist(centerOf(this.w, q), spot));
+        const ec = solvent.shift()!;
+        const c = centerOf(this.w, ec);
+        const goal = { x: spot.x + 30, y: spot.y };
+        this.moveGroup(ec, c, [c, lerpV(c, goal, 0.5), goal], this.rng.range(-1.5, 1.5), 0.25, 0.8);
+        for (const x of ec) this.w.atoms.get(x)!.gone = true;
+      }
+    }
+    this.A.wires.push({ path: [...this.stage.wire!].reverse(), count: n, t0: 0.1, t1: 0.85 });
+  }
+
   // ------------------------------------------------------------ ops: energy diagram
 
   energyLevel = 0;
@@ -2032,7 +2170,7 @@ class Ctx {
     const inLattice = new Set([...this.w.crystals.values()].flat());
     const pick = (f: string) =>
       allComponents(this.w)
-        .filter((c) => !this.w.atoms.get(c[0])!.crowd && formulaOf(this.w, c) === normalizeFormula(f) && !c.some((x) => inLattice.has(x)))
+        .filter((c) => !this.w.atoms.get(c[0])!.crowd && sameFormula(this.w, c, normalizeFormula(f)) && !c.some((x) => inLattice.has(x)))
         .slice(0, n);
     const cats = pick(catF);
     const ans = pick(anF);
@@ -2350,7 +2488,7 @@ class Ctx {
     const comps = allComponents(this.w).filter((c) => {
       const at = this.w.atoms.get(c[0])!;
       if (at.crowd && !crowdOk) return false;
-      if (formulaOf(this.w, c) !== f) return false;
+      if (!sameFormula(this.w, c, f)) return false;
       return side === null || this.sideOf(centerOf(this.w, c)) === side;
     });
     comps.sort((p, q) => Math.abs(centerOf(this.w, p).x - x) - Math.abs(centerOf(this.w, q).x - x));
@@ -2889,6 +3027,7 @@ function separateSolutes(ctx: Ctx): void {
   const w = ctx.w;
   const pinned = new Set<string>([...w.crystals.values()].flat());
   for (const s of w.sites) if (s.occupant) component(w, s.occupant).forEach((x) => pinned.add(x));
+  for (const a of w.atoms.values()) if (a.sei) pinned.add(a.id);
   const groups = allComponents(w)
     .filter((c) => !w.atoms.get(c[0])!.crowd && !c.some((x) => pinned.has(x)))
     .map((c) => ctx.group(c));
@@ -2950,8 +3089,9 @@ function resolveOverlaps(ctx: Ctx, _focus: Set<string>): void {
   for (const l of w.attached.values()) for (const a of l) if (w.atoms.has(a)) component(w, a).forEach((x) => attached.add(x));
   const comps = allComponents(w);
   const inLattice = new Set([...w.crystals.values()].flat());
-  const free = comps.filter((c) => w.atoms.get(c[0])!.crowd && !c.some((x) => attached.has(x) || inLattice.has(x)));
-  const solid = comps.filter((c) => !free.includes(c)).flat();
+  const live = comps.filter((c) => !w.atoms.get(c[0])!.gone);
+  const free = live.filter((c) => w.atoms.get(c[0])!.crowd && !c.some((x) => attached.has(x) || inLattice.has(x) || w.atoms.get(x)!.sei));
+  const solid = live.filter((c) => !free.includes(c)).flat();
   const S = stage.surfaceY;
   for (let iter = 0; iter < 8; iter++) {
     let moved = false;

@@ -56,6 +56,8 @@ export interface StageDef {
   electrodes?: Record<string, ElectrodeDef>;
   wire?: Vec[];
   bridge?: { left: Vec; right: Vec };
+  /** Lithium-ion battery: where lithium can sit in each electrode, and the faces toward the electrolyte. */
+  battery?: { anodeFace: number; cathodeFace: number; separatorX: number; top: number; bottom: number };
   /** Membrane stage: the bilayer band (molecules may only cross it through proteins or on purpose). */
   membrane?: { y0: number; y1: number; outside: string; inside: string };
   /** Pore channels (soil), top to bottom. */
@@ -457,7 +459,88 @@ function membrane(): StageDef {
   };
 }
 
-export const STAGES: Record<string, () => StageDef> = { solution, interface: iface, soil, gas, cell, membrane };
+// ---------------------------------------------------------------- lithium-ion battery
+
+function battery(): StageDef {
+  const W = 1200;
+  const H = 720;
+  const TOP = 180;
+  const BOT = 600;
+  const AX0 = 74;
+  const AX1 = 400;
+  const CX0 = 800;
+  const CX1 = 1126;
+  const SEP = 600;
+  // Six sheets in each electrode; lithium sits in the five gaps between them.
+  const sheetYs = [0, 1, 2, 3, 4, 5].map((i) => TOP + 26 + i * 74);
+  const gapYs = sheetYs.slice(0, 5).map((y) => y + 37);
+  const sites: SiteDef[] = [];
+  for (const [region, x0, x1] of [
+    ['anode', AX0, AX1],
+    ['cathode', CX0, CX1],
+  ] as const) {
+    gapYs.forEach((y, row) => {
+      for (let i = 0; i < 5; i++) sites.push({ x: x0 + 42 + i * ((x1 - x0 - 84) / 4), y, nx: 0, ny: 0, region, plate: row });
+    });
+  }
+  const regions: Record<string, Region> = {
+    anode: rect('anode', '음극(흑연)', AX0, TOP, AX1 - AX0, BOT - TOP),
+    cathode: rect('cathode', '양극(금속 산화물)', CX0, TOP, CX1 - CX0, BOT - TOP),
+    electrolyte: rect('electrolyte', '전해질', AX1 + 12, TOP, CX0 - AX1 - 24, BOT - TOP),
+    left: rect('left', '전해질 왼쪽', AX1 + 12, TOP, SEP - AX1 - 22, BOT - TOP),
+    right: rect('right', '전해질 오른쪽', SEP + 10, TOP, CX0 - SEP - 22, BOT - TOP),
+    top: rect('top', '위쪽', 0, 0, W, TOP - 20),
+  };
+  const wire: Vec[] = [
+    { x: 64, y: TOP },
+    { x: 64, y: 80 },
+    { x: 1136, y: 80 },
+    { x: 1136, y: TOP },
+  ];
+  const background = () => {
+    let s = `<rect x="${AX0 - 14}" y="${TOP - 10}" width="${CX1 - AX0 + 28}" height="${BOT - TOP + 20}" rx="14" class="bg-electrolyte"/>`;
+    // Separator: a porous sheet that lets ions through but keeps the electrodes apart.
+    s += `<line x1="${SEP}" y1="${TOP - 4}" x2="${SEP}" y2="${BOT + 4}" class="separator"/>`;
+    // Current collectors (copper under the graphite, aluminium under the oxide).
+    s += `<rect x="${AX0 - 14}" y="${TOP - 10}" width="12" height="${BOT - TOP + 20}" rx="4" class="foil cu"/>`;
+    s += `<rect x="${CX1 + 2}" y="${TOP - 10}" width="12" height="${BOT - TOP + 20}" rx="4" class="foil al"/>`;
+    // Graphite: stacked carbon sheets, drawn edge-on as zigzags.
+    for (const y of sheetYs) {
+      let d = `M${AX0},${y}`;
+      for (let x = AX0, k = 0; x <= AX1; x += 13, k++) d += ` L${x},${y + (k % 2 ? 4 : -4)}`;
+      s += `<path d="${d}" class="graphene"/>`;
+    }
+    // Layered oxide: sheets of metal–oxygen octahedra, drawn edge-on as diamonds.
+    for (const y of sheetYs) {
+      for (let x = CX0 + 10; x <= CX1 - 10; x += 26) s += `<path d="M${x - 12},${y} L${x},${y - 10} L${x + 12},${y} L${x},${y + 10} Z" class="oxide"/>`;
+    }
+    s += `<polyline points="${wire.map((p) => `${p.x},${p.y}`).join(' ')}" class="wire"/>`;
+    s += `<rect x="${SEP - 70}" y="58" width="140" height="44" rx="10" class="device"/>`;
+    s += `<text x="${SEP}" y="86" class="bg-note" text-anchor="middle">충전기 / 기기</text>`;
+    s += `<text x="${(AX0 + AX1) / 2}" y="${BOT + 48}" class="bg-label" text-anchor="middle">(−) 흑연</text>`;
+    s += `<text x="${(CX0 + CX1) / 2}" y="${BOT + 48}" class="bg-label" text-anchor="middle">(+) 금속 산화물</text>`;
+    s += `<text x="${SEP}" y="${BOT + 48}" class="bg-label" text-anchor="middle">분리막</text>`;
+    s += `<text x="${(AX1 + SEP) / 2}" y="${TOP + 24}" class="bg-note" text-anchor="middle">전해질</text>`;
+    s += `<text x="${(SEP + CX0) / 2}" y="${TOP + 24}" class="bg-note" text-anchor="middle">전해질</text>`;
+    return s;
+  };
+  return {
+    name: 'battery',
+    label: '리튬 이온 전지',
+    width: W,
+    height: H,
+    regions,
+    defaultRegion: 'electrolyte',
+    liquid: [],
+    wire,
+    sites,
+    battery: { anodeFace: AX1, cathodeFace: CX0, separatorX: SEP, top: TOP, bottom: BOT },
+    attractDefault: false,
+    background,
+  };
+}
+
+export const STAGES: Record<string, () => StageDef> = { solution, interface: iface, soil, gas, cell, membrane, battery };
 
 export function getStage(name: string): StageDef | undefined {
   const f = STAGES[name];

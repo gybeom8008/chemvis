@@ -584,3 +584,33 @@ step "칼슘 이온과 탄산 이온이 물 분자를 떨치고 다시 결정이
 `),
   tryIt: `처음 장면의 <code>crystal s = CaCO3 at water 6x2</code>를 <code>4x2</code>로 바꾸면 석회암이 작아져요. 그러면 표면 이온 이름도 바뀌니 <code>s4</code>, <code>s3</code>를 <code>s2</code>, <code>s1</code>로 고쳐 보세요.`,
 });
+
+// The lithium-ion battery sits right after the Daniell cell.
+CHAPTERS.splice(CHAPTERS.findIndex((c) => c.id === 'cell') + 1, 0, {
+  id: 'li-battery',
+  part: 2,
+  title: '리튬 이온 전지와 수명',
+  intro: `<p>휴대폰·전기차의 리튬 이온 전지는 리튬 이온(Li+)이 두 전극의 층 사이를 오가며 충전·방전돼요. 충전하면 Li+가 양극(금속 산화물)에서 음극(흑연)으로, 방전하면 그 반대로 가요. 그동안 전자는 바깥 도선으로 흘러요. 흑연 표면에서는 전해질이 조금씩 분해되어 막(SEI)이 생기는데, 그 안에 갇힌 리튬은 다시 쓸 수 없어서 전지의 용량이 줄어요.</p>
+<ul class="legend"><li><i class="g-e"></i>전자</li><li><i class="g-sei"></i>SEI 막</li></ul>`,
+  script: s(`
+scene "리튬 이온 전지가 충전·방전되며 조금씩 닳을 때"
+stage battery
+load cathode 10
+crowd EC in electrolyte 5
+
+step "방전된 전지예요. 리튬은 모두 양극(금속 산화물)의 층 사이에 이온(Li+)으로 있어요"
+  note cathode "리튬 이온이 든 산화물 층"
+step "충전: 충전기가 양극에서 전자를 빼내 음극으로 보내요. 그만큼 Li+가 전해질과 분리막을 지나 흑연 층 사이로 들어가요"
+  charge 4
+step "첫 충전 때 흑연 표면에서 전해질 일부가 전자를 얻어 분해되고, 리튬과 함께 얇은 막(SEI)이 돼요. 이 리튬은 다시 나오지 못해요"
+  sei 1
+step "방전: 흑연 속 리튬이 전자를 내놓고, 전자는 기기를 지나 양극으로 가요. Li+도 전해질을 지나 양극으로 가요"
+  discharge 4
+step "충전할 때마다 SEI가 조금씩 자라며 리튬이 더 갇혀요"
+  charge 3
+  sei 1
+step "쓸 수 있는 리튬이 줄어든 만큼 전지가 저장할 수 있는 전기의 양(용량)이 줄어요. 전지 수명이 줄어드는 주된 까닭이에요"
+  discharge 3
+`),
+  tryIt: `<code>sei 1</code> 줄을 지우면 리튬이 하나도 갇히지 않아 아래쪽 '쓸 수 있는 리튬'이 10/10 그대로예요.`,
+});

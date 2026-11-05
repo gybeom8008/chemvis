@@ -242,3 +242,35 @@ step "셋"
     expect(r.errors[0].message).toContain('energy -57 kJ/mol');
   });
 });
+
+describe('lithium-ion battery', () => {
+  const count = (w: World, region: string) => w.sites.filter((x) => x.region === region && x.occupant).length;
+  it('charge, SEI and discharge move lithium and lose some for good', () => {
+    const r = compile(`
+stage battery
+load cathode 6
+crowd EC in electrolyte 3
+step "충전"
+  charge 3
+step "SEI"
+  sei 1
+step "방전"
+  discharge 3
+`);
+    expect(r.errors).toEqual([]);
+    const [c, s, d] = r.timeline!.steps;
+    expect([count(c.after, 'anode'), count(c.after, 'cathode')]).toEqual([3, 3]);
+    // Lithium in graphite holds an electron (neutral Li); in the oxide it is Li+.
+    const inAnode = c.after.sites.filter((x) => x.region === 'anode' && x.occupant).map((x) => c.after.atoms.get(x.occupant!)!);
+    expect(inAnode.every((a) => a.rad === 1)).toBe(true);
+    expect(c.wires[0].count).toBe(3);
+    expect([...s.after.atoms.values()].filter((a) => a.sei).length).toBe(1);
+    expect([...s.after.atoms.values()].filter((a) => a.gone).length).toBe(10); // one EC molecule used up
+    expect([count(d.after, 'anode'), count(d.after, 'cathode')]).toEqual([0, 5]);
+  });
+  it('says when there is not enough lithium', () => {
+    const r = compile(`stage battery\nload cathode 2\nstep "x"\n  charge 3\n`);
+    expect(r.errors[0].message).toContain('양극');
+    expect(compile(`stage solution\nstep "x"\n  charge 1\n`).errors[0].message).toContain('battery');
+  });
+});

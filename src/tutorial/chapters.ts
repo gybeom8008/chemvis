@@ -537,3 +537,49 @@ step "두 반응의 빠르기가 같아지면 분자 수가 거의 그대로 유
 `),
   tryIt: `<code>&lt;=&gt;</code>를 <code>-&gt;</code>로 바꾸면 역반응이 빠져서 HI만 계속 늘어요.`,
 });
+
+CHAPTERS.push({
+  id: 'limestone',
+  part: 3,
+  title: '석회 동굴과 종유석',
+  intro: `<p>자연의 현상은 여러 단계가 이어져 일어나요. 빗물에 녹은 이산화탄소가 탄산이 되고, 탄산이 석회암(탄산칼슘)을 녹여 동굴이 생겨요. 동굴 천장의 물방울에서는 이산화탄소가 공기로 빠져나가면서 반응이 거꾸로 일어나, 녹았던 탄산칼슘이 다시 결정이 되어 종유석이 자라요. 앞에서 본 기체 녹아듦, 굽은 화살표, 양성자 이동, 용해, 석출을 한 장면에서 이어 써요.</p>`,
+  script: s(`
+scene "석회 동굴이 생기고 종유석이 자랄 때"
+stage interface
+lens attract off
+crowd H2O in water 18
+mol c = CO2 at 330,120
+mol w = H2O at 300,330
+crystal s = CaCO3 at water 6x2
+
+step "공기 속 이산화탄소(CO2)가 빗물에 녹아들어요"
+  gas-in c
+step "물 분자가 O의 비공유 전자쌍을 앞세워 CO2의 C에 다가가요"
+  approach w.O c.C
+step "O의 전자쌍은 새 O–C 결합이 되고, C=O 결합 하나의 전자쌍은 O로 옮겨 가요"
+  arrow w.O:lp -> w.O~c.C
+  arrow c.C~c.O1 -> c.O1
+step "H+ 하나가 옆 O로 옮겨 가 탄산(H2CO3)이 돼요"
+  transfer w.H1 to c.O1
+step "탄산이 석회암(탄산칼슘, CaCO3) 표면으로 다가가요"
+  approach w.H2 s4.O1
+step "탄산의 H+가 석회암 표면 탄산 이온(CO32-)의 O로 옮겨 가요"
+  transfer w.H2 to s4.O1
+step "칼슘 이온(Ca2+)과 탄산수소 이온(HCO3-)이 물 분자에 둘러싸여 녹아 나가요. 석회암은 이렇게 녹아 동굴이 돼요"
+  dissolve s3 s4 from s
+step "동굴 천장의 물방울에서는 거꾸로 일어나요. 탄산수소 이온 하나가 다른 탄산수소 이온에 다가가요"
+  approach w.H2 w.O
+step "H+가 옮겨 가 탄산(H2CO3)과 탄산 이온(CO32-)이 생겨요"
+  transfer w.H2 to w.O
+step "탄산 안에서 H+ 하나가 옆 O로 옮겨 가요"
+  transfer w.H1 to w.O
+step "C–O 결합의 전자쌍이 O로 가며 물 분자가 떨어지고, 남은 O의 전자쌍은 C=O 결합이 돼요"
+  arrow c.O1:lp -> c.O1~c.C
+  arrow c.C~w.O -> w.O
+step "CO2가 공기로 빠져나가요"
+  gas-out c
+step "칼슘 이온과 탄산 이온이 물 분자를 떨치고 다시 결정이 돼요. 이렇게 생긴 결정이 조금씩 늘어나 종유석이 자라요"
+  precipitate Ca2+ CO32- onto s
+`),
+  tryIt: `처음 장면의 <code>crystal s = CaCO3 at water 6x2</code>를 <code>4x2</code>로 바꾸면 석회암이 작아져요. 그러면 표면 이온 이름도 바뀌니 <code>s4</code>, <code>s3</code>를 <code>s2</code>, <code>s1</code>로 고쳐 보세요.`,
+});

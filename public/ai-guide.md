@@ -52,7 +52,7 @@ AI는 HTML·SVG를 직접 만들지 않고 이 대본만 쓴다. 배치, 그리�
 | `lens numbers on/off` | 원자 추적 번호 |
 | `lens oxidation on/off` | 산화수(원자 옆 보라색 숫자). 산화·환원 장면에 켠다 |
 | `crowd H2O in water 40` | 배경 용매 분자를 흐리게 깐다(최대 160) |
-| `crystal s = NaCl at bottom 5x3` | 1가 이온 결정(NaCl, KCl, KBr, LiF …) |
+| `crystal s = NaCl at bottom 5x3` | 이온 결정. 전하 크기가 같은 양이온·음이온 짝이면 된다: NaCl, KBr, AgCl, CaCO3(석회암), CaSO4, MgCO3 … 두 이온을 직접 적어도 된다(`crystal s = Ca2+ CO32- at water 6x2`). 이온은 체스판처럼 번갈아 놓이고, 이름은 왼쪽 위부터 줄마다 `s1`, `s2`, …(`s1`이 양이온), 원자는 `s2.O1`처럼. 다원자 이온은 바깥 원자 하나가 위를 향한다(CO32-는 `O1`) |
 | `mol w = H2O at center` | 이름 있는 분자. 위치: `at 구역`(가운데), `in 구역`(빈 곳 아무 데나), `at 300,200`, `near a right/left/above/below`, `on clay [in topsoil]`(soil 전용, 양이온만) |
 | `mol c x3 = Ca2+ in left` | 여러 개 → `c1`, `c2`, `c3` |
 | `place Na+ in left x5` | 이름 없이 여러 개. 나중에 화학식(`Na+`)으로 가리킨다 |
@@ -61,7 +61,7 @@ AI는 HTML·SVG를 직접 만들지 않고 이 대본만 쓴다. 배치, 그리�
 
 ## 등록된 분자
 
-H2O, H3O+, OH-, NH3, NH4+, CH4, HCl, HF, HBr, H2S, H+, Li+, Na+, K+, Mg2+, Ca2+, Al3+, F-, Cl-, Br-, I-, H2, O2, N2, Cl2, CO2.
+H2O, H3O+, OH-, NH3, NH4+, CH4, HCl, HF, HBr, HI, H2S, H+, Li+, Na+, K+, Mg2+, Ca2+, Al3+, F-, Cl-, Br-, I-, H2, O2, N2, F2, Cl2, Br2, I2, CO2.
 라디칼(홑전자 `·`): H·, Cl·, Br·, OH·, CH3·. 금속 원자와 이온: Na, Zn, Zn2+, Cu, Cu2+, Ag, Ag+.
 더 큰 분자(이름으로 쓴다): Gly(글라이신), Ala(알라닌), CH3OH, C2H5OH, CH3COOH, CH3COO-, CH3Br, CH3Cl, C2H4, C6H6(벤젠), C6H12O6(포도당 고리형), H2CO3, HCO3-, CO32-(또는 CO3--), NO3-, H3PO4, H2PO4-, SO42-, H2O2.
 `Ca++`, `Ca+2`도 `Ca2+`로 읽고, `Cl.`, `Cl*`도 `Cl·`로 읽는다.
@@ -153,11 +153,11 @@ H2O, H3O+, OH-, NH3, NH4+, CH4, HCl, HF, HBr, H2S, H+, Li+, Na+, K+, Mg2+, Ca2+,
 | 명령 | 화면 |
 |---|---|
 | `solvate a` / `solvate all` | 배경 물 분자가 이온을 둘러싼다(수화 껍질). 양이온에는 O가, 음이온에는 H가 향한다. 껍질은 이온과 함께 움직인다 |
-| `dissolve 2 from s` | 결정 모서리 이온이 물 분자에 둘러싸여 떨어져 나간다 |
+| `dissolve 2 from s` | 결정 모서리 이온이 물 분자에 둘러싸여 떨어져 나간다. `dissolve s3 s4 from s`처럼 녹일 이온을 고를 수 있다(산이 H+를 준 표면 이온 등) |
 | `evaporate H2O` | (interface) 수면에 가장 가까운 물 분자가 공기로 나간다 |
 | `condense H2O` | (interface) 공기 중 물 분자가 액체로 내려온다 |
 | `heat water` / `cool water` | 그 구역 입자 움직임이 빨라진다/느려진다 |
-| `precipitate Ag+ Cl- x3` | 녹아 있던 양이온·음이온 짝이 물을 떨치고 고체 결정(침전)을 이룬다. `onto s`로 있던 결정에 덧붙인다. 전하 크기가 같은 짝만 |
+| `precipitate Ag+ Cl- x3` | 녹아 있던 양이온·음이온 짝이 물을 떨치고 고체 결정(침전)을 이룬다. `onto s`로 있던 결정의 빈 곳부터 채운다. 전하 크기가 같은 짝만(Ca2+ CO32- 등 다원자 이온도 된다) |
 | `freeze water` / `melt water` | 그 구역의 배경 물 분자가 육각형 수소 결합 그물(얼음)로 자리 잡는다 / 그물이 흐트러지며 녹는다. `lens attract on`과 함께 쓴다 |
 | `gas-in CO2` / `gas-out CO2` | (interface) 공기 중 기체 분자가 수면 아래로 녹아든다 / 녹아 있던 기체 분자가 공기로 빠져나간다 |
 | `boil 3` | (interface) 액체 속에 기포가 생겨 물 분자 3개(2~6)를 품고 떠올라 수면에서 터진다 |
@@ -222,5 +222,6 @@ step "떨어져 나온 Ca2+가 물 분자에 둘러싸여 빗물과 함께 속�
 ## 쓰는 요령
 
 - 반응은 `approach`로 먼저 가까이 두고, 다음 단계에서 화살표를 쓴다.
+- 여러 현상이 이어지는 자연 현상(석회 동굴, 산성비 등)은 한 장면에서 단계를 이어 쓴다. 튜토리얼 3부 '석회 동굴과 종유석'이 기체 녹아듦 → 화살표 → 양성자 이동 → 용해 → 역반응 → 석출을 한 대본에 잇는 예다.
 - 화살표는 실제 메커니즘대로 쓴다. 앱은 전자 수와 전하만 검사하고, 반응이 실제로 일어나는지는 판단하지 않는다.
 - 앱이 아직 못 그리는 것(SMILES로도 적기 어려운 분자, 금속 결합의 띠 구조, 효소 반응의 3차원 구조 등)은 억지로 흉내 내지 말고 사용자에게 그 사실을 말한다.

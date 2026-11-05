@@ -1,4 +1,5 @@
 import { ELECTRONEGATIVITY, element } from '../chem/elements';
+import { LIBRARY, formulaCharge } from '../chem/library';
 import type { Vec } from '../util/math';
 
 export interface Atom {
@@ -233,23 +234,28 @@ export function centerOf(w: World, ids: string[]): Vec {
 
 /** Molecular formula in Hill order with charge, e.g. H3O+, Ca2+. */
 export function formulaOf(w: World, ids: string[]): string {
+  const els = ids.map((i) => w.atoms.get(i)!.el);
+  const unpaired = ids.reduce((n, i) => n + w.atoms.get(i)!.rad, 0);
+  const f = hillFormula(els, componentCharge(w, ids), unpaired);
+  // Small molecules go by their usual name (H2CO3, not CH2O3; SO42-, not O4S2-).
+  return els.filter((e) => e === 'C').length <= 1 ? (libraryName(f) ?? f) : f;
+}
+
+function hillFormula(els: string[], q: number, unpaired: number): string {
   const counts = new Map<string, number>();
-  for (const i of ids) {
-    const el = w.atoms.get(i)!.el;
-    counts.set(el, (counts.get(el) ?? 0) + 1);
-  }
-  const els = [...counts.keys()];
+  for (const el of els) counts.set(el, (counts.get(el) ?? 0) + 1);
+  const keys = [...counts.keys()];
   const hasC = counts.has('C');
-  els.sort((p, q) => {
+  keys.sort((p, q2) => {
     if (hasC) {
       if (p === 'C') return -1;
-      if (q === 'C') return 1;
+      if (q2 === 'C') return 1;
       if (p === 'H') return -1;
-      if (q === 'H') return 1;
+      if (q2 === 'H') return 1;
     }
-    return p < q ? -1 : 1;
+    return p < q2 ? -1 : 1;
   });
-  let f = els.map((e) => e + (counts.get(e)! > 1 ? counts.get(e) : '')).join('');
+  let f = keys.map((e) => e + (counts.get(e)! > 1 ? counts.get(e) : '')).join('');
   if (!hasC && counts.has('O') && counts.has('H') && counts.size === 2) {
     const h = counts.get('H')!;
     const o = counts.get('O')!;
@@ -257,16 +263,36 @@ export function formulaOf(w: World, ids: string[]): string {
   } else if (!hasC && counts.has('N') && counts.has('H') && counts.size === 2) {
     f = `NH${counts.get('H')! > 1 ? counts.get('H') : ''}`;
   } else if (!hasC && counts.has('H') && counts.size === 2) {
-    const other = els.find((e) => e !== 'H')!;
+    const other = keys.find((e) => e !== 'H')!;
     if (['F', 'Cl', 'Br', 'I'].includes(other)) f = `H${other}`;
   }
   // An odd number of unpaired electrons makes it a radical, written with "·".
-  const unpaired = ids.reduce((n, i) => n + w.atoms.get(i)!.rad, 0);
   if (unpaired % 2 === 1) f += '·';
-  const q = componentCharge(w, ids);
   if (q === 0) return f;
   const mag = Math.abs(q) === 1 ? '' : String(Math.abs(q));
   return f + mag + (q > 0 ? '+' : '-');
+}
+
+let libIndex: Map<string, string> | null = null;
+
+/** Library name for a computed formula, when exactly one library molecule has that make-up. */
+function libraryName(f: string): string | undefined {
+  if (!libIndex) {
+    libIndex = new Map();
+    const dup = new Set<string>();
+    for (const [key, def] of LIBRARY) {
+      const h = hillFormula(
+        def.atoms.map((a) => a.el),
+        formulaCharge(key),
+        def.atoms.reduce((n, a) => n + (a.rad ?? 0), 0),
+      );
+      if (h === key) continue;
+      if (libIndex.has(h) && libIndex.get(h) !== key) dup.add(h);
+      else libIndex.set(h, key);
+    }
+    for (const d of dup) libIndex.delete(d);
+  }
+  return libIndex.get(f);
 }
 
 /**

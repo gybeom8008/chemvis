@@ -116,6 +116,34 @@ step "녹는다"
     expect(w.crystals.get('s')!.length).toBe(10);
     expect(w.attached.size).toBe(2);
   });
+  it('a crystal of polyatomic ions dissolves ion by ion and grows back into its holes', () => {
+    const r = compile(`
+stage solution
+crowd H2O in water 20
+crystal s = CaCO3 at water 4x2
+step "녹는다"
+  dissolve s1 s2 from s
+step "다시 결정이 된다"
+  precipitate Ca2+ CO32- onto s
+`);
+    expect(r.errors).toEqual([]);
+    const [a, b] = r.timeline!.steps;
+    const start = r.timeline!.initial;
+    expect(start.crystals.get('s')!.length).toBe(20);
+    expect(a.after.crystals.get('s')!.length).toBe(15);
+    expect(species(a.after).filter((f) => f === 'CO32-').length).toBe(4);
+    expect(b.after.crystals.get('s')!.length).toBe(20);
+    // Each ion goes back into a hole of its own kind.
+    const ca = b.after.atoms.get('s1.Ca')!;
+    const ca0 = start.atoms.get('s1.Ca')!;
+    expect(Math.hypot(ca.x - ca0.x, ca.y - ca0.y)).toBeLessThan(3);
+  });
+  it('splits salts into their ions, and says what it cannot draw', () => {
+    for (const salt of ['NaCl', 'AgCl', 'CaSO4', 'Ca2+ CO32-']) {
+      expect(compile(`stage solution\ncrystal s = ${salt} at water 2x2\nstep "x"\n  wait\n`).errors).toEqual([]);
+    }
+    expect(compile(`stage solution\ncrystal s = CaCl2 at water 2x2\nstep "x"\n  wait\n`).errors.length).toBe(1);
+  });
 });
 
 describe('collective mode', () => {

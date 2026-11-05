@@ -299,21 +299,27 @@ class Ctx {
     }
   }
 
-  /** crystal s = NaCl at bottom 4x3 */
+  /** crystal s = NaCl at bottom 4x3 / crystal s = CaCO3 at water 4x2 / crystal s = Ca2+ CO32- … */
   crystal(cmd: Cmd): void {
     const a = cmd.args;
     if (a[1] !== '=' || !a[0] || !a[2]) this.fail('결정은 이렇게 적어요: crystal s = NaCl at bottom 4x3');
     const name = a[0];
-    const m = a[2].match(/^([A-Z][a-z]?)([A-Z][a-z]?)$/);
-    const cat = m ? `${m[1]}+` : '';
-    const an = m ? `${m[2]}-` : '';
-    if (!m || !lookupMolecule(cat) || !lookupMolecule(an)) {
-      this.fail(`'${a[2]}' 결정은 아직 못 그려요. 1가 양이온과 1가 음이온의 결정(NaCl, KCl, KBr, LiF 등)만 돼요.`);
+    let rest = 3;
+    let ions = saltIons(a[2]);
+    if (!ions && a[3] && lookupMolecule(a[2]) && lookupMolecule(a[3])) {
+      ions = [normalizeFormula(a[2]), normalizeFormula(a[3])];
+      rest = 4;
     }
+    if (!ions || formulaCharge(ions[0]) <= 0 || formulaCharge(ions[0]) !== -formulaCharge(ions[1])) {
+      this.fail(
+        `'${a[2]}' 결정은 아직 못 그려요. 전하 크기가 같은 양이온·음이온 짝(NaCl, AgCl, CaCO3, CaSO4 등)만 돼요. 두 이온을 직접 적어도 돼요: crystal s = Ca2+ CO32-`,
+      );
+    }
+    const [cat, an] = ions;
     let region = this.region(this.stage.defaultRegion);
     let nx = 4;
     let ny = 3;
-    for (let i = 3; i < a.length; i++) {
+    for (let i = rest; i < a.length; i++) {
       if ((a[i] === 'at' || a[i] === 'in') && a[i + 1]) region = this.region(a[++i]);
       const d = a[i].match(/^(\d+)x(\d+)$/);
       if (d) {
@@ -321,23 +327,74 @@ class Ctx {
         ny = clamp(parseInt(d[2], 10), 1, 8);
       }
     }
-    const rc = element(m[1]).r;
-    const ra = element(m[2]).r;
-    const s = rc + ra + 7;
-    const c = regionCenter(region);
-    const x0 = c.x - ((nx - 1) * s) / 2;
-    const y0 = region.y + region.h - 50 - (ny - 1) * s;
-    const ids: string[] = [];
+    // Make every ion first; the grid spacing follows from their sizes.
+    const units: string[][] = [];
     let k = 0;
     for (let j = 0; j < ny; j++) {
       for (let i = 0; i < nx; i++) {
         const f = (i + j) % 2 === 0 ? cat : an;
-        const got = this.spawn(f, `${name}${++k}`, false, { x: x0 + i * s, y: y0 + j * s });
-        ids.push(...got);
+        const ids = this.spawn(f, `${name}${++k}`, false, { x: 0, y: 0 });
+        this.turnUpright(ids);
+        units.push(ids);
       }
     }
-    this.w.crystals.set(name, ids);
-    this.w.names.set(name, ids[0]);
+    const big = Math.max(this.ionRadius(units[0]), this.ionRadius(units[1] ?? units[0]));
+    const s = this.ionRadius(units[0]) + this.ionRadius(units[1] ?? units[0]) + 7;
+    const c = regionCenter(region);
+    const x0 = c.x - ((nx - 1) * s) / 2;
+    const y0 = region.y + region.h - Math.max(50, big + 22) - (ny - 1) * s;
+    units.forEach((ids, n) => {
+      const goal = { x: x0 + (n % nx) * s, y: y0 + Math.floor(n / nx) * s };
+      const d = sub(goal, centerOf(this.w, ids));
+      for (const id of ids) shift(this.w.atoms.get(id)!, d);
+    });
+    this.w.crystals.set(name, units.flat());
+    this.w.names.set(name, units[0][0]);
+  }
+
+  /** Distance from an ion's centre to the far edge of its outermost atom. */
+  ionRadius(ids: string[]): number {
+    const c = centerOf(this.w, ids);
+    return Math.max(...ids.map((id) => {
+      const at = this.w.atoms.get(id)!;
+      return dist(at, c) + element(at.el).r;
+    }));
+  }
+
+  /** How far to turn a polyatomic ion so one outer atom points straight up (as in a crystal). */
+  uprightTurn(ids: string[]): number {
+    if (ids.length < 2) return 0;
+    const c = centerOf(this.w, ids);
+    const outer = ids.map((id) => this.w.atoms.get(id)!).filter((at) => dist(at, c) > 4);
+    if (!outer.length) return 0;
+    const up = -Math.PI / 2;
+    const best = outer.reduce((b, at) => (angDiff(angleOf(sub(at, c)), up) < angDiff(angleOf(sub(b, c)), up) ? at : b));
+    return signedAng(angleOf(sub(best, c)), up);
+  }
+
+  turnUpright(ids: string[]): void {
+    const rot = this.uprightTurn(ids);
+    if (!rot) return;
+    const c = centerOf(this.w, ids);
+    for (const id of ids) {
+      const at = this.w.atoms.get(id)!;
+      const p = add(c, rotate(sub(at, c), rot));
+      at.x = p.x;
+      at.y = p.y;
+    }
+  }
+
+  /** A crystal's ions, each as a whole molecule (including atoms added later, such as an H). */
+  latticeUnits(lattice: string[]): string[][] {
+    const seen = new Set<string>();
+    const out: string[][] = [];
+    for (const id of lattice) {
+      if (seen.has(id) || !this.w.atoms.has(id)) continue;
+      const c = component(this.w, id);
+      c.forEach((x) => seen.add(x));
+      out.push(c);
+    }
+    return out;
   }
 
   /** mol w = H2O at center / mol c x3 = Ca2+ on clay in topsoil / place Na+ in left x2 */
@@ -1409,48 +1466,67 @@ class Ctx {
     this.focusMol(comp);
   }
 
-  /** dissolve 2 from s : ions at the crystal's edge get a water shell and leave. */
+  /** dissolve 2 from s : ions at the crystal's edge get a water shell and leave. dissolve s1 s2 from s : these ions. */
   dissolve(a: string[]): void {
-    const n = parseInt(a[0], 10);
     const from = a.indexOf('from');
-    const name = a[from + 1];
-    if (!(n > 0) || from < 0 || !name) this.fail('dissolve는 이렇게 적어요: dissolve 2 from s');
+    const name = from >= 0 ? a[from + 1] : undefined;
+    const head = from >= 0 ? a.slice(0, from) : [];
+    const count = head.length === 1 && /^\d+$/.test(head[0]) ? parseInt(head[0], 10) : 0;
+    if (!name || !head.length) this.fail('dissolve는 이렇게 적어요: dissolve 2 from s  (이온을 골라 녹이려면 dissolve s1 s2 from s)');
     const lattice = this.w.crystals.get(name);
     if (!lattice) this.fail(`'${name}'이라는 결정이 없어요.`);
+    const picked = count
+      ? []
+      : head.map((ref) => {
+          const c = this.mol(ref);
+          if (!c.some((x) => lattice.includes(x))) this.fail(`${ref}은(는) ${name} 결정에 없어요.`);
+          return c;
+        });
+    const n = count || picked.length;
     let lastCharge = 0;
     for (let k = 0; k < n; k++) {
-      if (!lattice.length) {
+      const units = this.latticeUnits(lattice);
+      if (!units.length) {
         this.warn('결정이 다 녹았어요.');
         break;
       }
-      const spacing = (() => {
-        let m = Infinity;
-        for (const i of lattice) for (const j of lattice) if (i !== j) m = Math.min(m, dist(this.w.atoms.get(i)!, this.w.atoms.get(j)!));
-        return Number.isFinite(m) ? m : 40;
-      })();
-      const score = (id: string) => {
-        const at = this.w.atoms.get(id)!;
-        let nb = 0;
-        for (const j of lattice) if (j !== id && dist(at, this.w.atoms.get(j)!) < spacing * 1.1) nb++;
-        return nb * 10000 + at.y * 10 + at.x / 100;
-      };
-      const sorted = [...lattice].sort((p, q) => score(p) - score(q));
-      const pick =
-        sorted.find((id) => Math.sign(componentCharge(this.w, [id])) !== lastCharge && score(id) < score(sorted[0]) + 10000) ?? sorted[0];
-      lastCharge = Math.sign(componentCharge(this.w, [pick]));
-      lattice.splice(lattice.indexOf(pick), 1);
-      const ion = this.w.atoms.get(pick)!;
+      const centers = units.map((u) => centerOf(this.w, u));
+      let spacing = Infinity;
+      for (let i = 0; i < centers.length; i++) for (let j = i + 1; j < centers.length; j++) spacing = Math.min(spacing, dist(centers[i], centers[j]));
+      if (!Number.isFinite(spacing)) spacing = 40;
+      let unit: string[];
+      if (picked.length) unit = picked[k];
+      else {
+        const score = (i: number) => {
+          let nb = 0;
+          for (let j = 0; j < centers.length; j++) if (j !== i && dist(centers[i], centers[j]) < spacing * 1.1) nb++;
+          return nb * 10000 + centers[i].y * 10 + centers[i].x / 100;
+        };
+        const order = units.map((_, i) => i).sort((p, q) => score(p) - score(q));
+        const best =
+          order.find((i) => Math.sign(componentCharge(this.w, units[i])) !== lastCharge && score(i) < score(order[0]) + 10000) ?? order[0];
+        unit = units[best];
+      }
+      lastCharge = Math.sign(componentCharge(this.w, unit));
+      for (const id of unit) {
+        const i = lattice.indexOf(id);
+        if (i >= 0) lattice.splice(i, 1);
+      }
+      const pick = anchorOf(this.w, unit);
+      const ion = centerOf(this.w, unit);
+      const rest = this.latticeUnits(lattice).map((u) => centerOf(this.w, u));
       // Free directions: no lattice neighbour that way.
       const free: Vec[] = [];
       for (let i = 0; i < 8; i++) {
         const u = fromAngle((Math.PI * 2 * i) / 8 - Math.PI / 2);
         const probe = add(ion, scale(u, spacing));
-        if (!lattice.some((j) => dist(this.w.atoms.get(j)!, probe) < spacing * 0.6)) free.push(u);
+        if (!rest.some((p) => dist(p, probe) < spacing * 0.6)) free.push(u);
       }
       const shellN = Math.min(3, Math.max(1, free.length));
-      const q = componentCharge(this.w, [pick]);
-      const r = element(ion.el).r;
-      const out = norm(free.reduce((s, u) => add(s, u), { x: 0, y: 0 }));
+      const q = componentCharge(this.w, unit);
+      const r = this.ionRadius(unit);
+      const sum = free.reduce((s, u) => add(s, u), { x: 0, y: 0 });
+      const out = Math.hypot(sum.x, sum.y) > 1e-6 ? norm(sum) : { x: 0, y: -1 };
       const chosen = [...free].sort((p, q2) => dist(p, out) - dist(q2, out)).slice(0, shellN);
       const targets = chosen.map((u) =>
         q > 0
@@ -1485,7 +1561,7 @@ class Ctx {
       }
       this.w.attached.set(pick, shell);
       const region = this.region(this.stage.defaultRegion);
-      const groupIds = new Set(this.group([pick]));
+      const groupIds = new Set(this.group(unit));
       const solutes = [...this.w.atoms.values()].filter((x) => !x.crowd && !groupIds.has(x.id) && !lattice.includes(x.id));
       let goal = { x: ion.x, y: ion.y - 160 };
       let bestScore = -Infinity;
@@ -1504,9 +1580,9 @@ class Ctx {
         }
       }
       const start = { x: ion.x, y: ion.y };
-      this.moveGroup(this.group([pick]), start, this.wander(start, goal, region, 0.5), 0, 0.45, 1);
+      this.moveGroup(this.group(unit), start, this.wander(start, goal, region, 0.5), 0, 0.45, 1);
       this.A.trails.push(pick);
-      this.focusMol([pick]);
+      this.focusMol(unit);
     }
   }
 
@@ -1935,17 +2011,24 @@ class Ctx {
     const ans = pick(anF);
     if (cats.length < n || ans.length < n) this.fail(`녹아 있는 ${catF}·${anF}가 ${n}개씩 있어야 해요(지금 ${cats.length}개, ${ans.length}개).`);
     const all = [...cats, ...ans];
-    const rad = (c: string[]) => Math.max(...c.map((id) => element(this.w.atoms.get(id)!.el).r)) + (c.length > 1 ? 14 : 0);
-    const s = rad(cats[0]) + rad(ans[0]) + 7;
+    let s = this.ionRadius(cats[0]) + this.ionRadius(ans[0]) + 7;
     // Lattice positions: existing crystal's free neighbours, or a new block where the ions are.
     let name = onto;
     let slots: { p: Vec; parity: number }[] = [];
+    let catParity = 0;
     if (onto) {
       const lat = this.w.crystals.get(onto);
       if (!lat) this.fail(`'${onto}'이라는 결정이 없어요.`);
-      const pts = lat.map((id) => this.w.atoms.get(id)!);
+      const units = this.latticeUnits(lat);
+      if (!units.length) this.fail(`'${onto}' 결정이 다 녹아서 덧붙일 곳이 없어요.`);
+      const pts = units.map((u) => centerOf(this.w, u));
+      // Keep the crystal's own spacing.
+      let m = Infinity;
+      for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) m = Math.min(m, dist(pts[i], pts[j]));
+      if (Number.isFinite(m) && m < s * 1.6) s = m;
       const first = pts[0];
-      const occupied = (p: Vec) => [...this.w.atoms.values()].some((x) => inLattice.has(x.id) && dist(x, p) < s * 0.5);
+      catParity = componentCharge(this.w, units[0]) > 0 ? 0 : 1;
+      const occupied = (p: Vec) => pts.some((x) => dist(x, p) < s * 0.5);
       for (const p of pts) {
         for (const d of [
           { x: s, y: 0 },
@@ -1959,7 +2042,13 @@ class Ctx {
           slots.push({ p: q, parity });
         }
       }
-      slots.sort((p, q) => p.p.y - q.p.y);
+      // Holes inside the crystal first (most neighbours), then the top face.
+      const nb = (q: Vec) => pts.filter((x) => dist(x, q) < s * 1.1).length;
+      const xs = pts.map((p) => p.x);
+      const ys = pts.map((p) => p.y);
+      const inside = (q: Vec) =>
+        q.x > Math.min(...xs) - 2 && q.x < Math.max(...xs) + 2 && q.y > Math.min(...ys) - 2 && q.y < Math.max(...ys) + 2 ? 1 : 0;
+      slots.sort((p, q) => inside(q.p) - inside(p.p) || nb(q.p) - nb(p.p) || p.p.y - q.p.y);
     } else {
       name = this.autoName('ppt');
       const c = centroid(all.map((x) => centerOf(this.w, x)));
@@ -1979,13 +2068,12 @@ class Ctx {
       return slots.splice(k, 1)[0].p;
     };
     // The first cation of a new crystal takes parity 0; for an existing one, cations go where cations sit.
-    const catParity = onto ? (formulaCharge(formulaOf(this.w, [lattice[0]])) > 0 ? 0 : 1) : 0;
     all.forEach((comp, k) => {
       const isCat = k < cats.length;
       const goal = take(isCat ? catParity : 1 - catParity);
       this.detach(comp);
       const start = centerOf(this.w, comp);
-      this.moveGroup(comp, start, this.wander(start, goal, null, 0.3), 0, 0.05, 0.95);
+      this.moveGroup(comp, start, this.wander(start, goal, null, 0.3), this.uprightTurn(comp), 0.05, 0.95);
       lattice.push(...comp);
       this.focusMol(comp);
     });
@@ -2584,6 +2672,7 @@ class Ctx {
 
 function separateComponents(ctx: Ctx, ids: string[]): void {
   const w = ctx.w;
+  const pinned = new Set<string>([...w.crystals.values()].flat());
   const comps: string[][] = [];
   const seen = new Set<string>();
   for (const id of ids) {
@@ -2606,9 +2695,14 @@ function separateComponents(ctx: Ctx, ids: string[]): void {
           }
         }
         if (need > 0) {
+          // Ions held in a crystal stay put; the other molecule moves the whole way.
+          const pi = comps[i].some((x) => pinned.has(x));
+          const pj = comps[j].some((x) => pinned.has(x));
+          if (pi && pj) continue;
+          const fi = pi ? 0 : pj ? 1 : 0.5;
           const d = norm(sub(centerOf(w, comps[j]), centerOf(w, comps[i])));
-          for (const x of comps[i]) shift(w.atoms.get(x)!, scale(d, -need / 2 - 1));
-          for (const y of comps[j]) shift(w.atoms.get(y)!, scale(d, need / 2 + 1));
+          for (const x of comps[i]) shift(w.atoms.get(x)!, scale(d, -(need + 2) * fi));
+          for (const y of comps[j]) shift(w.atoms.get(y)!, scale(d, (need + 2) * (1 - fi)));
           moved = true;
         }
       }
@@ -2885,6 +2979,22 @@ function resample(path: Vec[], minPts: number): Vec[] {
   }
   out.push(path[path.length - 1]);
   return out;
+}
+
+/** Splits a salt into a library cation and anion of the same charge size: CaCO3 → Ca2+ and CO32-. */
+function saltIons(f: string): [string, string] | null {
+  const s = normalizeFormula(f);
+  if (/[+-]$/.test(s)) return null;
+  for (let i = 1; i < s.length; i++) {
+    const head = s.slice(0, i);
+    const tail = s.slice(i);
+    for (const q of ['', '2', '3']) {
+      const cat = `${head}${q}+`;
+      const an = `${tail}${q}-`;
+      if (lookupMolecule(cat) && lookupMolecule(an)) return [cat, an];
+    }
+  }
+  return null;
 }
 
 function angDiff(a: number, b: number): number {

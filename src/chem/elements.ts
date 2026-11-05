@@ -62,7 +62,7 @@ export const ELEMENTS: Record<string, ElementInfo> = {
   Cu: E('Cu', '구리', 2, 4, '#c88033', '#fff', 15),
   Ag: E('Ag', '은', 1, 5, '#b8b8b8', '#222', 16),
   // Not an element: the adenosine part of ADP/ATP drawn as one ball, so the phosphates stay readable.
-  Ad: E('Ad', '아데노신 부분(줄여 그림)', 1, 2, '#748ffc', '#fff', 24),
+  Ad: E('Ad', '아데노신 부분(간단히 표시)', 1, 2, '#748ffc', '#fff', 24),
 };
 
 export const METALS = new Set(['Li', 'Na', 'K', 'Mg', 'Ca', 'Al', 'Zn', 'Cu', 'Ag']);

@@ -619,8 +619,8 @@ CHAPTERS.push({
   id: 'mitochondria',
   part: 3,
   title: '미토콘드리아의 ATP 합성',
-  intro: `<p>미토콘드리아는 음식에서 얻은 에너지를 ATP라는 분자에 저장해요. 먼저 전자 전달계가 전자의 에너지로 H+를 막 사이 공간으로 옮겨 H+가 한쪽에 많아지게 해요. H+가 ATP 합성 효소의 통로를 지나 되돌아올 때, 그 흐름의 에너지로 ADP와 인산이 축합해 ATP가 돼요. 막 수송, 축합, 에너지 그래프를 한 장면에서 이어 써요.</p>
-<ul class="legend"><li><i class="g-energy"></i>오른쪽 위: 에너지 변화</li><li><i class="g-ad">Ad</i>아데노신 부분(줄여 그림)</li></ul>`,
+  intro: `<p>미토콘드리아는 음식에서 얻은 에너지를 ATP라는 분자에 저장해요. 먼저 전자 전달계가 전자의 에너지로 H+를 막 사이 공간으로 옮겨 H+가 한쪽에 많아지게 해요. H+가 ATP 합성 효소의 통로를 지나 다시 기질로 들어올 때, 그 흐름의 에너지로 ADP와 인산이 축합해 ATP가 돼요. 막 수송, 축합, 에너지 그래프를 한 장면에서 이어 써요.</p>
+<ul class="legend"><li><i class="g-energy"></i>오른쪽 위: 에너지 변화</li><li><i class="g-ad">Ad</i>아데노신 부분(간단히 표시)</li></ul>`,
   script: s(`
 scene "미토콘드리아가 ATP를 만들 때"
 stage mito

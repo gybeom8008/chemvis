@@ -473,6 +473,10 @@ code {
   color: var(--ink);
 }
 
+.legend-pop .arrow polyline {
+  stroke-width: 1.6;
+}
+
 .legend-pop .lg-dot {
   fill: var(--ink-2);
 }
@@ -1535,8 +1539,15 @@ code {
 .arrow polygon {
   fill: var(--electron);
 }
-.arrow.hook path {
+.arrow polyline {
+  fill: none;
+  stroke: var(--electron);
   stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.arrow.hook polyline {
+  stroke-width: 2.4;
 }
 /* Electrons on their way: larger and glowing, so they read as the thing that moves. */
 .e.fly {

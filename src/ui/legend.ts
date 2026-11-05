@@ -20,15 +20,53 @@ const sw = (inner: string, w = 36) => `<svg class="lg-sw" viewBox="0 0 ${w} 22" 
 /** An animation that waits for the hover to start it, then repeats. */
 const loop = (dur: number) => `dur="${dur}s" begin="indefinite" repeatCount="indefinite"`;
 
-const ARC = 'M5,17 Q16,0 27,12';
-/** Electrons riding the arc; they sit at the tail until the row is hovered. */
-const riders = (n: 1 | 2) =>
-  (n === 2 ? [-2.8, 2.8] : [0])
-    .map(
-      (dy) =>
-        `<circle class="e fly" cx="0" cy="${dy}" r="3.2" transform="translate(5,17)"><animateMotion ${loop(1.5)} path="M0,0 Q11,-17 22,-5" keyTimes="0;0.75;1" keyPoints="0;1;1" calcMode="linear"/></circle>`,
-    )
-    .join('');
+type P = { x: number; y: number };
+const qb = (a: P, c: P, b: P, u: number): P => ({
+  x: (1 - u) * (1 - u) * a.x + 2 * (1 - u) * u * c.x + u * u * b.x,
+  y: (1 - u) * (1 - u) * a.y + 2 * (1 - u) * u * c.y + u * u * b.y,
+});
+const qbNormal = (a: P, c: P, b: P, u: number): P => {
+  const dx = 2 * (1 - u) * (c.x - a.x) + 2 * u * (b.x - c.x);
+  const dy = 2 * (1 - u) * (c.y - a.y) + 2 * u * (b.y - c.y);
+  const l = Math.hypot(dx, dy) || 1;
+  return { x: -dy / l, y: dx / l };
+};
+const f = (n: number) => n.toFixed(1);
+
+/**
+ * Arrow swatch as on the stage: an electron pair on two lines with a full head, one electron
+ * on one line with a half head. The electrons wait at the tail and ride their lines on hover.
+ */
+function arrowSwatch(pair: boolean): string {
+  const a = { x: 4, y: 18 };
+  const c = { x: 15, y: 0 };
+  const tip = { x: 32, y: 15 };
+  const tl = Math.hypot(tip.x - c.x, tip.y - c.y);
+  const tan = { x: (tip.x - c.x) / tl, y: (tip.y - c.y) / tl };
+  const nn = { x: -tan.y, y: tan.x };
+  const base = { x: tip.x - tan.x * 9, y: tip.y - tan.y * 9 };
+  const lane = (o: number) =>
+    Array.from({ length: 13 }, (_, i) => {
+      const u = i / 12;
+      const q = qb(a, c, base, u);
+      const n = qbNormal(a, c, base, u);
+      return { x: q.x + n.x * o, y: q.y + n.y * o };
+    });
+  const offs = pair ? [3.2, -3.2] : [0];
+  let svg = `<g class="arrow ${pair ? 'pair' : 'hook'}" opacity="0.6">`;
+  for (const o of offs) svg += `<polyline points="${lane(o).map((q) => `${f(q.x)},${f(q.y)}`).join(' ')}"/>`;
+  const head = pair
+    ? `${f(tip.x)},${f(tip.y)} ${f(base.x + nn.x * 7.5)},${f(base.y + nn.y * 7.5)} ${f(base.x - nn.x * 7.5)},${f(base.y - nn.y * 7.5)}`
+    : `${f(tip.x)},${f(tip.y)} ${f(base.x + nn.x * 6)},${f(base.y + nn.y * 6)} ${f(base.x)},${f(base.y)}`;
+  svg += `<polygon points="${head}"/></g>`;
+  for (const o of offs) {
+    const pts = lane(o);
+    const s0 = pts[0];
+    const rel = pts.map((q, i) => `${i ? 'L' : 'M'}${f(q.x - s0.x)},${f(q.y - s0.y)}`).join(' ');
+    svg += `<circle class="e fly" cx="0" cy="0" r="2.8" transform="translate(${f(s0.x)},${f(s0.y)})"><animateMotion ${loop(1.5)} path="${rel}" keyTimes="0;0.75;1" keyPoints="0;1;1" calcMode="linear"/></circle>`;
+  }
+  return sw(svg);
+}
 
 const wavePts = () => {
   const pts: string[] = [];
@@ -53,16 +91,8 @@ const REAL: Item[] = [
   { key: 'single', label: '홑전자(짝 없는 전자 1개, 라디칼)', svg: sw('<circle class="lp single" cx="18" cy="11" r="2.7"/>') },
   { key: 'charge', label: '전하', svg: sw('<g class="charge pos"><circle cx="18" cy="11" r="7.5"/><text x="18" y="11" dy="0.36em">+</text></g>') },
   { key: 'ox', label: '산화수', svg: sw('<text class="ox" x="18" y="11" dy="0.35em">+2</text>') },
-  {
-    key: 'arrow',
-    label: '전자쌍(전자 2개)의 이동',
-    svg: sw(`<g class="arrow" opacity="0.55"><path d="${ARC}"/><polygon points="31,16 23.5,14 28.5,8.5"/></g>${riders(2)}`),
-  },
-  {
-    key: 'hook',
-    label: '전자 1개의 이동',
-    svg: sw(`<g class="arrow hook" opacity="0.55"><path d="M5,17 Q16,0 29.5,14.5"/><path d="M31,16 L22.5,12"/></g>${riders(1)}`),
-  },
+  { key: 'arrow', label: '전자쌍(전자 2개)의 이동', svg: arrowSwatch(true) },
+  { key: 'hook', label: '전자 1개의 이동', svg: arrowSwatch(false) },
   {
     key: 'e',
     label: '전자',

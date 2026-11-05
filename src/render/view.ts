@@ -71,6 +71,8 @@ export class StageView {
   private dyn: SVGGElement;
   private tl: Timeline | null = null;
   private boxes: Box[] = [];
+  /** The molecules each step is about: framed by the camera, drawn clearly while the rest steps back. */
+  private actors: Set<string>[] = [];
   private cam: Box | null = null;
   /** Where each note box sits relative to its target, decided once per step so it never jumps. */
   private notePlace = new Map<string, { dx: number; dy: number }>();
@@ -85,6 +87,7 @@ export class StageView {
   clear(): void {
     this.tl = null;
     this.boxes = [];
+    this.actors = [];
     this.cam = null;
     this.notePlace.clear();
     this.bg.innerHTML = '';
@@ -97,18 +100,31 @@ export class StageView {
     this.svg.setAttribute('viewBox', `0 0 ${st.width} ${st.height}`);
     this.svg.dataset.stage = st.name;
     this.bg.innerHTML = st.background();
-    this.boxes = tl.steps.map((step) => this.stepBox(step));
+    this.actors = tl.steps.map((step) => stepActors(step));
+    this.boxes = tl.steps.map((step, k) => this.stepBox(step, this.actors[k]));
     this.cam = null;
     this.notePlace.clear();
   }
 
-  /** Part of the stage worth showing during a step: everything that matters, padded. */
-  private stepBox(step: StepAnim): Box {
+  /**
+   * Part of the stage a step is shown in: the molecules it is about, close up, so that their
+   * electrons and bonds are big enough to read (on a phone too). Steps about nothing in
+   * particular show every named molecule.
+   */
+  private stepBox(step: StepAnim, actors: Set<string>): Box {
     const st = this.tl!.stage;
     const pts: Vec[] = [];
     let full = false;
+    // The step's molecules where they start and where they end; helpers that only come to them
+    // (water molecules joining an ion) only where they end, so a far start does not widen the view.
+    const core = new Set<string>();
+    for (const w of [step.before, step.after]) for (const id of step.focus) if (w.atoms.has(id)) for (const x of component(w, id)) core.add(x);
     for (const w of [step.before, step.after]) {
-      for (const a of w.atoms.values()) if (!a.crowd) pts.push(a);
+      for (const a of w.atoms.values()) {
+        if (!actors.size) {
+          if (!a.crowd) pts.push(a);
+        } else if (core.has(a.id) || (w === step.after && actors.has(a.id))) pts.push(a);
+      }
     }
     for (const id of step.focus) {
       for (const kf of step.tracks.get(id) ?? []) pts.push(kf);
@@ -140,13 +156,14 @@ export class StageView {
       x1 = Math.max(x1, p.x);
       y1 = Math.max(y1, p.y);
     }
-    const pad = 0.12 * st.width;
+    // Room around the molecules for their electrons, charges and notes.
+    const pad = 0.07 * st.width + (step.notes.length ? 0.06 * st.width : 0);
     x0 -= pad;
     y0 -= pad;
     x1 += pad;
     y1 += pad;
-    let w = Math.max(x1 - x0, 0.5 * st.width);
-    let h = Math.max(y1 - y0, 0.5 * st.height);
+    let w = Math.max(x1 - x0, 0.3 * st.width);
+    let h = Math.max(y1 - y0, 0.3 * st.height);
     const aspect = st.width / st.height;
     if (w / h > aspect) h = w / aspect;
     else w = h * aspect;
@@ -179,22 +196,27 @@ export class StageView {
     return { x, y, w, h };
   }
 
-  private updateCamera(k: number, dt: number): Box {
+  /**
+   * The camera moves from the previous step's view to this one's at the very start of the step and
+   * holds still before anything changes, so the change itself is never mixed up with camera motion.
+   * It depends only on (k, t): scrubbing shows exactly what playing shows.
+   */
+  private updateCamera(k: number, t: number): Box {
     const st = this.tl!.stage;
-    const target = this.fitToElement(this.boxes[k] ?? { x: 0, y: 0, w: st.width, h: st.height });
-    if (!this.cam || dt <= 0) this.cam = { ...target };
-    else {
-      const a = 1 - Math.exp(-dt * 3.2);
-      this.cam = {
-        x: lerp(this.cam.x, target.x, a),
-        y: lerp(this.cam.y, target.y, a),
-        w: lerp(this.cam.w, target.w, a),
-        h: lerp(this.cam.h, target.h, a),
-      };
-    }
+    const whole = { x: 0, y: 0, w: st.width, h: st.height };
+    const to = this.fitToElement(this.boxes[k] ?? whole);
+    const from = this.fitToElement(this.boxes[k - 1] ?? this.boxes[k] ?? whole);
+    const u = smooth(clamp(t / this.settleTime(k), 0, 1));
+    this.cam = { x: lerp(from.x, to.x, u), y: lerp(from.y, to.y, u), w: lerp(from.w, to.w, u), h: lerp(from.h, to.h, u) };
     const c = this.cam;
     this.svg.setAttribute('viewBox', `${f1(c.x)} ${f1(c.y)} ${f1(c.w)} ${f1(c.h)}`);
     return c;
+  }
+
+  /** How long into a step the camera and the stepping back of the other molecules take. */
+  private settleTime(k: number): number {
+    const ph = this.tl?.steps[k]?.phase;
+    return ph && ph.b0 > 0.05 ? Math.min(ph.b0, 0.22) : 0.16;
   }
 
   /** k = step index, t = progress 0..1 inside that step. */
@@ -202,7 +224,7 @@ export class StageView {
     const tl = this.tl;
     if (!tl) return;
     const step = tl.steps[k] as StepAnim | undefined;
-    const cam = this.updateCamera(k, opt.dt ?? 0);
+    const cam = this.updateCamera(k, t);
     const out: string[] = [];
     // On a small screen the whole scene shrinks with the stage, and an electron would end up
     // a pixel or two across. Moving electrons keep a size you can see instead.
@@ -317,9 +339,17 @@ export class StageView {
       }
     }
 
+    // Molecules the step is not about step back (fainter), so the ones that change stand out;
+    // between steps this hands over smoothly from the previous step's molecules to this one's.
+    const nowActors = this.actors[k];
+    const prevActors = this.actors[k - 1] ?? nowActors;
+    const hand = step ? smooth(clamp(t / this.settleTime(k), 0, 1)) : 1;
+    const back = (set: Set<string> | undefined, id: string) => (set && set.size && !set.has(id) ? 0.38 : 1);
+    const presence = (id: string) => lerp(back(prevActors, id), back(nowActors, id), hand);
     const opacity = (id: string) => {
-      if (step && after.atoms.get(id)?.gone) return clamp((0.86 - t) / 0.26, 0, 1);
-      return step && step.appear.has(id) ? clamp(t / 0.18, 0, 1) : 1;
+      const p = presence(id);
+      if (step && after.atoms.get(id)?.gone) return p * clamp((0.86 - t) / 0.26, 0, 1);
+      return p * (step && step.appear.has(id) ? clamp(t / 0.18, 0, 1) : 1);
     };
     // Water molecules around an ion (a hydration shell) move with it, so they are drawn as
     // clearly as the ion; otherwise they would look like stray water being dragged along.
@@ -408,13 +438,6 @@ export class StageView {
 
     // Focus rings.
     if (step) {
-      for (const id of step.focus) {
-        const p = pos.get(id);
-        const a = after.atoms.get(id);
-        if (!p || !a) continue;
-        const ring = 0.9 * (pre ? 0.35 + 0.65 * cue : 1 - 0.55 * prog);
-        out.push(`<circle class="focus" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(element(a.el).r + 7)}" opacity="${f1(opacity(id) * ring)}"/>`);
-      }
       // Collective mode: a short ring where a collision has just made new bonds.
       for (const e of step.events) {
         if (e.order <= 0) continue;
@@ -1200,6 +1223,30 @@ export class StageView {
         return tg.p;
     }
   }
+}
+
+/** The molecules a step is about: whole molecules of the atoms it changes or moves on purpose. */
+function stepActors(step: StepAnim): Set<string> {
+  const out = new Set<string>();
+  for (const w of [step.before, step.after]) {
+    for (const id of step.focus) {
+      if (!w.atoms.has(id)) continue;
+      for (const x of component(w, id)) out.add(x);
+    }
+  }
+  for (const n of step.notes) {
+    const tg = n.target;
+    const ids = tg.kind === 'atom' || tg.kind === 'lp' ? [tg.id] : tg.kind === 'bond' ? [tg.a, tg.b] : tg.kind === 'group' ? tg.ids : [];
+    for (const id of ids) if (step.after.atoms.has(id)) for (const x of component(step.after, id)) out.add(x);
+  }
+  // Water molecules around an ion belong to it.
+  for (const w of [step.before, step.after]) {
+    for (const [anchor, shell] of w.attached) {
+      if (!out.has(anchor)) continue;
+      for (const id of shell) if (w.atoms.has(id)) for (const x of component(w, id)) out.add(x);
+    }
+  }
+  return out;
 }
 
 /** The parts of the change window the drawing needs. */

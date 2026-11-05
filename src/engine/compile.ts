@@ -1245,6 +1245,8 @@ class Ctx {
     const pivot = { x: M.x, y: M.y };
     this.moveGroup(ids, pivot, [pivot, goal], mn.length ? rot : 0, 0, 1);
     this.focusMol(comp);
+    // The molecule it comes up to is part of the scene too.
+    this.focusMol(component(this.w, target));
   }
 
   /** move w to right / move w to 300,200 / move w near a */
@@ -1338,33 +1340,43 @@ class Ctx {
     const targets = this.shellTargets(comp, n);
     if (!targets.length) return [];
     const pool = this.freeSolvent();
-    const used = new Set<number>();
-    const shell: string[] = [];
-    for (const tg of targets) {
-      let bestI = -1;
-      let bestD = Infinity;
-      pool.forEach((c, i) => {
-        if (used.has(i)) return;
+    // Pair places and water molecules shortest first, so that their paths do not cross.
+    const pairs: { ti: number; wi: number; d: number }[] = [];
+    targets.forEach((tg, ti) =>
+      pool.forEach((c, wi) => {
         const d = dist(centerOf(this.w, c), tg.pos);
-        if (d < bestD) {
-          bestD = d;
-          bestI = i;
-        }
-      });
+        if (d <= 420) pairs.push({ ti, wi, d });
+      }),
+    );
+    pairs.sort((p, q) => p.d - q.d);
+    const byTarget = new Map<number, { wi: number; d: number }>();
+    const used = new Set<number>();
+    for (const pr of pairs) {
+      if (byTarget.has(pr.ti) || used.has(pr.wi)) continue;
+      byTarget.set(pr.ti, { wi: pr.wi, d: pr.d });
+      used.add(pr.wi);
+    }
+    // The nearest water arrives first and the others follow one by one, rather than all at once.
+    const order = targets.map((_, ti) => ti).sort((p, q) => (byTarget.get(p)?.d ?? 999) - (byTarget.get(q)?.d ?? 999));
+    const span = t1 - t0;
+    const shell: string[] = [];
+    order.forEach((ti, i) => {
+      const tg = targets[ti];
+      const got = byTarget.get(ti);
       let water: string[];
-      if (bestI < 0 || bestD > 420) {
+      if (!got) {
         // No free water close by: a water molecule drifts in from outside.
         const start = add(tg.pos, scale(tg.u, 140));
         water = this.spawn('H2O', this.autoName('~H2O'), true, start, this.rng.range(0, 6.28));
         for (const id of water) this.A.appear.add(id);
-      } else {
-        used.add(bestI);
-        water = pool[bestI];
-      }
+      } else water = pool[got.wi];
+      const s0 = t0 + (order.length > 1 ? (0.4 * span * i) / (order.length - 1) : 0);
       const pose = this.waterPose(water, tg);
-      this.moveGroup(water, pose.pivot, [pose.pivot, pose.goal], pose.rot, t0, t1);
+      // Come in from outside the shell along its own direction, not across the ion.
+      const outside = add(pose.goal, scale(tg.u, 60));
+      this.moveGroup(water, pose.pivot, [pose.pivot, outside, pose.goal], pose.rot, s0, s0 + 0.6 * span);
       shell.push(anchorOf(this.w, water));
-    }
+    });
     const key = anchorOf(this.w, comp);
     this.w.attached.set(key, [...(this.w.attached.get(key) ?? []), ...shell]);
     return shell;

@@ -143,7 +143,6 @@ const APP: Item[] = [
   { key: 'move1', label: '옮겨 가는 전자 1개와, 그 전자가 만들거나 깨는 결합', svg: moveSwatch(false) },
   { key: 'brk', label: '깨지는 결합(전자의 움직임은 생략한 반응)', svg: breakSwatch() },
   { key: 'half', label: '반응 도중 전자가 1개만 남은 결합', svg: sw('<line class="bond half" x1="4" y1="11" x2="32" y2="11"/>') },
-  { key: 'focus', label: '이번 단계에서 움직이는 것', svg: sw('<circle class="focus" cx="18" cy="11" r="7.5"/>') },
   {
     key: 'trail',
     label: '입자가 지나간 경로',
@@ -228,7 +227,6 @@ function used(tl: Timeline | null, lens: Lens): Set<string> {
         if (after < b.order && !carried.has([b.a, b.b].sort().join('|'))) on.add('brk');
       }
     }
-    if (s.focus.size) on.add('focus');
     if (s.trails.length) on.add('trail');
     if (s.photons.length) on.add('photon');
     if (s.energy) on.add('energy');

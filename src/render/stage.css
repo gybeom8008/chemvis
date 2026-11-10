@@ -466,11 +466,11 @@
   opacity: 0.7;
 }
 /* With every electron drawn, the solvent in the background steps further back: one quiet colour. */
-svg[data-style='pairs'] .atom.crowd {
+svg[data-style='pairs'][data-crowd='quiet'] .atom.crowd {
   fill: var(--crowd, #b9cbdc);
   stroke: none;
 }
-svg[data-style='pairs'] .bond.crowd {
+svg[data-style='pairs'][data-crowd='quiet'] .bond.crowd {
   stroke: var(--crowd, #b9cbdc);
 }
 

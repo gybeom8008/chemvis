@@ -32,6 +32,16 @@ export interface ArrowAnim {
   line: number;
   src?: ElectronEnd;
   dst?: ElectronEnd;
+  /**
+   * An electron that goes between an atom and the electrons kept in an electrode: the atom, the
+   * electrode, and which of the kept electrons' places it takes or leaves.
+   */
+  free?: { atom: string; plate: string; slot: number; dir: 'toPlate' | 'fromPlate' };
+}
+
+/** Where the i-th electron kept in an electrode is drawn (near the top of the plate, in two columns). */
+export function plateSlot(e: { x: number; top: number }, i: number): Vec {
+  return { x: e.x - 9 + (i % 2) * 18, y: e.top + 12 + Math.floor(i / 2) * 11 };
 }
 
 export type NoteTarget =
@@ -87,7 +97,7 @@ export interface StepAnim {
   flows: FlowAnim[];
   photons: PhotonAnim[];
   /** Electrons running along the external wire (electrode stage). */
-  wires: { path: Vec[]; count: number; t0: number; t1: number }[];
+  wires: { path: Vec[]; count: number; t0: number; t1: number; from?: string; to?: string }[];
   /** Vapour bubbles rising through a liquid (boiling). */
   bubbles: { p0: Vec; p1: Vec; r: number; t0: number; t1: number }[];
   /** Bonds that change part-way through a step (collective mode): order 0 removes the bond. */

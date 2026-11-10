@@ -4,7 +4,7 @@
  */
 import { bondLength, element } from '../chem/elements';
 import { electronDomains, lonePairAngles } from '../chem/geometry';
-import { tallyBox, type ArrowAnim, type Keyframe, type NoteTarget, type StepAnim, type Timeline } from '../engine/timeline';
+import { plateSlot, tallyBox, type ArrowAnim, type Keyframe, type NoteTarget, type StepAnim, type Timeline } from '../engine/timeline';
 import { component, formalCharge, oxidationState, type Atom, type Lens, type World } from '../engine/world';
 import { inRegion } from '../stage/stages';
 import {
@@ -141,6 +141,12 @@ export class StageView {
     for (const fl of step.flows) pts.push(...fl.path);
     for (const ph of step.photons) pts.push(ph.p0, ph.p1);
     for (const wr of step.wires) pts.push(...wr.path);
+    // Electrons that go between an atom and an electrode: keep the place they are kept in view,
+    // so that they do not fly out of the picture.
+    for (const ar of step.arrows) {
+      const e = ar.free && st.electrodes?.[ar.free.plate];
+      if (e) pts.push(plateSlot(e, ar.free!.slot));
+    }
     for (const n of step.notes) {
       const tg = n.target;
       if (tg.kind === 'point') {
@@ -466,7 +472,11 @@ export class StageView {
     const frac = !step ? 1 : w1 > w0 ? clamp((t - w0) / (w1 - w0), 0, 1) : t >= w0 ? 1 : 0;
     const win = { pre, during, post, settle, prog, cue, frac };
     if (this.svg.dataset.style !== (opt.style ?? 'lines')) this.svg.dataset.style = opt.style ?? 'lines';
-    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t }) : null;
+    // Where electrons are the subject (a scene with reactions), the solvent steps back to one quiet
+    // colour. Where the solvent itself is the subject (evaporation, ice), it keeps its colours.
+    const quiet = tl.steps.some((s) => s.arrows.length > 0 || !!s.shifts?.length) ? 'quiet' : 'plain';
+    if (this.svg.dataset.crowd !== quiet) this.svg.dataset.crowd = quiet;
+    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes }) : null;
     if (pairs) out.push(...pairs.under);
     else out.push(...this.drawBonds(step, t, win, bonds, pos, atoms, isCrowd, opacity));
     // Moving electrons: marked where they are before the change, then carried as the tip of the
@@ -552,7 +562,8 @@ export class StageView {
     if (opt.lens.oxidation) {
       for (const a of atoms) {
         // Electrode metal is all 0; labelling every atom of the plate only adds noise.
-        if (isCrowd(a) || a.lattice) continue;
+        // ('pairs' style: nor is the solvent labelled, shell around an ion or not.)
+        if (isCrowd(a) || a.lattice || (pairs && a.crowd)) continue;
         const w = chargeWorld.atoms.has(a.id) ? chargeWorld : after;
         const wa = w.atoms.get(a.id)!;
         let ox = oxidationState(w, wa);
@@ -593,11 +604,25 @@ export class StageView {
     // Electrode stage: electrons waiting in each plate, and electrons running through the wire.
     if (tl.stage.electrodes) {
       const plateWorld = step && step.phase && t < step.phase.b1 ? step.before : after;
-      for (const [name, e] of Object.entries(tl.stage.electrodes)) {
-        const n = Math.min(12, plateWorld.plate[name] ?? 0);
-        for (let i = 0; i < n; i++) {
-          out.push(dot({ x: e.x - 9 + (i % 2) * 18, y: e.top + 12 + Math.floor(i / 2) * 11 }, 'e'));
+      let counts: Record<string, number> = plateWorld.plate;
+      if (pairs && step) {
+        // 'pairs' style: an electron is in the plate exactly while it is neither on its way there nor gone from it.
+        counts = { ...step.before.plate };
+        for (const [name, d] of pairs.plate ?? []) counts[name] = (counts[name] ?? 0) + d;
+        for (const wf of step.wires) {
+          if (!wf.from || !wf.to) continue;
+          const u = clamp((t - wf.t0) / (wf.t1 - wf.t0), 0, 1);
+          const gap = Math.min(0.12, 0.6 / wf.count);
+          for (let i = 0; i < wf.count; i++) {
+            const f = clamp((u - i * gap) / (1 - (wf.count - 1) * gap), 0, 1);
+            if (f > 0) counts[wf.from] = (counts[wf.from] ?? 0) - 1;
+            if (f >= 1) counts[wf.to] = (counts[wf.to] ?? 0) + 1;
+          }
         }
+      }
+      for (const [name, e] of Object.entries(tl.stage.electrodes)) {
+        const n = Math.min(12, counts[name] ?? 0);
+        for (let i = 0; i < n; i++) out.push(dot(plateSlot(e, i), 'e'));
       }
     }
     for (const wf of step?.wires ?? []) {
@@ -952,7 +977,7 @@ export class StageView {
     const fromAtom = new Map<string, number>();
     for (const ar of step.arrows) {
       // In 'pairs' style the electrons that belong to atoms are drawn as pouches; only free ones (into a wire) are left.
-      if (freeOnly && ar.src && ar.dst) continue;
+      if (freeOnly && ((ar.src && ar.dst) || ar.free)) continue;
       const pair = ar.kind === 'pair';
       const S = ar.src;
       const nth = S && S.kind !== 'bond' ? fromAtom.get(S.a) ?? 0 : 0;

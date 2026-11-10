@@ -12,7 +12,7 @@
  */
 import { ELECTRONEGATIVITY, element } from '../chem/elements';
 import { electronDomains } from '../chem/geometry';
-import type { ArrowAnim, StepAnim } from '../engine/timeline';
+import { plateSlot, type ArrowAnim, type StepAnim } from '../engine/timeline';
 import { formalCharge, type Atom, type World } from '../engine/world';
 import { add, clamp, dist, fromAngle, lerp, lerpV, norm, perp, scale, smooth, sub, type Vec } from '../util/math';
 
@@ -41,6 +41,8 @@ export interface PairsInput {
   eScale: number;
   /** Progress through the step (0..1). */
   t: number;
+  /** The stage's electrodes (electrons kept in a plate are drawn near its top). */
+  electrodes?: Record<string, { x: number; top: number }>;
 }
 
 const f1 = (n: number) => n.toFixed(1);
@@ -111,6 +113,8 @@ export interface PairsOutput {
   charges?: Map<string, number>;
   /** Directions around those atoms that pouches occupy, for the charge badge to keep clear of. */
   avoid?: Map<string, number[]>;
+  /** Electrodes: how many more (or fewer) electrons a plate keeps at this moment than before the step. */
+  plate?: Map<string, number>;
 }
 
 export function drawPairs(inp: PairsInput): PairsOutput {
@@ -223,7 +227,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       });
     }
     for (const a of inp.atoms) {
-      if (crowd(a.id) || a.lattice) continue;
+      if (crowd(a.id) || a.lattice || packed.has(a.id)) continue;
       const wa = w.atoms.get(a.id);
       if (!wa) continue;
       const op = opacity(a.id) * fade(a.id);
@@ -280,10 +284,66 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       mark(add(pb, scale(up, R(b) + 9)), lb);
     }
   };
+  /**
+   * Electrons between an atom and an electrode. Each is one dot from start to end: beside the
+   * atom, on its way, or among the electrons the plate keeps. They go one after another, and the
+   * atom's charge steps with each.
+   */
+  const plateElectrons = (o: PairsOutput) => {
+    const list = (step?.arrows ?? []).filter((ar) => ar.free && !(ar.src && ar.dst));
+    if (!step || !list.length || !inp.electrodes) return;
+    const n = list.length;
+    const charges = o.charges ?? new Map<string, number>();
+    const plate = new Map<string, number>();
+    list.forEach((ar, i) => {
+      const f = ar.free!;
+      const el = inp.electrodes![f.plate];
+      const a0 = step.before.atoms.get(f.atom);
+      if (!el || !a0) return;
+      const slot = plateSlot(el, f.slot);
+      const p0 = f.dir === 'toPlate' ? ar.p0 : slot;
+      const p1 = f.dir === 'toPlate' ? slot : ar.p1;
+      const u = win.pre ? 0 : win.post ? 1 : smooth(clamp(((win.frac - i / n) * n) / 0.8, 0, 1));
+      const gone = u > 0.02;
+      const there = u >= 0.999;
+      if (!charges.has(f.atom)) charges.set(f.atom, formalCharge(step.before, a0));
+      if (f.dir === 'toPlate') {
+        if (gone) charges.set(f.atom, charges.get(f.atom)! + 1);
+        if (there) plate.set(f.plate, (plate.get(f.plate) ?? 0) + 1);
+      } else {
+        if (gone) plate.set(f.plate, (plate.get(f.plate) ?? 0) - 1);
+        if (there) charges.set(f.atom, charges.get(f.atom)! - 1);
+      }
+      const bend = add(lerpV(p0, p1, 0.5), scale(perp(norm(sub(p1, p0))), Math.min(22, dist(p0, p1) * 0.18) * (i % 2 ? -1 : 1)));
+      const at = (v: number): Vec => lerpV(lerpV(p0, bend, v), lerpV(bend, p1, v), v);
+      const fade = win.post ? 1 - win.settle : 1;
+      if (u > 0.01 && fade > 0.01) {
+        let pts = '';
+        const nSeg = Math.max(2, Math.round(14 * u));
+        for (let j = 0; j <= nSeg; j++) {
+          const q = at((u * j) / nSeg);
+          pts += `${f1(q.x)},${f1(q.y)} `;
+        }
+        over.push(`<polyline class="etrail" points="${pts.trim()}" opacity="${f1(0.7 * fade)}"/>`);
+      }
+      if (gone && !there) electron(at(u), ' hot fly', 1, FLY * inp.eScale);
+      // Beside the atom: before it leaves (it shows up as the change nears), or once it has arrived.
+      else if (f.dir === 'toPlate' && !gone) electron(p0, ' hot', win.pre ? win.cue : 1, 2.9);
+      else if (f.dir === 'fromPlate' && there) electron(p1, ' hot', fade, 2.9);
+    });
+    o.charges = charges;
+    o.plate = plate;
+  };
   const finish = (o: PairsOutput): PairsOutput => {
     pulls();
+    plateElectrons(o);
     return o;
   };
+
+  // Ions packed in a crystal: their own electrons are not what the scene is about, and drawing
+  // eight dots on every one of them buries the crystal. They get their electrons once they are out of it.
+  const packed = new Set<string>();
+  for (const ids of topo.crystals.values()) for (const id of ids) packed.add(id);
 
   const one = () => 1;
   const netNew = new Set<string>();
@@ -561,6 +621,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     if (crowd(a.id) || a.lattice) continue;
     const op = opacity(a.id);
     if (!touched.has(a.id)) {
+      if (packed.has(a.id)) continue;
       const w = A.atoms.has(a.id) ? A : B;
       for (const d of domainsOf(w, w === A ? adjA : adjB, a.id, pos)) lone(a.id, d.angle, d.n, '', op);
       continue;

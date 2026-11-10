@@ -30,6 +30,8 @@ const SCENES: { id: string; name: string; src: string }[] = [
   { id: 'add', name: '첨가', src: chapter('addition') },
   { id: 'cond', name: '축합·가수분해', src: chapter('condensation') },
   { id: 'redox', name: '산화·환원', src: chapter('redox') },
+  { id: 'cell', name: '전지', src: chapter('cell') },
+  { id: 'dissolve', name: '용해', src: chapter('dissolving') },
   { id: 'radical', name: '라디칼', src: chapter('radical') },
 ];
 

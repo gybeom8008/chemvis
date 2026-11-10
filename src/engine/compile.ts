@@ -2764,7 +2764,8 @@ class Ctx {
     for (let i = 0; i < nOut; i++) {
       const p0 = add(at, { x: e.face * 4, y: (i - (nOut - 1) / 2) * 7 - 14 });
       const c = add(lerpV(p0, inner, 0.5), { x: 0, y: -26 - 10 * i });
-      this.A.arrows.push({ kind: 'single', p0, c, p1: add(inner, { x: 0, y: -10 }), line: this.line });
+      const free = { atom: pick, plate: name, slot: (this.w.plate[name] ?? 0) + i, dir: 'toPlate' as const };
+      this.A.arrows.push({ kind: 'single', p0, c, p1: add(inner, { x: 0, y: -10 }), line: this.line, free });
     }
     for (const world of [mid, this.w]) {
       const x = world.atoms.get(pick)!;
@@ -2795,7 +2796,7 @@ class Ctx {
     if ((this.w.plate.left ?? 0) < n) this.fail(`산화 전극에 전자가 ${this.w.plate.left ?? 0}개뿐이에요. ${n}개를 보낼 수 없어요.`);
     this.w.plate.left -= n;
     this.w.plate.right = (this.w.plate.right ?? 0) + n;
-    this.A.wires.push({ path: this.stage.wire, count: n, t0: 0.05, t1: 0.95 });
+    this.A.wires.push({ path: this.stage.wire, count: n, t0: 0.05, t1: 0.95, from: 'left', to: 'right' });
   }
 
   /** reduce Cu2+ at right : an ion meets the plate surface and takes electrons from it, joining the metal. */
@@ -2836,7 +2837,8 @@ class Ctx {
       const p0 = add(plateAtom, { x: 0, y: -12 + 10 * i });
       const p1 = add(spot, { x: -e.face * (r + 4), y: -6 + 8 * i });
       const c = add(lerpV(p0, p1, 0.5), { x: 0, y: -24 - 12 * i });
-      this.A.arrows.push({ kind: 'single', p0, c, p1, line: this.line });
+      const free = { atom: ion.id, plate: name, slot: (this.w.plate[name] ?? 0) - 1 - i, dir: 'fromPlate' as const };
+      this.A.arrows.push({ kind: 'single', p0, c, p1, line: this.line, free });
     }
     ion.lp += Math.floor(q / 2);
     ion.rad += q % 2;

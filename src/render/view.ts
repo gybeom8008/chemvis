@@ -80,6 +80,8 @@ export class StageView {
   /** The molecules each step is about: framed by the camera, drawn clearly while the rest steps back. */
   private actors: Set<string>[] = [];
   private cam: Box | null = null;
+  /** The scene shows many molecules colliding (collective mode): electrons are left out of the drawing. */
+  private collective = false;
   /** Where each note box sits relative to its target, decided once per step so it never jumps. */
   private notePlace = new Map<string, { dx: number; dy: number }>();
 
@@ -106,6 +108,7 @@ export class StageView {
     this.svg.setAttribute('viewBox', `0 0 ${st.width} ${st.height}`);
     this.svg.dataset.stage = st.name;
     this.bg.innerHTML = st.background();
+    this.collective = tl.steps.some((s) => s.tally.length > 0);
     this.actors = tl.steps.map((step) => stepActors(step));
     this.boxes = tl.steps.map((step, k) => this.stepBox(step, this.actors[k]));
     this.cam = null;
@@ -476,7 +479,7 @@ export class StageView {
     // colour. Where the solvent itself is the subject (evaporation, ice), it keeps its colours.
     const quiet = tl.steps.some((s) => s.arrows.length > 0 || !!s.shifts?.length) ? 'quiet' : 'plain';
     if (this.svg.dataset.crowd !== quiet) this.svg.dataset.crowd = quiet;
-    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes }) : null;
+    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes, simple: this.collective }) : null;
     if (pairs) out.push(...pairs.under);
     else out.push(...this.drawBonds(step, t, win, bonds, pos, atoms, isCrowd, opacity));
     // Moving electrons: marked where they are before the change, then carried as the tip of the

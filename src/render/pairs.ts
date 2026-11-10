@@ -43,6 +43,8 @@ export interface PairsInput {
   t: number;
   /** The stage's electrodes (electrons kept in a plate are drawn near its top). */
   electrodes?: Record<string, { x: number; top: number }>;
+  /** A scene about many molecules at once (collisions, counts): molecules are drawn without their electrons. */
+  simple?: boolean;
 }
 
 const f1 = (n: number) => n.toFixed(1);
@@ -222,12 +224,12 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       offs.forEach((o, i) => {
         // The strands that are about to leave (or have just arrived) are the last ones.
         const isHot = i >= n - hot && hotOp > 0.01;
-        strand(b.a, b.b, o, n, '', op);
+        strand(b.a, b.b, o, n, '', op, !inp.simple);
         if (isHot) strand(b.a, b.b, o, n, ' hot', op * hotOp);
       });
     }
     for (const a of inp.atoms) {
-      if (crowd(a.id) || a.lattice || packed.has(a.id)) continue;
+      if (inp.simple || crowd(a.id) || a.lattice || packed.has(a.id)) continue;
       const wa = w.atoms.get(a.id);
       if (!wa) continue;
       const op = opacity(a.id) * fade(a.id);

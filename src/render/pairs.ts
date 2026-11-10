@@ -13,7 +13,7 @@
 import { ELECTRONEGATIVITY, element } from '../chem/elements';
 import { electronDomains } from '../chem/geometry';
 import type { ArrowAnim, StepAnim } from '../engine/timeline';
-import type { Atom, World } from '../engine/world';
+import { formalCharge, type Atom, type World } from '../engine/world';
 import { add, clamp, dist, fromAngle, lerp, lerpV, norm, perp, scale, smooth, sub, type Vec } from '../util/math';
 
 export interface PairWin {
@@ -45,6 +45,8 @@ const f1 = (n: number) => n.toFixed(1);
 /** Width of a pouch with two electrons, and with one. */
 const W2 = 13;
 const W1 = 8.5;
+/** Width of half a pouch: one of the two electrons of a pair, drawn beside the other. */
+const WH = 6.6;
 /** How far beyond the atom's edge a lone pouch's electrons sit. */
 const OUT = 5.5;
 /** Half the distance between the two electrons of a pair. */
@@ -98,7 +100,18 @@ function shareAt(a: Atom, b: Atom): number {
   return 0.5 + 0.22 * clamp((eb - ea) / 1.4, -1, 1);
 }
 
-export function drawPairs(inp: PairsInput): { under: string[]; over: string[] } {
+export interface PairsOutput {
+  /** Drawn under the atoms: the pouches. */
+  under: string[];
+  /** Drawn over the atoms: the electrons. */
+  over: string[];
+  /** Charges of atoms that change one electron at a time, at this moment. */
+  charges?: Map<string, number>;
+  /** Directions around those atoms that pouches occupy, for the charge badge to keep clear of. */
+  avoid?: Map<string, number[]>;
+}
+
+export function drawPairs(inp: PairsInput): PairsOutput {
   const { step, win, topo, after, pos, isCrowd, opacity } = inp;
   const under: string[] = [];
   const over: string[] = [];
@@ -318,20 +331,76 @@ export function drawPairs(inp: PairsInput): { under: string[]; over: string[] } 
     moves.push({ ar, pair, from, to, side0: nextSide(fromCount, sk), side1: nextSide(toCount, dk) });
   }
 
-  // Strands of each bond: how many pairs leave by pair moves, arrive by pair moves, and change otherwise.
-  const pairOut = new Map<string, number>();
-  const pairIn = new Map<string, number>();
-  for (const m of moves) {
-    if (!m.pair) continue;
-    if (m.ar.src!.kind === 'bond') pairOut.set(keyOf(m.ar.src!.a, m.ar.src!.b!), (pairOut.get(keyOf(m.ar.src!.a, m.ar.src!.b!)) ?? 0) + 1);
-    if (m.ar.dst!.kind === 'bond') pairIn.set(keyOf(m.ar.dst!.a, m.ar.dst!.b!), (pairIn.get(keyOf(m.ar.dst!.a, m.ar.dst!.b!)) ?? 0) + 1);
-  }
-
   const e = win.during ? win.prog : win.post ? 1 : 0;
-  // A pair that takes hold of a new atom goes first and a pair that lets go of one follows, so
+  // A pouch that takes hold of a new atom goes first and one that lets go of an atom follows, so
   // that in between the atom is held from both sides: nothing is ever left hanging loose.
   const eTake = win.during ? smooth(clamp(win.frac / 0.62, 0, 1)) : e;
   const eLet = win.during ? smooth(clamp((win.frac - 0.38) / 0.62, 0, 1)) : e;
+
+  /**
+   * An electron that goes from one atom to another atom flies there. Everything else stays with
+   * an atom throughout and is drawn as a pouch (two electrons) or half a pouch (one) that changes
+   * its other end.
+   */
+  const isJump = (m: Move) => !m.pair && m.ar.src!.kind !== 'bond' && m.ar.dst!.kind === 'atom' && m.ar.dst!.a !== m.ar.src!.a;
+
+  /** Sideways direction of the bond a–b, the same whichever atom it is seen from. */
+  const across = (a: string, b: string): Vec => {
+    const [x, y] = a < b ? [a, b] : [b, a];
+    return perp(norm(sub(pos.get(y)!, pos.get(x)!)));
+  };
+  const freeTip = (id: string, ang: number) => add(pos.get(id)!, fromAngle(ang, R(id) + OUT));
+  /** The end of strand `o` of the bond a–b at atom b. */
+  const inner = (a: string, b: string, o: number) => {
+    const pa = pos.get(a)!;
+    const pb = pos.get(b)!;
+    return add(sub(pb, scale(norm(sub(pb, pa)), R(b) - 3)), scale(across(a, b), o));
+  };
+
+  /** Where a single electron sits at its source or destination. */
+  const site = (m: Move, end: 'src' | 'dst'): Vec | null => {
+    const E = end === 'src' ? m.ar.src! : m.ar.dst!;
+    const dom = end === 'src' ? m.from : m.to;
+    const side = end === 'src' ? m.side0 : m.side1;
+    const p = pos.get(E.a);
+    if (!p || E.kind === 'bond') return null;
+    if (!dom) return add(p, fromAngle(Math.atan2(m.ar.p0.y - (B.atoms.get(E.a)?.y ?? 0), m.ar.p0.x - (B.atoms.get(E.a)?.x ?? 0)), R(E.a) + OUT));
+    const c = add(p, fromAngle(dom.angle, R(E.a) + OUT));
+    return dom.n >= 2 ? add(c, fromAngle(dom.angle + Math.PI / 2, SIDE * side)) : c;
+  };
+
+  // Electrons that fly leave one after another, so that the charges can be seen to change one electron at a time.
+  const jumps = moves.filter(isJump);
+  const perSource = new Map<string, Move[]>();
+  for (const m of jumps) (perSource.get(m.ar.src!.a) ?? perSource.set(m.ar.src!.a, []).get(m.ar.src!.a)!).push(m);
+  const flight = new Map<Move, number>();
+  for (const list of perSource.values()) {
+    list.forEach((m, i) => {
+      const t0 = i / list.length;
+      // Each flight ends a little before the next begins: a beat in which the charges can be read.
+      flight.set(m, win.during ? smooth(clamp(((win.frac - t0) * list.length) / 0.8, 0, 1)) : e);
+    });
+  }
+  const left = (m: Move) => (flight.get(m) ?? 0) > 0.02;
+  const arrived = (m: Move) => (flight.get(m) ?? 0) >= 0.999;
+  const arc = (m: Move): ((u: number) => Vec) | null => {
+    const p0 = site(m, 'src');
+    const p1 = site(m, 'dst');
+    if (!p0 || !p1) return null;
+    const bend = add(lerpV(p0, p1, 0.5), scale(perp(norm(sub(p1, p0))), Math.min(26, dist(p0, p1) * 0.22) * m.side0));
+    return (u) => lerpV(lerpV(p0, bend, u), lerpV(bend, p1, u), u);
+  };
+  const trail = (m: Move, upTo: number, op: number) => {
+    const at = arc(m);
+    if (!at || upTo <= 0.01 || op <= 0.01) return;
+    let pts = '';
+    const nSeg = Math.max(2, Math.round(14 * upTo));
+    for (let i = 0; i <= nSeg; i++) {
+      const q = at((upTo * i) / nSeg);
+      pts += `${f1(q.x)},${f1(q.y)} `;
+    }
+    over.push(`<polyline class="etrail" points="${pts.trim()}" opacity="${f1(op)}"/>`);
+  };
 
   // ---- before the change: everything as it was, the pouches about to change tinted
   if (win.pre) {
@@ -339,9 +408,8 @@ export function drawPairs(inp: PairsInput): { under: string[]; over: string[] } 
     const hotBond = new Map<string, number>();
     for (const m of moves) {
       const S = m.ar.src!;
-      if (S.kind === 'bond') {
-        if (m.pair) hotBond.set(keyOf(S.a, S.b!), (hotBond.get(keyOf(S.a, S.b!)) ?? 0) + 1);
-      } else if (m.from) (hotLone.get(S.a) ?? hotLone.set(S.a, []).get(S.a)!).push({ angle: m.from.angle, n: m.pair ? 2 : m.from.n });
+      if (S.kind === 'bond') hotBond.set(keyOf(S.a, S.b!), 1);
+      else if (m.from) (hotLone.get(S.a) ?? hotLone.set(S.a, []).get(S.a)!).push({ angle: m.from.angle, n: m.pair ? 2 : m.from.n });
     }
     still(B, one, hotLone, hotBond, win.cue);
     return { under, over };
@@ -353,21 +421,28 @@ export function drawPairs(inp: PairsInput): { under: string[]; over: string[] } 
     const hotBond = new Map<string, number>();
     for (const m of moves) {
       const D = m.ar.dst!;
-      if (D.kind === 'bond') {
-        if (m.pair) hotBond.set(keyOf(D.a, D.b!), (hotBond.get(keyOf(D.a, D.b!)) ?? 0) + 1);
-      } else if (m.to && m.pair) (hotLone.get(D.a) ?? hotLone.set(D.a, []).get(D.a)!).push({ angle: m.to.angle, n: 2 });
+      if (D.kind === 'bond') hotBond.set(keyOf(D.a, D.b!), 1);
+      else if (m.to) (hotLone.get(D.a) ?? hotLone.set(D.a, []).get(D.a)!).push({ angle: m.to.angle, n: m.pair ? 2 : m.to.n });
     }
     still(A, one, hotLone, hotBond, 1 - win.settle);
+    for (const m of jumps) trail(m, 1, 0.7 * (1 - win.settle));
     return { under, over };
   }
 
   // ---- during the change
 
-  // Bonds.
+  // Bonds, counted in electrons: those that stay, those that pouches and half pouches carry away or bring.
+  const eOut = new Map<string, number>();
+  const eIn = new Map<string, number>();
+  for (const m of moves) {
+    const n = m.pair ? 2 : 1;
+    if (m.ar.src!.kind === 'bond') eOut.set(keyOf(m.ar.src!.a, m.ar.src!.b!), (eOut.get(keyOf(m.ar.src!.a, m.ar.src!.b!)) ?? 0) + n);
+    if (m.ar.dst!.kind === 'bond') eIn.set(keyOf(m.ar.dst!.a, m.ar.dst!.b!), (eIn.get(keyOf(m.ar.dst!.a, m.ar.dst!.b!)) ?? 0) + n);
+  }
+  /** Index of the next electron a move takes out of a bond, and of the next one it puts in (counted from the last). */
+  const outNext = new Map<string, number>();
+  const inNext = new Map<string, number>();
   const keys = new Set([...B.bonds.keys(), ...A.bonds.keys()]);
-  /** Offset of the strand a pair move leaves (index from the end) and of the one it makes. */
-  const outSlot = new Map<string, number>();
-  const inSlot = new Map<string, number>();
   for (const k of keys) {
     const bb = B.bonds.get(k);
     const ba = A.bonds.get(k);
@@ -376,6 +451,8 @@ export function drawPairs(inp: PairsInput): { under: string[]; over: string[] } 
     const op = opOf(b.a, b.b);
     const ob = Math.round(bb?.order ?? 0);
     const oa = Math.round(ba?.order ?? 0);
+    outNext.set(k, 2 * ob - 1);
+    inNext.set(k, 2 * oa - 1);
     if (crowd(b.a) || crowd(b.b)) {
       if (oa > 0) plainBond(b.a, b.b, oa, op);
       continue;
@@ -384,27 +461,32 @@ export function drawPairs(inp: PairsInput): { under: string[]; over: string[] } 
       strandOffsets(oa).forEach((o) => strand(b.a, b.b, o, oa, '', op));
       continue;
     }
-    const base = ob - (pairOut.get(k) ?? 0);
-    const target = oa - (pairIn.get(k) ?? 0);
-    const stable = Math.max(0, Math.min(base, target));
+    const base = 2 * ob - (eOut.get(k) ?? 0);
+    const target = 2 * oa - (eIn.get(k) ?? 0);
+    const stay = Math.max(0, Math.min(base, target));
+    const stable = Math.floor(stay / 2);
     const offB = strandOffsets(ob);
     const offA = strandOffsets(oa);
     const wide = lerp(strandWidth(ob || oa), strandWidth(oa || ob), e);
+    const pa = pos.get(b.a)!;
+    const pb = pos.get(b.b)!;
+    const u = norm(sub(pb, pa));
     for (let i = 0; i < stable; i++) {
-      const o = lerp(offB[i] ?? 0, offA[i] ?? 0, e);
-      const pa = pos.get(b.a)!;
-      const pb = pos.get(b.b)!;
-      const u = norm(sub(pb, pa));
-      const nn = scale(perp(u), o);
+      const nn = scale(perp(u), lerp(offB[i] ?? 0, offA[i] ?? 0, e));
       pouch(add(add(pa, scale(u, R(b.a) - 3)), nn), add(sub(pb, scale(u, R(b.b) - 3)), nn), wide, '', op);
-      const c = sharePoint(b.a, b.b, o);
+      const c = sharePoint(b.a, b.b, lerp(offB[i] ?? 0, offA[i] ?? 0, e));
       if (c) electrons(c, u, 2, Math.max(ob, oa) <= 1, '', op);
     }
-    // Strands that single electrons (or a net change) remove or add: the pouch fades, the electrons are drawn by their moves.
-    for (let i = stable; i < base; i++) strand(b.a, b.b, offB[i] ?? 0, ob, ' hot', op * (1 - e), false);
-    for (let i = stable; i < target; i++) strand(b.a, b.b, offA[i] ?? 0, oa, ' hot', op * e, false);
-    outSlot.set(k, ob - 1);
-    inSlot.set(k, oa - 1);
+    if (stay % 2 === 1) {
+      // One electron of a strand stays while its partner leaves or a new one arrives: half a pouch, on the side the others do not use.
+      const nn = scale(across(b.a, b.b), (offB[stable] ?? 0) - SIDE);
+      pouch(add(add(pa, scale(u, R(b.a) - 3)), nn), add(sub(pb, scale(u, R(b.b) - 3)), nn), WH, '', op);
+      const c = sharePoint(b.a, b.b, 0);
+      if (c) electron(add(c, nn), '', op);
+    }
+    // A change that no move accounts for (part of a net reaction): the strand fades.
+    for (let i = Math.ceil(stay / 2); i < Math.ceil(base / 2); i++) strand(b.a, b.b, offB[i] ?? 0, ob, ' hot', op * (1 - e));
+    for (let i = Math.ceil(stay / 2); i < Math.ceil(target / 2); i++) strand(b.a, b.b, offA[i] ?? 0, oa, ' hot', op * e);
   }
 
   // Lone pouches. Untouched atoms: as they are. Touched atoms: the pouches that stay turn from
@@ -448,141 +530,158 @@ export function drawPairs(inp: PairsInput): { under: string[]; over: string[] } 
     }
   }
 
-  // The electrons that move.
+  // Pouches and half pouches that change one end.
   for (const m of moves) {
+    if (isJump(m)) continue;
     const S = m.ar.src!;
     const D = m.ar.dst!;
-    if (m.pair) {
-      // One pouch from start to end. `hold` is the atom it stays on; its other end goes from `tip0` to `tip1`.
-      let hold: string;
-      let tip0: Vec | null = null;
-      let tip1: Vec | null = null;
-      let c0: Vec | null = null;
-      let c1: Vec | null = null;
-      let across0 = true;
-      let across1 = true;
-      let w0 = W2;
-      let w1 = W2;
-      const freeTip = (id: string, ang: number) => add(pos.get(id)!, fromAngle(ang, R(id) + OUT));
-      const inner = (a: string, b: string, o: number) => {
-        // The end of strand o at atom b, seen from a.
-        const pa = pos.get(a)!;
-        const pb = pos.get(b)!;
-        const u = norm(sub(pb, pa));
-        return add(sub(pb, scale(u, R(b) - 3)), scale(perp(u), o));
-      };
-      const kS = S.kind === 'bond' ? keyOf(S.a, S.b!) : '';
-      const kD = D.kind === 'bond' ? keyOf(D.a, D.b!) : '';
-      const nS = Math.round(B.bonds.get(kS)?.order ?? 0);
-      const nD = Math.round(A.bonds.get(kD)?.order ?? 0);
-      const oS = S.kind === 'bond' ? strandOffsets(nS)[outSlot.get(kS) ?? 0] ?? 0 : 0;
-      const oD = D.kind === 'bond' ? strandOffsets(nD)[inSlot.get(kD) ?? 0] ?? 0 : 0;
-      if (S.kind === 'bond') {
-        outSlot.set(kS, (outSlot.get(kS) ?? 0) - 1);
-        w0 = strandWidth(nS);
-        across0 = nS <= 1;
+    const n = m.pair ? 2 : 1;
+    const kS = S.kind === 'bond' ? keyOf(S.a, S.b!) : '';
+    const kD = D.kind === 'bond' ? keyOf(D.a, D.b!) : '';
+    const nS = Math.round(B.bonds.get(kS)?.order ?? 0);
+    const nD = Math.round(A.bonds.get(kD)?.order ?? 0);
+    let oS = 0;
+    let oD = 0;
+    if (S.kind === 'bond') {
+      const i = outNext.get(kS) ?? 0;
+      outNext.set(kS, i - n);
+      oS = strandOffsets(nS)[Math.floor(i / 2)] ?? 0;
+    }
+    if (D.kind === 'bond') {
+      const i = inNext.get(kD) ?? 0;
+      inNext.set(kD, i - n);
+      oD = strandOffsets(nD)[Math.floor(i / 2)] ?? 0;
+    }
+    const z: Vec = { x: 0, y: 0 };
+    let hold: string;
+    let g = e;
+    let tip0: Vec;
+    let tip1: Vec;
+    let c0: Vec | null;
+    let c1: Vec | null;
+    let w0 = m.pair ? W2 : W1;
+    let w1 = m.pair ? W2 : W1;
+    let lat0 = z;
+    let lat1 = z;
+    let acr0 = true;
+    let acr1 = true;
+    if (S.kind !== 'bond' && D.kind === 'bond' && m.from && (D.a === S.a || D.b === S.a)) {
+      // Electrons of one atom take hold of another atom.
+      g = eTake;
+      hold = S.a;
+      const other = D.a === S.a ? D.b! : D.a;
+      if (!pos.has(hold) || !pos.has(other)) continue;
+      tip0 = freeTip(hold, m.from.angle);
+      c0 = tip0;
+      if (!m.pair && m.from.n === 2) {
+        lat0 = fromAngle(m.from.angle + Math.PI / 2, SIDE * m.side0);
+        w0 = WH;
       }
-      if (D.kind === 'bond') {
-        inSlot.set(kD, (inSlot.get(kD) ?? 0) - 1);
+      tip1 = inner(hold, other, oD);
+      c1 = sharePoint(hold, other, oD);
+      if (m.pair) {
         w1 = strandWidth(nD);
-        across1 = nD <= 1;
+        acr1 = nD <= 1;
+      } else {
+        lat1 = scale(across(hold, other), SIDE * m.side1);
+        w1 = WH;
       }
-      let g = e;
-      if (S.kind !== 'bond' && D.kind === 'bond' && m.from) {
-        // A lone pair takes hold of another atom.
-        g = eTake;
-        hold = S.a;
-        const other = D.a === S.a ? D.b! : D.a;
-        if (!pos.has(hold) || !pos.has(other)) continue;
-        tip0 = freeTip(hold, m.from.angle);
-        c0 = tip0;
-        tip1 = inner(hold, other, oD);
-        c1 = sharePoint(hold, other, oD);
-      } else if (S.kind === 'bond' && D.kind === 'atom') {
-        // A shared pair lets go of one atom and stays on the other.
-        g = eLet;
-        hold = D.a;
-        const other = S.a === D.a ? S.b! : S.a;
-        if (!pos.has(hold) || !pos.has(other)) continue;
-        tip0 = inner(hold, other, oS);
-        c0 = sharePoint(hold, other, oS);
-        const ang = m.to ? angLerp(angOf(pos.get(hold)!, pos.get(other)!), m.to.angle, g) : angOf(pos.get(hold)!, pos.get(other)!);
-        tip1 = freeTip(hold, ang);
-        c1 = tip1;
-      } else if (S.kind === 'bond' && D.kind === 'bond') {
-        // A shared pair keeps one atom and swings from its old partner to a new one.
-        g = eTake;
-        const shared = [S.a, S.b!].find((x) => x === D.a || x === D.b);
-        if (!shared) continue;
-        hold = shared;
-        const was = S.a === shared ? S.b! : S.a;
-        const now = D.a === shared ? D.b! : D.a;
-        if (!pos.has(hold) || !pos.has(was) || !pos.has(now)) continue;
-        tip0 = inner(hold, was, oS);
-        c0 = sharePoint(hold, was, oS);
-        tip1 = inner(hold, now, oD);
-        c1 = sharePoint(hold, now, oD);
-      } else continue;
-      if (!tip0 || !tip1 || !c0 || !c1) continue;
-      const ph = pos.get(hold)!;
-      // Turn about the atom that holds it, so that the pouch swings instead of cutting through the atom.
-      const swing = (p0: Vec, p1: Vec): Vec => {
-        const a0 = angOf(ph, p0);
-        const a1 = angOf(ph, p1);
-        return add(ph, fromAngle(angLerp(a0, a1, g), lerp(dist(ph, p0), dist(ph, p1), g)));
-      };
-      const tip = swing(tip0, tip1);
-      const c = swing(c0, c1);
-      const u = norm(sub(tip, ph));
-      const op = opacity(hold);
-      const base = add(ph, scale(u, R(hold) - 3));
-      pouch(base, tip, lerp(w0, w1, g), ' hot', op);
-      const across = g < 0.5 ? across0 : across1;
-      electrons(c, u, 2, across, ' hot', op);
-      continue;
-    }
-
-    // One electron: it flies from where it was to where it will be.
-    const site = (end: 'src' | 'dst'): Vec | null => {
-      const E = end === 'src' ? S : D;
-      const dom = end === 'src' ? m.from : m.to;
-      const side = end === 'src' ? m.side0 : m.side1;
-      if (E.kind === 'bond') {
-        const w = end === 'src' ? B : A;
-        const n = Math.round(w.bonds.get(keyOf(E.a, E.b!))?.order ?? 1);
-        const c = sharePoint(E.a, E.b!, strandOffsets(n)[n - 1] ?? 0);
-        const pa = pos.get(E.a);
-        const pb = pos.get(E.b!);
-        if (!c || !pa || !pb) return null;
-        const u = norm(sub(pb, pa));
-        return add(c, scale(n <= 1 ? perp(u) : u, SIDE * side));
+    } else if (S.kind === 'bond' && D.kind === 'atom' && (D.a === S.a || D.a === S.b)) {
+      // Shared electrons let go of one atom and stay on the other.
+      g = eLet;
+      hold = D.a;
+      const other = S.a === D.a ? S.b! : S.a;
+      if (!pos.has(hold) || !pos.has(other)) continue;
+      tip0 = inner(hold, other, oS);
+      c0 = sharePoint(hold, other, oS);
+      if (m.pair) {
+        w0 = strandWidth(nS);
+        acr0 = nS <= 1;
+      } else {
+        lat0 = scale(across(hold, other), SIDE * m.side0);
+        w0 = WH;
       }
-      const p = pos.get(E.a);
-      if (!p) return null;
-      if (!dom) return add(p, fromAngle(end === 'src' ? Math.atan2(m.ar.p0.y - (B.atoms.get(E.a)?.y ?? 0), m.ar.p0.x - (B.atoms.get(E.a)?.x ?? 0)) : 0, R(E.a) + OUT));
-      const c = add(p, fromAngle(dom.angle, R(E.a) + OUT));
-      return dom.n >= 2 ? add(c, fromAngle(dom.angle + Math.PI / 2, SIDE * side)) : c;
-    };
-    const p0 = site('src');
-    const p1 = site('dst');
-    if (!p0 || !p1) continue;
-    const d = dist(p0, p1);
-    // A slight arc, bent to opposite sides for two electrons that go the same way.
-    const bend = add(lerpV(p0, p1, 0.5), scale(perp(norm(sub(p1, p0))), Math.min(26, d * 0.22) * m.side0));
-    const at = (u: number): Vec => {
-      const a = lerpV(p0, bend, u);
-      const b = lerpV(bend, p1, u);
-      return lerpV(a, b, u);
-    };
-    let trail = '';
-    const nSeg = Math.max(2, Math.round(14 * e));
-    for (let i = 0; i <= nSeg; i++) {
-      const q = at((e * i) / nSeg);
-      trail += `${f1(q.x)},${f1(q.y)} `;
-    }
-    over.push(`<polyline class="etrail" points="${trail.trim()}"/>`);
-    electron(at(e), ' hot fly', 1, FLY * inp.eScale);
+      const ang = m.to ? angLerp(angOf(pos.get(hold)!, pos.get(other)!), m.to.angle, g) : angOf(pos.get(hold)!, pos.get(other)!);
+      tip1 = freeTip(hold, ang);
+      c1 = tip1;
+      if (!m.pair && m.to && m.to.n === 2) {
+        lat1 = fromAngle(ang + Math.PI / 2, SIDE * m.side1);
+        w1 = WH;
+      }
+    } else if (S.kind === 'bond' && D.kind === 'bond') {
+      // Shared electrons keep one atom and swing from the old partner to a new one.
+      g = eTake;
+      const shared = [S.a, S.b!].find((x) => x === D.a || x === D.b);
+      if (!shared) continue;
+      hold = shared;
+      const was = S.a === shared ? S.b! : S.a;
+      const now = D.a === shared ? D.b! : D.a;
+      if (!pos.has(hold) || !pos.has(was) || !pos.has(now)) continue;
+      tip0 = inner(hold, was, oS);
+      c0 = sharePoint(hold, was, oS);
+      tip1 = inner(hold, now, oD);
+      c1 = sharePoint(hold, now, oD);
+      if (m.pair) {
+        w0 = strandWidth(nS);
+        w1 = strandWidth(nD);
+        acr0 = nS <= 1;
+        acr1 = nD <= 1;
+      } else {
+        lat0 = scale(across(hold, was), SIDE * m.side0);
+        lat1 = scale(across(hold, now), SIDE * m.side1);
+        w0 = w1 = WH;
+      }
+    } else continue;
+    if (!c0 || !c1) continue;
+    const ph = pos.get(hold)!;
+    // Turn about the atom that holds them, so that the pouch swings instead of cutting through the atom.
+    const swing = (p0: Vec, p1: Vec): Vec => add(ph, fromAngle(angLerp(angOf(ph, p0), angOf(ph, p1), g), lerp(dist(ph, p0), dist(ph, p1), g)));
+    const tip = swing(tip0, tip1);
+    const c = swing(c0, c1);
+    const u = norm(sub(tip, ph));
+    const lat = lerpV(lat0, lat1, g);
+    const op = opacity(hold);
+    pouch(add(add(ph, scale(u, R(hold) - 3)), lat), add(tip, lat), lerp(w0, w1, g), ' hot', op);
+    if (m.pair) electrons(c, u, 2, g < 0.5 ? acr0 : acr1, ' hot', op);
+    else electron(add(c, lat), ' hot', op);
   }
 
-  return { under, over };
+  // Electrons that fly, one after another. Each is drawn the whole time: waiting, on its way, or arrived.
+  const charges = new Map<string, number>();
+  const bump = (id: string, d: number) => {
+    const a0 = B.atoms.get(id);
+    if (!a0) return;
+    if (!charges.has(id)) charges.set(id, formalCharge(B, a0));
+    charges.set(id, charges.get(id)! + d);
+  };
+  const waiting = new Map<Dom, number>();
+  const landed = new Map<Dom, number>();
+  const avoid = new Map<string, number[]>();
+  for (const m of jumps) {
+    if (m.from) (avoid.get(m.ar.src!.a) ?? avoid.set(m.ar.src!.a, []).get(m.ar.src!.a)!).push(m.from.angle);
+    if (m.to) (avoid.get(m.ar.dst!.a) ?? avoid.set(m.ar.dst!.a, []).get(m.ar.dst!.a)!).push(m.to.angle);
+    bump(m.ar.src!.a, left(m) ? 1 : 0);
+    bump(m.ar.dst!.a, arrived(m) ? -1 : 0);
+    if (m.from && !left(m)) waiting.set(m.from, (waiting.get(m.from) ?? 0) + 1);
+    if (m.to && arrived(m)) landed.set(m.to, (landed.get(m.to) ?? 0) + 1);
+  }
+  for (const m of jumps) {
+    const at = arc(m);
+    if (!at) continue;
+    const u = flight.get(m) ?? 0;
+    // The pouch an electron waits in or has landed in, when no other electron keeps it drawn.
+    if (m.from && m.from.left === 0 && waiting.has(m.from)) {
+      lone(m.ar.src!.a, m.from.angle, waiting.get(m.from)!, ' hot', opacity(m.ar.src!.a), false);
+      waiting.delete(m.from);
+    }
+    if (m.to && m.to.left === 0 && landed.has(m.to)) {
+      lone(m.ar.dst!.a, m.to.angle, landed.get(m.to)!, ' hot', opacity(m.ar.dst!.a), false);
+      landed.delete(m.to);
+    }
+    if (u > 0.01) trail(m, u, 0.7);
+    const flying = u > 0.01 && u < 0.999;
+    electron(at(u), flying ? ' hot fly' : ' hot', 1, flying ? FLY * inp.eScale : DOT);
+  }
+
+  return { under, over, charges, avoid };
 }

@@ -4,7 +4,7 @@
  * where; the compiler derives products, charges and drawing positions, and
  * checks the chemistry (electron counts, charge balance) as it goes.
  */
-import { METALS, bondLength, element } from '../chem/elements';
+import { ELECTRONEGATIVITY, METALS, bondLength, element } from '../chem/elements';
 import { domainsInWorld, lonePairDirsInWorld, placeNew, relayout } from '../chem/geometry';
 import { SmilesError } from '../chem/smiles';
 import { formulaCharge, lookupMolecule, normalizeFormula } from '../chem/library';
@@ -1223,9 +1223,29 @@ class Ctx {
     const M = this.w.atoms.get(mover)!;
     const tn = neighbors(this.w, target).map((n) => this.w.atoms.get(n.id)!);
     let dir: Vec;
-    // Come in from the target's open side; if its bonds are spread evenly (no open side), from where the mover is.
+    // Come in from the target's open side. If its bonds are spread evenly (no open side), come in
+    // through a gap between two of them, so that nothing stands between the two atoms: the widest
+    // gap, away from the neighbour that pulls electrons hardest (the one likely to leave), and
+    // otherwise on the side the mover is already on.
     if (tn.length && dist(T, centroid(tn)) > 6) dir = norm(sub(T, centroid(tn)));
-    else dir = norm(sub(M, T));
+    else if (tn.length >= 2) {
+      const angs = tn.map((n) => Math.atan2(n.y - T.y, n.x - T.x)).sort((p, q) => p - q);
+      const greedy = tn.reduce((b, n) => ((ELECTRONEGATIVITY[n.el] ?? 0) > (ELECTRONEGATIVITY[b.el] ?? 0) ? n : b), tn[0]);
+      const away = Math.atan2(greedy.y - T.y, greedy.x - T.x);
+      const side = Math.atan2(M.y - T.y, M.x - T.x);
+      let best = side;
+      let bestScore = -Infinity;
+      angs.forEach((a0, i) => {
+        const a1 = i + 1 < angs.length ? angs[i + 1] : angs[0] + 2 * Math.PI;
+        const mid = (a0 + a1) / 2;
+        const score = (a1 - a0) + 0.5 * angDiff(mid, away) - 0.2 * angDiff(mid, side);
+        if (score > bestScore) {
+          bestScore = score;
+          best = mid;
+        }
+      });
+      dir = fromAngle(best);
+    } else dir = norm(sub(M, T));
     const gap = element(T.el).r + element(M.el).r + 58;
     const goal = add(T, scale(dir, gap));
     // Turn so that the unpaired electron (radicals), else a lone pair, else the free side faces the target.

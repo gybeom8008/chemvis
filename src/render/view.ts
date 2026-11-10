@@ -519,7 +519,7 @@ export class StageView {
       for (const a of atoms) {
         const p = pos.get(a.id)!;
         const r = element(a.el).r;
-        const c = add(p, fromAngle(this.freeAngle(a, p, pos, dirBonds), r + 6));
+        const c = add(p, fromAngle(this.freeAngle(a, p, pos, dirBonds, (during && pairs?.avoid?.get(a.id)) || []), r + 6));
         const badge = (q: number, op: number) => {
           if (q === 0 || op <= 0.01) return;
           const txt = (Math.abs(q) > 1 ? String(Math.abs(q)) : '') + (q > 0 ? '+' : '−');
@@ -527,6 +527,11 @@ export class StageView {
             `<g class="charge ${q > 0 ? 'pos' : 'neg'}" opacity="${f1(op)}"><circle cx="${f1(c.x)}" cy="${f1(c.y)}" r="${txt.length > 1 ? 9 : 7.5}"/><text x="${f1(c.x)}" y="${f1(c.y)}" dy="0.36em">${txt}</text></g>`,
           );
         };
+        if (during && step && pairs?.charges?.has(a.id)) {
+          // An atom that gives up or gains electrons one at a time: its charge steps with each of them.
+          badge(pairs.charges.get(a.id)!, opacity(a.id));
+          continue;
+        }
         if (during && step) {
           const b0 = step.before.atoms.get(a.id);
           const qa = formalCharge(after, after.atoms.get(a.id)!);
@@ -550,11 +555,20 @@ export class StageView {
         if (isCrowd(a) || a.lattice) continue;
         const w = chargeWorld.atoms.has(a.id) ? chargeWorld : after;
         const wa = w.atoms.get(a.id)!;
-        const ox = oxidationState(w, wa);
+        let ox = oxidationState(w, wa);
+        let q = formalCharge(w, wa);
         const p = pos.get(a.id)!;
         const r = element(a.el).r;
-        const extra: number[] = [];
-        if (opt.lens.charge && formalCharge(w, wa) !== 0) extra.push(this.freeAngle(a, p, pos, dirBonds));
+        // An atom whose electrons leave or arrive one at a time: its number steps with them, like its charge.
+        const stepped = during && step ? pairs?.charges?.get(a.id) : undefined;
+        const b0 = step?.before.atoms.get(a.id);
+        if (stepped !== undefined && b0) {
+          ox = oxidationState(step!.before, b0) + (stepped - formalCharge(step!.before, b0));
+          q = stepped;
+        }
+        const keep = (during && pairs?.avoid?.get(a.id)) || [];
+        const extra: number[] = [...keep];
+        if (opt.lens.charge && q !== 0) extra.push(this.freeAngle(a, p, pos, dirBonds, keep));
         const ang = this.freeAngle(a, p, pos, dirBonds, extra, Math.PI / 4);
         const c = add(p, fromAngle(ang, r + 9));
         const txt = ox > 0 ? `+${ox}` : ox < 0 ? `−${-ox}` : '0';

@@ -31,6 +31,19 @@ test('pairs style: a proton transfer is one pair taking hold and another letting
   expect(errors).toEqual([]);
 });
 
+test('pairs style: electrons that go from atom to atom leave one at a time, and the charges step with them', async ({ page }) => {
+  await page.goto('concept/?still#redox');
+  const svg = page.locator('#new svg.stage');
+  const charges = () => svg.locator('.charge text').allTextContents();
+  // Zn gives two electrons to Cu2+. Halfway: one has arrived, the other has not left yet.
+  await seek(page, 2, 0.12 + 0.43 * 0.45);
+  expect((await charges()).sort()).toEqual(['+', '+']);
+  expect(await svg.locator('.etrail').count()).toBe(1);
+  // At the end of the change both have arrived: Zn2+ and neutral Cu.
+  await seek(page, 2, 0.56);
+  expect(await charges()).toEqual(['2+']);
+});
+
 test('pairs style: every tutorial chapter and example draws without errors', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));

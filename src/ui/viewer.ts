@@ -16,6 +16,8 @@ export interface Settings {
   /** "이어서 재생": after a step, go on to the next one by itself. */
   continuous: boolean;
   motion: boolean;
+  /** How electrons are drawn (see DrawOptions.style). */
+  style?: 'lines' | 'pairs';
 }
 
 /** What the forward button does on the last step. */
@@ -177,14 +179,14 @@ export class Viewer {
     this.player.tick(dt);
     if (!this.tl) return;
     const m = this.settings.motion;
-    this.view.draw(this.player.k, this.player.t, { lens: this.settings.lens, clock: m ? clock : 0, motion: m, dt: m ? dt : 0 });
+    this.view.draw(this.player.k, this.player.t, { lens: this.settings.lens, clock: m ? clock : 0, motion: m, dt: m ? dt : 0, style: this.settings.style });
     this.paintSegs();
   }
 
   /** Draw immediately at a position (tests, scrubbing while paused). */
   seek(k: number, t: number): void {
     this.player.seek(k, t);
-    if (this.tl) this.view.draw(this.player.k, this.player.t, { lens: this.settings.lens, clock: 0, motion: false });
+    if (this.tl) this.view.draw(this.player.k, this.player.t, { lens: this.settings.lens, clock: 0, motion: false, style: this.settings.style });
     this.paintSegs();
   }
 

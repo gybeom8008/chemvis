@@ -27,6 +27,7 @@ import {
   type Vec,
 } from '../util/math';
 import { hashString } from '../util/rng';
+import { drawPairs } from './pairs';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const f1 = (n: number) => n.toFixed(1);
@@ -56,6 +57,11 @@ export interface DrawOptions {
   motion: boolean;
   /** Seconds since the last frame; 0 snaps the camera. */
   dt?: number;
+  /**
+   * How electrons are drawn. 'lines' (the default): bonds as lines, moving electrons along curved
+   * arrows. 'pairs': every electron pair as a pouch that lets go of an atom or takes hold of one.
+   */
+  style?: 'lines' | 'pairs';
 }
 
 interface Box {
@@ -457,10 +463,15 @@ export class StageView {
 
     // Bonds. Outside the change they are drawn as they are; inside it, a bond that is made or
     // broken grows or shrinks while it happens (see drawBonds).
-    out.push(...this.drawBonds(step, t, { pre, during, post, settle, prog, cue }, bonds, pos, atoms, isCrowd, opacity));
+    const frac = !step ? 1 : w1 > w0 ? clamp((t - w0) / (w1 - w0), 0, 1) : t >= w0 ? 1 : 0;
+    const win = { pre, during, post, settle, prog, cue, frac };
+    if (this.svg.dataset.style !== (opt.style ?? 'lines')) this.svg.dataset.style = opt.style ?? 'lines';
+    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale }) : null;
+    if (pairs) out.push(...pairs.under);
+    else out.push(...this.drawBonds(step, t, win, bonds, pos, atoms, isCrowd, opacity));
     // Moving electrons: marked where they are before the change, then carried as the tip of the
     // bond they leave or make. The pieces of bond they drag go under the atoms, the electrons over.
-    const moving = step && step.arrows.length ? this.drawElectrons(step, { pre, during, post, settle, prog, cue }, pos) : { under: [], over: [] };
+    const moving = step && step.arrows.length ? this.drawElectrons(step, win, pos, !!pairs) : { under: [], over: [] };
     out.push(...moving.under);
 
     // Atoms.
@@ -487,7 +498,7 @@ export class StageView {
     const carriedTo = new Set<string>();
     for (const ar of step?.arrows ?? []) if (ar.dst?.kind === 'atom') carriedTo.add(ar.dst.a);
     for (const a of atoms) {
-      if (isCrowd(a) || a.lattice) continue;
+      if (pairs || isCrowd(a) || a.lattice) continue;
       const p = pos.get(a.id)!;
       if (during && step) {
         const m = step.mid.atoms.get(a.id) ?? a;
@@ -563,6 +574,7 @@ export class StageView {
 
     // The electrons themselves, over the atoms.
     out.push(...moving.over);
+    if (pairs) out.push(...pairs.over);
 
     // Electrode stage: electrons waiting in each plate, and electrons running through the wire.
     if (tl.stage.electrodes) {
@@ -916,7 +928,7 @@ export class StageView {
    * finished changing (drawBonds). The arrow then stays, fainter, until the step ends, so a paused
    * frame still says what happened.
    */
-  private drawElectrons(step: StepAnim, win: Win, pos: Map<string, Vec>): { under: string[]; over: string[] } {
+  private drawElectrons(step: StepAnim, win: Win, pos: Map<string, Vec>, freeOnly = false): { under: string[]; over: string[] } {
     const under: string[] = [];
     const out: string[] = [];
     const k = Math.min(eScale, 2);
@@ -925,6 +937,8 @@ export class StageView {
 
     const fromAtom = new Map<string, number>();
     for (const ar of step.arrows) {
+      // In 'pairs' style the electrons that belong to atoms are drawn as pouches; only free ones (into a wire) are left.
+      if (freeOnly && ar.src && ar.dst) continue;
       const pair = ar.kind === 'pair';
       const S = ar.src;
       const nth = S && S.kind !== 'bond' ? fromAtom.get(S.a) ?? 0 : 0;
@@ -1218,6 +1232,8 @@ interface Win {
   settle: number;
   prog: number;
   cue: number;
+  /** Progress through the change window before easing (0..1). */
+  frac: number;
 }
 
 /** Number of lines a bond of this order is drawn with (a lone electron counts as a dashed line). */

@@ -1,0 +1,475 @@
+/* How a scene is drawn inside svg.stage. Colours come from CSS variables that the page defines. */
+
+.bg-water {
+  fill: var(--water);
+}
+.bg-air {
+  fill: var(--air);
+}
+.bg-surface {
+  fill: none;
+  stroke: var(--water-line);
+  stroke-width: 3;
+}
+.bg-label {
+  fill: var(--muted);
+  font-size: 18px;
+  font-weight: 600;
+}
+.bg-pill {
+  fill: var(--surface);
+  opacity: 0.85;
+}
+.bg-topsoil {
+  fill: var(--topsoil);
+}
+.bg-subsoil {
+  fill: var(--subsoil);
+}
+.bg-groundwater {
+  fill: var(--groundwater);
+}
+.grain {
+  stroke: rgba(0, 0, 0, 0.16);
+  stroke-width: 1.5;
+}
+.grain-topsoil,
+.grain-air {
+  fill: var(--grain-top);
+}
+.grain-subsoil,
+.grain-groundwater {
+  fill: var(--grain-sub);
+}
+.clay {
+  fill: var(--clay);
+  stroke: rgba(0, 0, 0, 0.22);
+}
+.site circle {
+  fill: #fff;
+  stroke: #5a4636;
+  stroke-width: 1;
+}
+.site text {
+  font-size: 11px;
+  font-weight: 700;
+  text-anchor: middle;
+  fill: #5a4636;
+}
+.layer-line {
+  stroke: var(--muted);
+  stroke-dasharray: 6 6;
+  opacity: 0.5;
+}
+
+.bond {
+  stroke: var(--bond);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+}
+.bond.crowd {
+  stroke-width: 2.4;
+}
+.dative {
+  fill: var(--bond);
+}
+.bubble {
+  fill: rgba(255, 255, 255, 0.45);
+  stroke: var(--water-line);
+  stroke-width: 2.5;
+}
+/* membrane stage */
+.head {
+  fill: #e9c46a;
+  stroke: rgba(0, 0, 0, 0.25);
+  stroke-width: 1;
+}
+.tail {
+  fill: none;
+  stroke: #b08d3a;
+  stroke-width: 1.6;
+  opacity: 0.7;
+}
+.protein {
+  fill: #b197fc;
+  stroke: #6741d9;
+  stroke-width: 1.5;
+  opacity: 0.85;
+}
+.protein.synthase {
+  fill: #ffa8a8;
+  stroke: #e03131;
+}
+.protein.synthase.head {
+  opacity: 0.7;
+}
+.protein.pump {
+  fill: #63e6be;
+  stroke: #0ca678;
+}
+.pore {
+  stroke: #0ca678;
+  stroke-width: 10;
+  stroke-linecap: round;
+  opacity: 0.35;
+}
+.bg-water.inner {
+  fill: var(--water);
+  opacity: 0.75;
+}
+/* electrode stage */
+.beaker {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.bridge {
+  fill: none;
+  stroke: var(--water-line);
+  stroke-width: 26;
+  stroke-linejoin: round;
+  opacity: 0.55;
+}
+.wire {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.bulb {
+  fill: #fff3bf;
+  stroke: var(--ink-2);
+  stroke-width: 2.5;
+}
+.filament {
+  fill: none;
+  stroke: #e67700;
+  stroke-width: 2;
+}
+.plate {
+  fill: var(--track);
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+/* lithium-ion battery stage */
+.bg-electrolyte {
+  fill: var(--electrolyte);
+}
+.separator {
+  stroke: var(--muted);
+  stroke-width: 7;
+  stroke-dasharray: 10 7;
+  opacity: 0.7;
+}
+.foil.cu {
+  fill: #d9895b;
+}
+.foil.al {
+  fill: #adb5bd;
+}
+.graphene {
+  fill: none;
+  stroke: var(--graphene);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.oxide {
+  fill: #748ffc;
+  stroke: #4263eb;
+  stroke-width: 1;
+  opacity: 0.75;
+}
+.device {
+  fill: var(--surface);
+  stroke: var(--ink-2);
+  stroke-width: 2.5;
+}
+.sei {
+  fill: #a9744f;
+  fill-opacity: 0.55;
+}
+.bat-count rect {
+  fill: var(--note-bg);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.bat-count text {
+  fill: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 15px;
+}
+.bat-count text.cap {
+  fill: var(--ink);
+  font-weight: 700;
+}
+/* A bond left with one electron while electrons are moving. */
+.bond.half {
+  stroke-width: 2;
+  stroke-dasharray: 3 4;
+}
+/* The part of a bond that moving electrons are making or leaving: the colour of electrons. */
+.bond.hot {
+  stroke: var(--electron);
+}
+/* A bond about to break or being broken in a net reaction (no electrons drawn). */
+.bond.brk {
+  stroke: var(--focus);
+}
+/* Electrons about to move, marked where they sit. */
+.e.cue {
+  stroke-width: 1;
+  filter: drop-shadow(0 0 2px var(--electron));
+}
+.atom {
+  stroke: rgba(0, 0, 0, 0.32);
+  stroke-width: 1;
+}
+.atom.crowd {
+  stroke-width: 0.8;
+}
+.sym {
+  text-anchor: middle;
+  font-family: var(--sans);
+  font-weight: 700;
+  pointer-events: none;
+}
+.lp {
+  fill: var(--lp);
+}
+.e {
+  fill: var(--electron);
+  stroke: var(--surface);
+  stroke-width: 0.8;
+}
+.arrow path {
+  fill: none;
+  stroke: var(--electron);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+.arrow polygon {
+  fill: var(--electron);
+}
+.arrow polyline {
+  fill: none;
+  stroke: var(--electron);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.arrow.hook polyline {
+  stroke-width: 2.4;
+}
+/* Electrons on their way: larger and glowing, so they read as the thing that moves. */
+.e.fly,
+.e.wire-e {
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 3px var(--electron));
+}
+.charge circle {
+  fill: var(--surface);
+  stroke: #18191b;
+  stroke-width: 1.2;
+}
+.charge.pos circle {
+  fill: #fff4e6;
+}
+.charge.neg circle {
+  fill: #e7f5ff;
+}
+.charge text {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 800;
+  text-anchor: middle;
+  fill: #18191b;
+}
+.num {
+  font-size: 11px;
+  fill: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.ox {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-anchor: middle;
+  fill: var(--ox);
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.photon polyline {
+  fill: none;
+  stroke: var(--photon);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+.photon polygon {
+  fill: var(--photon);
+}
+.photon text {
+  font-family: var(--sans);
+  font-style: italic;
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--photon);
+}
+.photon .flash {
+  fill: none;
+  stroke: var(--photon);
+  stroke-width: 2.5;
+}
+.trail {
+  fill: none;
+  stroke: var(--trail);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+.attract {
+  stroke: var(--attract);
+  stroke-width: 1.8;
+  stroke-dasharray: 2 4;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.focus {
+  fill: none;
+  stroke: var(--focus);
+  stroke-width: 3;
+}
+.note line {
+  stroke: var(--note-line);
+  stroke-width: 1.3;
+}
+.note rect {
+  fill: var(--note-bg);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.note text {
+  fill: var(--ink);
+  font-family: var(--sans);
+}
+.note-dot {
+  fill: var(--note-line);
+}
+.spark {
+  fill: none;
+  stroke: var(--focus);
+  stroke-width: 2.5;
+}
+.energy rect {
+  fill: var(--note-bg);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.energy text {
+  fill: var(--ink-2);
+  font-family: var(--sans);
+}
+.energy text.delta {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.energy text.down {
+  fill: var(--s0);
+}
+.energy text.up {
+  fill: var(--s2);
+}
+.energy polyline {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.energy polyline.past {
+  stroke: var(--muted);
+}
+.energy polyline.now {
+  stroke: var(--ink);
+}
+.energy .dot {
+  fill: var(--focus);
+}
+.tally rect {
+  fill: var(--note-bg);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.tally .axis {
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.tally text {
+  fill: var(--ink);
+  font-family: var(--sans);
+}
+.tally text.n {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.tally polyline {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.tally polyline.s0 {
+  stroke: var(--s0);
+}
+.tally polyline.s1 {
+  stroke: var(--s1);
+}
+.tally polyline.s2 {
+  stroke: var(--s2);
+}
+.tally circle.s0 {
+  fill: var(--s0);
+}
+.tally circle.s1 {
+  fill: var(--s1);
+}
+.tally circle.s2 {
+  fill: var(--s2);
+}
+
+/* Electron pairs drawn as pouches ('pairs' style). */
+.pouch {
+  stroke: var(--pouch, rgba(47, 98, 184, 0.26));
+  stroke-linecap: round;
+}
+.pouch.hot {
+  stroke: var(--pouch-hot, rgba(214, 51, 108, 0.4));
+}
+.pe {
+  fill: var(--pe, #17233a);
+}
+.pe.hot {
+  fill: var(--electron);
+  filter: drop-shadow(0 0 2px var(--electron));
+}
+.pe.fly {
+  stroke: var(--surface);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 3px var(--electron));
+}
+.etrail {
+  fill: none;
+  stroke: var(--electron);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1 5;
+  opacity: 0.7;
+}
+/* With every electron drawn, the solvent in the background steps further back: one quiet colour. */
+svg[data-style='pairs'] .atom.crowd {
+  fill: var(--crowd, #b9cbdc);
+  stroke: none;
+}
+svg[data-style='pairs'] .bond.crowd {
+  stroke: var(--crowd, #b9cbdc);
+}

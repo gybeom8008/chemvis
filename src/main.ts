@@ -1,4 +1,5 @@
 import './style.css';
+import './render/stage.css';
 import { compile } from './engine/compile';
 import type { Diag } from './dsl/parser';
 import type { Timeline } from './engine/timeline';
@@ -19,6 +20,7 @@ const settings: Settings = {
   speed: 1,
   continuous: false,
   motion: !params.has('still') && !reducedMotion,
+  style: params.get('style') === 'pairs' ? 'pairs' : 'lines',
 };
 
 const PLACEHOLDER = `scene "제목"

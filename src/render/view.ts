@@ -27,7 +27,7 @@ import {
   type Vec,
 } from '../util/math';
 import { hashString } from '../util/rng';
-import { drawPairs } from './pairs';
+import { drawPairs, stableFreeAngle } from './pairs';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const f1 = (n: number) => n.toFixed(1);
@@ -494,7 +494,7 @@ export class StageView {
       const crowd = isCrowd(a);
       const op = opacity(a.id) * (crowd ? 0.55 : 1);
       out.push(
-        `<circle class="atom${crowd ? ' crowd' : ''}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${e.r}" fill="${e.color}" opacity="${f1(op)}"/>`,
+        `<circle class="atom${crowd ? ' crowd' : ''}"${crowd ? '' : ` data-id="${a.id}"`} cx="${f1(p.x)}" cy="${f1(p.y)}" r="${e.r}" fill="${e.color}" opacity="${f1(op)}"/>`,
       );
       if (!crowd) {
         const size = a.el.length > 1 ? e.r * 0.92 : e.r * 1.08;
@@ -532,32 +532,48 @@ export class StageView {
       for (const a of atoms) {
         const p = pos.get(a.id)!;
         const r = element(a.el).r;
-        const c = add(p, fromAngle(this.freeAngle(a, p, pos, dirBonds, (during && pairs?.avoid?.get(a.id)) || []), r + 6));
-        const badge = (q: number, op: number) => {
+        const keepOff = pairs?.avoid?.get(a.id) ?? [];
+        // Where the badge sits. In the 'pairs' style it is decided once from the world's own
+        // coordinates and turned with the molecule, so that it does not hop about.
+        const at = (w: World) => {
+          if (!pairs) return add(p, fromAngle(this.freeAngle(a, p, pos, dirBonds, keepOff), r + 6));
+          let ang = stableFreeAngle(w, a.id, pos, keepOff);
+          if (during && step && step.before.atoms.has(a.id) && after.atoms.has(a.id)) {
+            // While the atom's surroundings change, the badge goes round from its old place to its new one.
+            const from = stableFreeAngle(step.before, a.id, pos, keepOff);
+            const to = stableFreeAngle(after, a.id, pos, keepOff);
+            let d = to - from;
+            while (d > Math.PI) d -= Math.PI * 2;
+            while (d < -Math.PI) d += Math.PI * 2;
+            ang = from + d * prog;
+          }
+          return add(p, fromAngle(ang, r + 6));
+        };
+        const badge = (q: number, op: number, c: Vec) => {
           if (q === 0 || op <= 0.01) return;
           const txt = (Math.abs(q) > 1 ? String(Math.abs(q)) : '') + (q > 0 ? '+' : '−');
           out.push(
-            `<g class="charge ${q > 0 ? 'pos' : 'neg'}" opacity="${f1(op)}"><circle cx="${f1(c.x)}" cy="${f1(c.y)}" r="${txt.length > 1 ? 9 : 7.5}"/><text x="${f1(c.x)}" y="${f1(c.y)}" dy="0.36em">${txt}</text></g>`,
+            `<g class="charge ${q > 0 ? 'pos' : 'neg'}" data-a="${a.id}" opacity="${f1(op)}"><circle cx="${f1(c.x)}" cy="${f1(c.y)}" r="${txt.length > 1 ? 9 : 7.5}"/><text x="${f1(c.x)}" y="${f1(c.y)}" dy="0.36em">${txt}</text></g>`,
           );
         };
         if (during && step && pairs?.charges?.has(a.id)) {
           // An atom that gives up or gains electrons one at a time: its charge steps with each of them.
-          badge(pairs.charges.get(a.id)!, opacity(a.id));
+          badge(pairs.charges.get(a.id)!, opacity(a.id), at(step.before.atoms.has(a.id) ? step.before : after));
           continue;
         }
         if (during && step) {
           const b0 = step.before.atoms.get(a.id);
           const qa = formalCharge(after, after.atoms.get(a.id)!);
           const qb = b0 ? formalCharge(step.before, b0) : qa;
-          if (qa === qb) badge(qa, opacity(a.id));
+          if (qa === qb) badge(qa, opacity(a.id), at(after));
           else {
-            badge(qb, opacity(a.id) * (1 - turn));
-            badge(qa, opacity(a.id) * turn);
+            badge(qb, opacity(a.id) * (1 - turn), at(b0 ? step.before : after));
+            badge(qa, opacity(a.id) * turn, at(after));
           }
           continue;
         }
         const w = chargeWorld.atoms.has(a.id) ? chargeWorld : after;
-        badge(formalCharge(w, w.atoms.get(a.id)!), opacity(a.id));
+        badge(formalCharge(w, w.atoms.get(a.id)!), opacity(a.id), at(w));
       }
     }
 
@@ -580,10 +596,10 @@ export class StageView {
           ox = oxidationState(step!.before, b0) + (stepped - formalCharge(step!.before, b0));
           q = stepped;
         }
-        const keep = (during && pairs?.avoid?.get(a.id)) || [];
+        const keep = pairs?.avoid?.get(a.id) ?? [];
         const extra: number[] = [...keep];
-        if (opt.lens.charge && q !== 0) extra.push(this.freeAngle(a, p, pos, dirBonds, keep));
-        const ang = this.freeAngle(a, p, pos, dirBonds, extra, Math.PI / 4);
+        if (opt.lens.charge && q !== 0) extra.push(pairs ? stableFreeAngle(w, a.id, pos, keep) : this.freeAngle(a, p, pos, dirBonds, keep));
+        const ang = pairs ? stableFreeAngle(w, a.id, pos, extra, Math.PI / 4) : this.freeAngle(a, p, pos, dirBonds, extra, Math.PI / 4);
         const c = add(p, fromAngle(ang, r + 9));
         const txt = ox > 0 ? `+${ox}` : ox < 0 ? `−${-ox}` : '0';
         out.push(`<text class="ox" x="${f1(c.x)}" y="${f1(c.y)}" dy="0.35em" opacity="${f1(opacity(a.id))}">${txt}</text>`);

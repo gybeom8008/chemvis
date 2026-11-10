@@ -10,7 +10,8 @@
     "build": "tsc --noEmit && vite build && cp public/ai-guide.md dist/ai-guide.txt",
     "preview": "vite preview",
     "test": "vitest run",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "flicker": "node tools/flicker.cjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

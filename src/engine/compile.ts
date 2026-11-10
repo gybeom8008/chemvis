@@ -2971,7 +2971,19 @@ class Ctx {
       if (tr) {
         const last = tr[tr.length - 1];
         if (Math.abs(last.x - at.x) > 0.5 || Math.abs(last.y - at.y) > 0.5) {
-          tr.push({ t: 1, x: at.x, y: at.y, ease: true });
+          if (last.t >= 1 - 1e-6) {
+            // The path already runs to the end of the step, and where the atom ends was adjusted
+            // afterwards (kept clear of a neighbour, kept inside the stage). Bend the whole path
+            // to the new end, more and more toward its end, instead of jumping there at the last moment.
+            const dx = at.x - last.x;
+            const dy = at.y - last.y;
+            const t0 = tr[0].t;
+            for (const kf of tr) {
+              const u = smooth(clamp((kf.t - t0) / Math.max(1e-6, 1 - t0), 0, 1));
+              kf.x += dx * u;
+              kf.y += dy * u;
+            }
+          } else tr.push({ t: 1, x: at.x, y: at.y, ease: true });
         } else if (last.t < 1) tr.push({ t: 1, x: at.x, y: at.y });
         continue;
       }

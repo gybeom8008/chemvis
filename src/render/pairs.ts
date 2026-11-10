@@ -81,22 +81,97 @@ interface Dom {
   n: number;
 }
 
+/*
+ * Stability. Which way a lone pair points, which pouch an electron joins, where a charge badge
+ * sits: these are decided from the positions stored in the world (no thermal motion, no half-way
+ * positions), once, and then only turned with the molecule. Deciding them from the positions of
+ * the moment makes them flip between two near-equal choices from one frame to the next.
+ */
+const adjCache = new WeakMap<World, Map<string, string[]>>();
 function adjacency(w: World): Map<string, string[]> {
-  const m = new Map<string, string[]>();
+  let m = adjCache.get(w);
+  if (m) return m;
+  m = new Map<string, string[]>();
   for (const b of w.bonds.values()) {
     if (b.order <= 0) continue;
     (m.get(b.a) ?? m.set(b.a, []).get(b.a)!).push(b.b);
     (m.get(b.b) ?? m.set(b.b, []).get(b.b)!).push(b.a);
   }
+  adjCache.set(w, m);
   return m;
 }
 
-function domainsOf(w: World, adj: Map<string, string[]>, id: string, pos: Map<string, Vec>): Dom[] {
+/** Lone pouches of an atom, pointing as the world's own coordinates say. */
+const domCache = new WeakMap<World, Map<string, Dom[]>>();
+function domainsOf(w: World, id: string): Dom[] {
+  let m = domCache.get(w);
+  if (!m) domCache.set(w, (m = new Map()));
+  let d = m.get(id);
+  if (d) return d;
+  const a = w.atoms.get(id);
+  if (!a || a.lp + a.rad <= 0) d = [];
+  else {
+    const dirs = (adjacency(w).get(id) ?? []).filter((o) => w.atoms.has(o)).map((o) => angOf(a, w.atoms.get(o)!));
+    d = electronDomains(a, dirs, a.lp, a.rad, a.face, a.skip ?? 0).map((x) => ({ angle: x.angle, n: x.single ? 1 : 2 }));
+  }
+  m.set(id, d);
+  return d;
+}
+
+/** How far the atom's molecule is turned now, compared with the world's coordinates. */
+function turnOf(w: World, id: string, pos: Map<string, Vec>): number {
   const a = w.atoms.get(id);
   const p = pos.get(id);
-  if (!a || !p || a.lp + a.rad <= 0) return [];
-  const dirs = (adj.get(id) ?? []).filter((o) => pos.has(o)).map((o) => angOf(p, pos.get(o)!));
-  return electronDomains(p, dirs, a.lp, a.rad, a.face, a.skip ?? 0).map((d) => ({ angle: d.angle, n: d.single ? 1 : 2 }));
+  if (!a || !p) return 0;
+  for (const o of adjacency(w).get(id) ?? []) {
+    const wo = w.atoms.get(o);
+    const po = pos.get(o);
+    if (wo && po) return angDelta(angOf(a, wo), angOf(p, po));
+  }
+  return 0;
+}
+
+/**
+ * A direction around an atom that is clear of its bonds and lone pouches (for the charge badge
+ * and the oxidation number), decided in the world's coordinates and turned with the molecule.
+ */
+const freeCache = new WeakMap<World, Map<string, number>>();
+export function stableFreeAngle(w: World, id: string, pos: Map<string, Vec>, extra: number[] = [], prefer = -Math.PI / 4): number {
+  const a = w.atoms.get(id);
+  if (!a) return prefer;
+  const turn = turnOf(w, id, pos);
+  const ex = extra.map((x) => x - turn);
+  const key = `${id}|${prefer.toFixed(2)}|${ex.map((x) => x.toFixed(1)).join(',')}`;
+  let m = freeCache.get(w);
+  if (!m) freeCache.set(w, (m = new Map()));
+  let best = m.get(key);
+  if (best === undefined) {
+    const nb = (adjacency(w).get(id) ?? []).filter((o) => w.atoms.has(o)).map((o) => angOf(a, w.atoms.get(o)!));
+    const taken = [...nb, ...domainsOf(w, id).map((d) => d.angle), ...ex].map((x) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)).sort((p, q) => p - q);
+    if (!taken.length) best = prefer;
+    else {
+      // The middle of the widest gap. Among equal gaps: the first one going round from the atom's
+      // first bond (so that the choice turns with the molecule), or, for an atom without bonds,
+      // the one nearest the preferred direction.
+      const ref = nb.length ? ((nb[0] % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) : null;
+      let bestGap = -1;
+      let bestRank = Infinity;
+      best = prefer;
+      taken.forEach((t0, i) => {
+        const t1 = i + 1 < taken.length ? taken[i + 1] : taken[0] + 2 * Math.PI;
+        const gap = t1 - t0;
+        const mid = t0 + gap / 2;
+        const rank = ref !== null ? (((mid - ref) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) : angDist(mid, prefer);
+        if (gap > bestGap + 1e-6 || (Math.abs(gap - bestGap) <= 1e-6 && rank < bestRank)) {
+          bestGap = gap;
+          bestRank = rank;
+          best = mid;
+        }
+      });
+    }
+    m.set(key, best);
+  }
+  return best + turn;
 }
 
 /** Where along a–b the shared electrons sit: nearer the atom that pulls them harder. */
@@ -134,19 +209,22 @@ export function drawPairs(inp: PairsInput): PairsOutput {
 
   // ---------------------------------------------------------------- primitives
 
-  const pouch = (p: Vec, q: Vec, w: number, cls: string, op: number) => {
-    if (op > 0.01) under.push(`<line class="pouch${cls}" x1="${f1(p.x)}" y1="${f1(p.y)}" x2="${f1(q.x)}" y2="${f1(q.y)}" stroke-width="${f1(w)}" opacity="${f1(op)}"/>`);
+  // `of`: the atom a lone pouch and its electrons belong to (written into the drawing so that
+  // tools can follow them from frame to frame).
+  const pouch = (p: Vec, q: Vec, w: number, cls: string, op: number, of = '') => {
+    if (op > 0.01)
+      under.push(`<line class="pouch${cls}"${of ? ` data-a="${of}"` : ''} x1="${f1(p.x)}" y1="${f1(p.y)}" x2="${f1(q.x)}" y2="${f1(q.y)}" stroke-width="${f1(w)}" opacity="${f1(op)}"/>`);
   };
-  const electron = (p: Vec, cls: string, op: number, r = DOT) => {
-    if (op > 0.01) over.push(`<circle class="pe${cls}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r)}" opacity="${f1(op)}"/>`);
+  const electron = (p: Vec, cls: string, op: number, r = DOT, of = '') => {
+    if (op > 0.01) over.push(`<circle class="pe${cls}"${of ? ` data-a="${of}"` : ''} cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r)}" opacity="${f1(op)}"/>`);
   };
   /** The electrons of a pouch whose electrons are centred on c, the pouch lying along unit vector u. */
-  const electrons = (c: Vec, u: Vec, n: number, across: boolean, cls: string, op: number) => {
+  const electrons = (c: Vec, u: Vec, n: number, across: boolean, cls: string, op: number, of = '') => {
     if (n >= 2) {
       const s = scale(across ? perp(u) : u, SIDE);
-      electron(add(c, s), cls, op);
-      electron(sub(c, s), cls, op);
-    } else if (n === 1) electron(c, cls, op);
+      electron(add(c, s), cls, op, DOT, of);
+      electron(sub(c, s), cls, op, DOT, of);
+    } else if (n === 1) electron(c, cls, op, DOT, of);
   };
 
   /** A lone pouch on atom `id` pointing at `ang`. */
@@ -156,8 +234,8 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     const u = fromAngle(ang);
     const r = R(id);
     const c = add(p, scale(u, r + OUT));
-    pouch(add(p, scale(u, r - 2)), c, n >= 2 ? W2 : W1, cls, op);
-    if (dots) electrons(c, u, n, true, cls, op);
+    pouch(add(p, scale(u, r - 2)), c, n >= 2 ? W2 : W1, cls, op, id);
+    if (dots) electrons(c, u, n, true, cls, op, id);
   };
 
   /** Where the electrons of strand `o` of the bond a–b sit. */
@@ -203,8 +281,22 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   const opOf = (a: string, b: string) => Math.min(opacity(a), opacity(b));
 
   /** Everything of one world, drawn as it is. `hot` marks pouches to tint (key → strength). */
+  /**
+   * An atom without bonds that the step turns to face something (its `face` differs before and
+   * after): its electrons turn there smoothly through the step instead of snapping round.
+   * Returns the turn to apply to the after-world's directions, or null if this is not such an atom.
+   */
+  const facing = (id: string): number | null => {
+    if (!step) return null;
+    const b = step.before.atoms.get(id);
+    const z = step.after.atoms.get(id);
+    if (!b || !z) return null;
+    const fb = b.face ?? -Math.PI / 4;
+    const fz = z.face ?? -Math.PI / 4;
+    if (fb === fz || b.lp !== z.lp || b.rad !== z.rad || (adjacency(step.after).get(id) ?? []).length || (adjacency(step.before).get(id) ?? []).length) return null;
+    return -angDelta(fb, fz) * (1 - smooth(clamp(inp.t, 0, 1)));
+  };
   const still = (w: World, fade: (id: string) => number, hotLone?: Map<string, Dom[]>, hotBond?: Map<string, number>, hotOp = 0, soft?: Set<string>) => {
-    const adj = adjacency(w);
     for (const b of w.bonds.values()) {
       if (b.order <= 0 || !byId.has(b.a) || !byId.has(b.b)) continue;
       let op = opOf(b.a, b.b) * Math.min(fade(b.a), fade(b.b));
@@ -233,9 +325,10 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       const wa = w.atoms.get(a.id);
       if (!wa) continue;
       const op = opacity(a.id) * fade(a.id);
-      const doms = domainsOf(w, adj, a.id, pos);
-      for (const d of doms) lone(a.id, d.angle, d.n, '', op);
-      for (const h of hotLone?.get(a.id) ?? []) lone(a.id, h.angle, h.n, ' hot', op * hotOp);
+      const spin = hotLone ? null : facing(a.id);
+      const turn = spin ?? turnOf(w, a.id, pos);
+      for (const d of domainsOf(spin !== null ? step!.after : w, a.id)) lone(a.id, d.angle + turn, d.n, '', op);
+      for (const h of hotLone?.get(a.id) ?? []) lone(a.id, h.angle + turn, h.n, ' hot', op * hotOp);
     }
   };
 
@@ -249,12 +342,15 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     const adj = adjacency(topo);
     const en = (id: string) => ELECTRONEGATIVITY[topo.atoms.get(id)?.el ?? ''] ?? 2.2;
     const show = clamp(inp.t / 0.15, 0, 1);
+    const Z = step.after;
     for (const { a, b } of step.pulls) {
       const A0 = topo.atoms.get(a);
       const B0 = topo.atoms.get(b);
       const pa = pos.get(a);
       const pb = pos.get(b);
-      if (!A0 || !B0 || !pa || !pb) continue;
+      const za = Z.atoms.get(a);
+      const zb = Z.atoms.get(b);
+      if (!A0 || !B0 || !pa || !pb || !za || !zb) continue;
       /** +1: short of electrons here; -1: electrons held here; 0: neither. `mark`: no charge badge says so already. */
       const lean = (x: Atom): { sign: number; mark: boolean } => {
         const q = formalCharge(topo, x);
@@ -268,20 +364,22 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       const lb = lean(B0);
       if (la.sign * lb.sign !== -1) continue;
       const u = norm(sub(pb, pa));
-      // From the electrons that face the other atom (if this atom has some) to the other atom's edge.
-      const doms = domainsOf(topo, adj, a, pos);
-      const facing = doms.length ? doms.reduce((m, d) => (angDist(d.angle, angOf(pa, pb)) < angDist(m.angle, angOf(pa, pb)) ? d : m), doms[0]) : null;
-      const from = facing && angDist(facing.angle, angOf(pa, pb)) < 0.9 ? add(pa, fromAngle(facing.angle, R(a) + OUT + 7)) : add(pa, scale(u, R(a) + 2));
+      // Which of a's pouches faces b is decided where the step ends (there they face each other squarely).
+      const endDir = angOf(za, zb);
+      const doms = domainsOf(Z, a);
+      const facing = doms.length ? doms.reduce((m, d) => (angDist(d.angle, endDir) < angDist(m.angle, endDir) ? d : m), doms[0]) : null;
+      const useTip = !!facing && angDist(facing.angle, endDir) < 0.9;
+      const from = useTip ? add(pa, fromAngle(facing!.angle + turnOf(Z, a, pos), R(a) + OUT + 7)) : add(pa, scale(u, R(a) + 2));
       const to = sub(pb, scale(u, R(b) + 2));
       const op = show * Math.min(opacity(a), opacity(b));
       if (dist(from, to) > 6 && op > 0.01) over.push(`<line class="pull" x1="${f1(from.x)}" y1="${f1(from.y)}" x2="${f1(to.x)}" y2="${f1(to.y)}" opacity="${f1(op)}"/>`);
-      // The marks sit beside the two places, on the upper side of the line between them.
-      const up = perp(u).y < 0 ? perp(u) : scale(perp(u), -1);
+      // The marks sit beside the two places, on the side of the line that is up where the step ends.
+      const endUp = perp(norm(sub(zb, za))).y < 0 ? 1 : -1;
+      const up = scale(perp(u), endUp);
       const mark = (c: Vec, l: { sign: number; mark: boolean }) => {
         if (!l.mark || op <= 0.01) return;
         over.push(`<text class="pq ${l.sign > 0 ? 'pos' : 'neg'}" x="${f1(c.x)}" y="${f1(c.y)}" dy="0.35em" opacity="${f1(op)}">${l.sign > 0 ? '+' : '−'}</text>`);
       };
-      const useTip = !!facing && angDist(facing.angle, angOf(pa, pb)) < 0.9;
       mark(useTip ? add(sub(from, scale(u, 7)), scale(up, 13)) : add(pa, scale(up, R(a) + 9)), la);
       mark(add(pb, scale(up, R(b) + 9)), lb);
     }
@@ -296,6 +394,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     if (!step || !list.length || !inp.electrodes) return;
     const n = list.length;
     const charges = o.charges ?? new Map<string, number>();
+    const keep = o.avoid ?? new Map<string, number[]>();
     const plate = new Map<string, number>();
     list.forEach((ar, i) => {
       const f = ar.free!;
@@ -309,6 +408,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       const gone = u > 0.02;
       const there = u >= 0.999;
       if (!charges.has(f.atom)) charges.set(f.atom, formalCharge(step.before, a0));
+      if (!keep.has(f.atom)) keep.set(f.atom, [...domainsOf(step.before, f.atom), ...domainsOf(step.after, f.atom)].map((d) => d.angle));
       if (f.dir === 'toPlate') {
         if (gone) charges.set(f.atom, charges.get(f.atom)! + 1);
         if (there) plate.set(f.plate, (plate.get(f.plate) ?? 0) + 1);
@@ -334,6 +434,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       else if (f.dir === 'fromPlate' && there) electron(p1, ' hot', fade, 2.9);
     });
     o.charges = charges;
+    o.avoid = keep;
     o.plate = plate;
   };
   const finish = (o: PairsOutput): PairsOutput => {
@@ -389,8 +490,8 @@ export function drawPairs(inp: PairsInput): PairsOutput {
 
   const B = step.before;
   const A = step.after;
-  const adjB = adjacency(B);
-  const adjA = adjacency(A);
+  const turnB = (id: string) => turnOf(B, id, pos);
+  const turnA = (id: string) => turnOf(A, id, pos);
 
   // Lone pouches of every atom the arrows touch, before and after, with the electrons the arrows take or bring counted off.
   const touched = new Set<string>();
@@ -403,8 +504,8 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   const d0 = new Map<string, (Dom & { left: number })[]>();
   const d1 = new Map<string, (Dom & { left: number })[]>();
   for (const id of touched) {
-    d0.set(id, domainsOf(B, adjB, id, pos).map((d) => ({ ...d, left: d.n })));
-    d1.set(id, domainsOf(A, adjA, id, pos).map((d) => ({ ...d, left: d.n })));
+    d0.set(id, domainsOf(B, id).map((d) => ({ ...d, left: d.n })));
+    d1.set(id, domainsOf(A, id).map((d) => ({ ...d, left: d.n })));
   }
   const takeFrom = (list: (Dom & { left: number })[] | undefined, want: number, need: number, preferN?: number): (Dom & { left: number }) | null => {
     let cands = (list ?? []).filter((d) => d.left >= need && (preferN === undefined || d.n === preferN));
@@ -448,10 +549,10 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       from = takeFrom(d0.get(S.a), want, need, pair ? 2 : single ? 1 : undefined);
     }
     if (D.kind === 'atom') {
-      // The pouch nearest to where the electrons come from.
-      const p = pos.get(D.a);
+      // The pouch nearest to where the electrons come from (as the worlds' own coordinates have it).
       const other = S.kind === 'bond' ? (S.a === D.a ? S.b! : S.a) : S.a;
-      const q = pos.get(other);
+      const p = B.atoms.get(D.a) ?? A.atoms.get(D.a);
+      const q = B.atoms.get(other) ?? A.atoms.get(other);
       const want = p && q ? angOf(p, q) : 0;
       // One electron either starts a pouch of its own or completes one that had a single electron.
       to = takeFrom(d1.get(D.a), want, need, pair ? 2 : 1);
@@ -493,8 +594,9 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     const p = pos.get(E.a);
     if (!p || E.kind === 'bond') return null;
     if (!dom) return add(p, fromAngle(Math.atan2(m.ar.p0.y - (B.atoms.get(E.a)?.y ?? 0), m.ar.p0.x - (B.atoms.get(E.a)?.x ?? 0)), R(E.a) + OUT));
-    const c = add(p, fromAngle(dom.angle, R(E.a) + OUT));
-    return dom.n >= 2 ? add(c, fromAngle(dom.angle + Math.PI / 2, SIDE * side)) : c;
+    const ang = dom.angle + (end === 'src' ? turnB(E.a) : turnA(E.a));
+    const c = add(p, fromAngle(ang, R(E.a) + OUT));
+    return dom.n >= 2 ? add(c, fromAngle(ang + Math.PI / 2, SIDE * side)) : c;
   };
 
   // Electrons that fly leave one after another, so that the charges can be seen to change one electron at a time.
@@ -530,6 +632,14 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     over.push(`<polyline class="etrail" points="${pts.trim()}" opacity="${f1(op)}"/>`);
   };
 
+  // Directions the flying electrons' pouches take up around their atoms: the charge badge keeps
+  // clear of them through the whole step, so that it does not move when the electrons start or stop.
+  const avoid = new Map<string, number[]>();
+  for (const m of jumps) {
+    if (m.from) (avoid.get(m.ar.src!.a) ?? avoid.set(m.ar.src!.a, []).get(m.ar.src!.a)!).push(m.from.angle + turnB(m.ar.src!.a));
+    if (m.to) (avoid.get(m.ar.dst!.a) ?? avoid.set(m.ar.dst!.a, []).get(m.ar.dst!.a)!).push(m.to.angle + turnA(m.ar.dst!.a));
+  }
+
   // ---- before the change: everything as it was, the pouches about to change tinted
   if (win.pre) {
     const hotLone = new Map<string, Dom[]>();
@@ -540,7 +650,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       else if (m.from) (hotLone.get(S.a) ?? hotLone.set(S.a, []).get(S.a)!).push({ angle: m.from.angle, n: m.pair ? 2 : m.from.n });
     }
     still(B, one, hotLone, hotBond, win.cue);
-    return finish({ under, over });
+    return finish({ under, over, avoid });
   }
 
   // ---- after the change: everything as it is now, the pouches that changed still tinted while the atoms settle
@@ -554,7 +664,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     }
     still(A, one, hotLone, hotBond, 1 - win.settle);
     for (const m of jumps) trail(m, 1, 0.7 * (1 - win.settle));
-    return finish({ under, over });
+    return finish({ under, over, avoid });
   }
 
   // ---- during the change
@@ -622,14 +732,20 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   for (const a of inp.atoms) {
     if (crowd(a.id) || a.lattice) continue;
     const op = opacity(a.id);
-    if (!touched.has(a.id)) {
-      if (packed.has(a.id)) continue;
+    if (!touched.has(a.id) && packed.has(a.id)) continue;
+    if (!B.atoms.has(a.id) || !A.atoms.has(a.id)) {
+      // Only in one of the two worlds (it appears or is used up in this step): drawn as it is there.
       const w = A.atoms.has(a.id) ? A : B;
-      for (const d of domainsOf(w, w === A ? adjA : adjB, a.id, pos)) lone(a.id, d.angle, d.n, '', op);
+      const turn = turnOf(w, a.id, pos);
+      for (const d of domainsOf(w, a.id)) lone(a.id, d.angle + turn, d.n, '', op);
       continue;
     }
-    const s0 = (d0.get(a.id) ?? []).filter((d) => d.left > 0);
-    const s1 = (d1.get(a.id) ?? []).filter((d) => d.left > 0);
+    // Atoms the moves do not touch are treated the same way: their molecule may be re-drawn in a
+    // new shape by the step, and their pouches then turn from the old directions to the new.
+    const all0 = d0.get(a.id) ?? domainsOf(B, a.id).map((d) => ({ ...d, left: d.n }));
+    const all1 = d1.get(a.id) ?? domainsOf(A, a.id).map((d) => ({ ...d, left: d.n }));
+    const s0 = all0.filter((d) => d.left > 0);
+    const s1 = all1.filter((d) => d.left > 0);
     let matched = false;
     if (s0.length === s1.length) {
       matched = true;
@@ -649,13 +765,13 @@ export function drawPairs(inp: PairsInput): PairsOutput {
         }
         for (let i = 0; i < n; i++) {
           const q = y[(i + bestShift) % n];
-          lone(a.id, angLerp(x[i].angle, q.angle, e), Math.min(x[i].left, q.left), '', op);
+          lone(a.id, angLerp(x[i].angle + turnB(a.id), q.angle + turnA(a.id), e), Math.min(x[i].left, q.left), '', op);
         }
       }
     }
     if (!matched) {
-      for (const d of s0) lone(a.id, d.angle, d.left, '', op * (1 - e));
-      for (const d of s1) lone(a.id, d.angle, d.left, '', op * e);
+      for (const d of s0) lone(a.id, d.angle + turnB(a.id), d.left, '', op * (1 - e));
+      for (const d of s1) lone(a.id, d.angle + turnA(a.id), d.left, '', op * e);
     }
   }
 
@@ -704,10 +820,11 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       hold = S.a;
       const other = D.a === S.a ? D.b! : D.a;
       if (!pos.has(hold) || !pos.has(other)) continue;
-      tip0 = freeTip(hold, m.from.angle);
+      const a0 = m.from.angle + turnB(hold);
+      tip0 = freeTip(hold, a0);
       c0 = tip0;
       if (!m.pair && m.from.n === 2) {
-        lat0 = fromAngle(m.from.angle + Math.PI / 2, SIDE * m.side0);
+        lat0 = fromAngle(a0 + Math.PI / 2, SIDE * m.side0);
         w0 = WH;
       }
       tip1 = inner(hold, other, oD);
@@ -734,7 +851,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
         lat0 = scale(across(hold, other), SIDE * m.side0);
         w0 = WH;
       }
-      const ang = m.to ? angLerp(angOf(pos.get(hold)!, pos.get(other)!), m.to.angle, g) : angOf(pos.get(hold)!, pos.get(other)!);
+      const ang = m.to ? angLerp(angOf(pos.get(hold)!, pos.get(other)!), m.to.angle + turnA(hold), g) : angOf(pos.get(hold)!, pos.get(other)!);
       tip1 = freeTip(hold, ang);
       c1 = tip1;
       if (!m.pair && m.to && m.to.n === 2) {
@@ -789,10 +906,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   };
   const waiting = new Map<Dom, number>();
   const landed = new Map<Dom, number>();
-  const avoid = new Map<string, number[]>();
   for (const m of jumps) {
-    if (m.from) (avoid.get(m.ar.src!.a) ?? avoid.set(m.ar.src!.a, []).get(m.ar.src!.a)!).push(m.from.angle);
-    if (m.to) (avoid.get(m.ar.dst!.a) ?? avoid.set(m.ar.dst!.a, []).get(m.ar.dst!.a)!).push(m.to.angle);
     bump(m.ar.src!.a, left(m) ? 1 : 0);
     bump(m.ar.dst!.a, arrived(m) ? -1 : 0);
     if (m.from && !left(m)) waiting.set(m.from, (waiting.get(m.from) ?? 0) + 1);
@@ -804,11 +918,11 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     const u = flight.get(m) ?? 0;
     // The pouch an electron waits in or has landed in, when no other electron keeps it drawn.
     if (m.from && m.from.left === 0 && waiting.has(m.from)) {
-      lone(m.ar.src!.a, m.from.angle, waiting.get(m.from)!, ' hot', opacity(m.ar.src!.a), false);
+      lone(m.ar.src!.a, m.from.angle + turnB(m.ar.src!.a), waiting.get(m.from)!, ' hot', opacity(m.ar.src!.a), false);
       waiting.delete(m.from);
     }
     if (m.to && m.to.left === 0 && landed.has(m.to)) {
-      lone(m.ar.dst!.a, m.to.angle, landed.get(m.to)!, ' hot', opacity(m.ar.dst!.a), false);
+      lone(m.ar.dst!.a, m.to.angle + turnA(m.ar.dst!.a), landed.get(m.to)!, ' hot', opacity(m.ar.dst!.a), false);
       landed.delete(m.to);
     }
     if (u > 0.01) trail(m, u, 0.7);

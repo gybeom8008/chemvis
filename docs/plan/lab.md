@@ -1,6 +1,6 @@
 # 실험실
 
-상태: 안 · 2026-11-10 · [기획안 개요](README.md)
+상태: 처음 초안. 판정과 범위는 [lab-astra.md](lab-astra.md)와 [lab-review.md](lab-review.md)를 따른다 · 2026-11-10 · [기획안 개요](README.md)
 
 ## 1. 한 줄로
 

@@ -27,7 +27,7 @@ import {
   type Vec,
 } from '../util/math';
 import { hashString } from '../util/rng';
-import { drawPairs, stableFreeAngle } from './pairs';
+import { blendDomains, drawPairs, stableDomains, stableFreeAngle } from './pairs';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const f1 = (n: number) => n.toFixed(1);
@@ -288,7 +288,6 @@ export class StageView {
     }
     // Bonds that steer lone pairs and charge badges: during the change, the bonds being made.
     const dirWorld = during ? after : topo;
-    const dirBonds = [...dirWorld.bonds.values()].filter((b) => b.order > 0);
 
     const atoms: Atom[] = [];
     for (const [id, a] of after.atoms) {
@@ -517,12 +516,17 @@ export class StageView {
         const m = step.mid.atoms.get(a.id) ?? a;
         const z = after.atoms.get(a.id) ?? a;
         const same = m.lp === z.lp && m.rad === z.rad && (m.skip ?? 0) === (z.skip ?? 0);
-        if (same || carriedTo.has(a.id)) out.push(...this.domainDots(m, p, pos, dirBonds, opacity(a.id)));
-        else {
-          out.push(...this.domainDots(m, p, pos, [...step.mid.bonds.values()].filter((b) => b.order > 0), opacity(a.id) * (1 - prog)));
-          out.push(...this.domainDots(z, p, pos, dirBonds, opacity(a.id) * prog));
+        if (same || carriedTo.has(a.id)) {
+          // The electrons it keeps turn from where they were to where the new bonds leave room.
+          const to = stableDomains(after, a.id, pos, m);
+          const mix = step.before.atoms.has(a.id) && after.atoms.has(a.id) ? blendDomains(stableDomains(step.before, a.id, pos), to, smooth(clamp(prog / 0.45, 0, 1))) : null;
+          out.push(...this.domainDots(after, m, p, pos, opacity(a.id), mix ?? undefined));
+        } else {
+          const had = step.before.atoms.has(a.id) && step.mid.atoms.has(a.id) ? blendDomains(stableDomains(step.before, a.id, pos), stableDomains(step.mid, a.id, pos, m), smooth(clamp(prog / 0.45, 0, 1))) : null;
+          out.push(...this.domainDots(step.mid, m, p, pos, opacity(a.id) * (1 - prog), had ?? undefined));
+          out.push(...this.domainDots(after, z, p, pos, opacity(a.id) * prog));
         }
-      } else out.push(...this.domainDots(a, p, pos, dirBonds, opacity(a.id)));
+      } else out.push(...this.domainDots(dirWorld, a, p, pos, opacity(a.id)));
     }
 
     // Formal charges.
@@ -533,10 +537,9 @@ export class StageView {
         const p = pos.get(a.id)!;
         const r = element(a.el).r;
         const keepOff = pairs?.avoid?.get(a.id) ?? [];
-        // Where the badge sits. In the 'pairs' style it is decided once from the world's own
-        // coordinates and turned with the molecule, so that it does not hop about.
+        // Where the badge sits: decided once from the world's own coordinates and turned with the
+        // molecule, so that it does not hop about.
         const at = (w: World) => {
-          if (!pairs) return add(p, fromAngle(this.freeAngle(a, p, pos, dirBonds, keepOff), r + 6));
           let ang = stableFreeAngle(w, a.id, pos, keepOff);
           if (during && step && step.before.atoms.has(a.id) && after.atoms.has(a.id)) {
             // While the atom's surroundings change, the badge goes round from its old place to its new one.
@@ -598,8 +601,8 @@ export class StageView {
         }
         const keep = pairs?.avoid?.get(a.id) ?? [];
         const extra: number[] = [...keep];
-        if (opt.lens.charge && q !== 0) extra.push(pairs ? stableFreeAngle(w, a.id, pos, keep) : this.freeAngle(a, p, pos, dirBonds, keep));
-        const ang = pairs ? stableFreeAngle(w, a.id, pos, extra, Math.PI / 4) : this.freeAngle(a, p, pos, dirBonds, extra, Math.PI / 4);
+        if (opt.lens.charge && q !== 0) extra.push(stableFreeAngle(w, a.id, pos, keep));
+        const ang = stableFreeAngle(w, a.id, pos, extra, Math.PI / 4);
         const c = add(p, fromAngle(ang, r + 9));
         const txt = ox > 0 ? `+${ox}` : ox < 0 ? `−${-ox}` : '0';
         out.push(`<text class="ox" x="${f1(c.x)}" y="${f1(c.y)}" dy="0.35em" opacity="${f1(opacity(a.id))}">${txt}</text>`);
@@ -713,7 +716,7 @@ export class StageView {
           let avoid: number | null = null;
           if (nt.target.kind === 'atom') {
             const at = step.after.atoms.get(nt.target.id);
-            if (at && opt.lens.charge && formalCharge(step.after, at) !== 0) avoid = this.freeAngle(at, base, basePos, baseBonds);
+            if (at && opt.lens.charge && formalCharge(step.after, at) !== 0) avoid = stableFreeAngle(step.after, at.id, basePos);
           }
           const b = placeNote(base, nt.text, view, nfs, avoid, placed, obstacles);
           off = { dx: b.x - base.x, dy: b.y - base.y };
@@ -739,18 +742,21 @@ export class StageView {
   }
 
   /** Lone pairs (two dots) and unpaired electrons (one dot) around an atom. */
-  private domainDots(a: Atom, p: Vec, pos: Map<string, Vec>, bonds: { a: string; b: string }[], op: number): string[] {
+  private domainDots(w: World, a: Atom, p: Vec, pos: Map<string, Vec>, op: number, given?: { angle: number; single: boolean }[]): string[] {
     if (a.lp + a.rad <= 0 || op <= 0.01) return [];
     const out: string[] = [];
     const r = element(a.el).r + 5.5;
-    for (const d of electronDomains(p, this.bondDirs(a.id, p, pos, bonds), a.lp, a.rad, a.face, a.skip ?? 0)) {
+    // Directions come from the world's stored coordinates and turn with the molecule; taken from
+    // the positions of the moment they would flip between near-equal choices as the atoms jiggle.
+    const doms = given ?? (w.atoms.has(a.id) ? stableDomains(w, a.id, pos, a) : electronDomains(p, [], a.lp, a.rad, a.face, a.skip ?? 0));
+    for (const d of doms) {
       const c = add(p, fromAngle(d.angle, r));
       if (d.single) {
-        out.push(dot(c, 'lp single', op));
+        out.push(dot(c, 'lp single', op, a.id));
         continue;
       }
       const n = fromAngle(d.angle + Math.PI / 2, 3.3);
-      out.push(dot(add(c, n), 'lp', op), dot(sub(c, n), 'lp', op));
+      out.push(dot(add(c, n), 'lp', op, a.id), dot(sub(c, n), 'lp', op, a.id));
     }
     return out;
   }
@@ -962,8 +968,7 @@ export class StageView {
     const atom = step.before.atoms.get(S.a);
     const p = pos.get(S.a);
     if (!atom || !p) return null;
-    const bonds = [...step.before.bonds.values()].filter((b) => b.order > 0);
-    const doms = electronDomains(p, this.bondDirs(S.a, p, pos, bonds), atom.lp, atom.rad, atom.face, atom.skip ?? 0);
+    const doms = stableDomains(step.before, S.a, pos);
     const want = Math.atan2(ar.p0.y - atom.y, ar.p0.x - atom.x);
     const wantSingle = S.kind === 'e' || (S.kind === 'atom' && atom.rad > 0);
     let cands = doms.filter((d) => d.single === wantSingle);
@@ -1068,46 +1073,6 @@ export class StageView {
       }
     }
     return { under, over: out };
-  }
-
-  /** Direction around an atom that is clear of bonds and lone pairs (for the charge badge). */
-  private bondDirs(id: string, p: Vec, pos: Map<string, Vec>, bonds: { a: string; b: string }[]): number[] {
-    return bonds
-      .filter((b) => (b.a === id || b.b === id) && pos.has(b.a === id ? b.b : b.a))
-      .map((b) => {
-        const q = pos.get(b.a === id ? b.b : b.a)!;
-        return Math.atan2(q.y - p.y, q.x - p.x);
-      });
-  }
-
-  /** Direction around an atom clear of bonds, electrons and `extra` directions (preferring `pref`). */
-  private freeAngle(
-    a: Atom,
-    p: Vec,
-    pos: Map<string, Vec>,
-    bonds: { a: string; b: string }[],
-    extra: number[] = [],
-    prefer = -Math.PI / 4,
-  ): number {
-    const dirs = this.bondDirs(a.id, p, pos, bonds);
-    const taken = [...dirs, ...electronDomains(p, dirs, a.lp, a.rad, a.face, a.skip ?? 0).map((d) => d.angle), ...extra];
-    const pref = prefer;
-    let best = pref;
-    let bestScore = -Infinity;
-    for (let i = 0; i < 24; i++) {
-      const ang = pref + (i * Math.PI) / 12;
-      let gap = Math.PI;
-      for (const t of taken) {
-        const d = Math.abs(Math.atan2(Math.sin(ang - t), Math.cos(ang - t)));
-        gap = Math.min(gap, d);
-      }
-      const score = gap - 0.08 * Math.abs(Math.atan2(Math.sin(ang - pref), Math.cos(ang - pref)));
-      if (score > bestScore) {
-        bestScore = score;
-        best = ang;
-      }
-    }
-    return best;
   }
 
   private tempAt(p: Vec, step: StepAnim | undefined, t: number): number {
@@ -1521,12 +1486,12 @@ const FLY_R = 4.2;
 /** How much moving electrons are enlarged on this frame (1 on a large screen, more on a phone). */
 let eScale = 1;
 
-function dot(p: Vec, cls: string, op = 1): string {
+function dot(p: Vec, cls: string, op = 1, of = ''): string {
   const base = cls.includes('wire-e') ? 5 : cls.includes('fly') ? FLY_R : cls === 'e' ? 2.9 : cls.includes('single') ? 2.6 : 2.2;
   // Electrons in an electrode sit 11 apart, so they grow less than the ones on the move.
   const grow = cls.includes('wire-e') || cls.includes('fly') ? eScale : cls === 'e' ? Math.min(eScale, 1.5) : 1;
   const r = f1(base * grow);
-  return `<circle class="${cls}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${r}" opacity="${f1(op)}"/>`;
+  return `<circle class="${cls}"${of ? ` data-a="${of}"` : ''} cx="${f1(p.x)}" cy="${f1(p.y)}" r="${r}" opacity="${f1(op)}"/>`;
 }
 
 function waterSvg(p: Vec, ang: number, alpha: number): string {

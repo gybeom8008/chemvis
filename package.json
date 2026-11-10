@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "e2e": "playwright test",
-    "flicker": "node tools/flicker.cjs"
+    "flicker": "node tools/flicker.cjs",
+    "shot": "node tools/shot.cjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

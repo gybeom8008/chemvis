@@ -132,6 +132,67 @@ function turnOf(w: World, id: string, pos: Map<string, Vec>): number {
 }
 
 /**
+ * The lone electrons of an atom for the 'lines' style, steady in the same way: their directions are
+ * read from the world's own coordinates and turned with the molecule. `counts` draws another
+ * number of electrons than the world's atom has (the 'lines' style draws the electrons an atom
+ * keeps in the middle of a step around the bonds it has at the end).
+ */
+const countCache = new WeakMap<World, Map<string, Dom[]>>();
+export function stableDomains(
+  w: World,
+  id: string,
+  pos: Map<string, Vec>,
+  counts?: { lp: number; rad: number; face?: number; skip?: number },
+): { angle: number; single: boolean }[] {
+  const a = w.atoms.get(id);
+  if (!a) return [];
+  let doms: Dom[];
+  if (!counts || (counts.lp === a.lp && counts.rad === a.rad && (counts.skip ?? 0) === (a.skip ?? 0) && counts.face === a.face)) doms = domainsOf(w, id);
+  else {
+    const key = `${id}|${counts.lp}|${counts.rad}|${counts.skip ?? 0}|${counts.face ?? ''}`;
+    let m = countCache.get(w);
+    if (!m) countCache.set(w, (m = new Map()));
+    let d = m.get(key);
+    if (!d) {
+      const dirs = (adjacency(w).get(id) ?? []).filter((o) => w.atoms.has(o)).map((o) => angOf(a, w.atoms.get(o)!));
+      d = counts.lp + counts.rad <= 0 ? [] : electronDomains(a, dirs, counts.lp, counts.rad, counts.face, counts.skip ?? 0).map((x) => ({ angle: x.angle, n: x.single ? 1 : 2 }));
+      m.set(key, d);
+    }
+    doms = d;
+  }
+  const turn = turnOf(w, id, pos);
+  return doms.map((d) => ({ angle: d.angle + turn, single: d.n === 1 }));
+}
+
+/**
+ * Electrons half-way between two arrangements around the same atom: each one turns from its old
+ * direction to the nearest new one. Null when the two do not have the same electrons.
+ */
+export function blendDomains(
+  from: { angle: number; single: boolean }[],
+  to: { angle: number; single: boolean }[],
+  u: number,
+): { angle: number; single: boolean }[] | null {
+  const n = from.length;
+  if (n !== to.length) return null;
+  if (!n) return [];
+  const x = [...from].sort((p, q) => p.angle - q.angle);
+  const y = [...to].sort((p, q) => p.angle - q.angle);
+  let best = 0;
+  let bestCost = Infinity;
+  for (let sh = 0; sh < n; sh++) {
+    let cost = 0;
+    for (let i = 0; i < n; i++) cost += angDist(x[i].angle, y[(i + sh) % n].angle) + (x[i].single === y[(i + sh) % n].single ? 0 : 100);
+    if (cost < bestCost) {
+      bestCost = cost;
+      best = sh;
+    }
+  }
+  if (bestCost >= 100) return null;
+  return x.map((d, i) => ({ angle: angLerp(d.angle, y[(i + best) % n].angle, u), single: d.single }));
+}
+
+/**
  * A direction around an atom that is clear of its bonds and lone pouches (for the charge badge
  * and the oxidation number), decided in the world's coordinates and turned with the molecule.
  */

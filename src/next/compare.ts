@@ -52,17 +52,17 @@ app.innerHTML = `
       <figure>
         <figcaption>지금 방식 <small>결합은 선, 전자의 이동은 굽은 화살표</small></figcaption>
         <div id="old"></div>
-        <div class="key"></div>
       </figure>
       <figure>
         <figcaption>새 방식 <small>전자쌍이 보이고, 그 전자쌍이 직접 움직임</small></figcaption>
         <div id="new"></div>
-        <div class="key">
-          <span>${POUCH(false, false)}한 원자가 가진 전자쌍</span>
-          <span>${POUCH(false, true)}두 원자가 함께 가진 전자쌍(결합)</span>
-          <span>${POUCH(true, false)}지금 바뀌는 전자쌍</span>
-        </div>
       </figure>
+    </div>
+    <div class="key" aria-label="새 방식의 표시">
+      <b>새 방식의 표시</b>
+      <span>${POUCH(false, false)}한 원자가 가진 전자쌍</span>
+      <span>${POUCH(false, true)}두 원자가 함께 가진 전자쌍(결합)</span>
+      <span>${POUCH(true, false)}지금 바뀌는 전자쌍</span>
     </div>
     <p class="say" aria-live="polite"></p>
     <div class="ctl">

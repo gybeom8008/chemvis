@@ -466,7 +466,7 @@ export class StageView {
     const frac = !step ? 1 : w1 > w0 ? clamp((t - w0) / (w1 - w0), 0, 1) : t >= w0 ? 1 : 0;
     const win = { pre, during, post, settle, prog, cue, frac };
     if (this.svg.dataset.style !== (opt.style ?? 'lines')) this.svg.dataset.style = opt.style ?? 'lines';
-    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale }) : null;
+    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t }) : null;
     if (pairs) out.push(...pairs.under);
     else out.push(...this.drawBonds(step, t, win, bonds, pos, atoms, isCrowd, opacity));
     // Moving electrons: marked where they are before the change, then carried as the tip of the

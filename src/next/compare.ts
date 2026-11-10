@@ -28,6 +28,7 @@ const SCENES: { id: string; name: string; src: string }[] = [
   { id: 'neutral', name: '중화', src: chapter('neutralization') },
   { id: 'subst', name: '치환', src: chapter('substitution') },
   { id: 'add', name: '첨가', src: chapter('addition') },
+  { id: 'cond', name: '축합·가수분해', src: chapter('condensation') },
   { id: 'redox', name: '산화·환원', src: chapter('redox') },
   { id: 'radical', name: '라디칼', src: chapter('radical') },
 ];
@@ -43,6 +44,12 @@ const POUCH = (hot: boolean, shared: boolean) => {
     <circle cx="${shared ? 40 : 33}" cy="11.200" r="2.700" fill="${e}"/><circle cx="${shared ? 40 : 33}" cy="18.800" r="2.700" fill="${e}"/>
   </svg>`;
 };
+
+const PULL = `<svg width="62" height="30" viewBox="0 0 62 30" aria-hidden="true">
+  <text x="8" y="20" font-size="15" font-weight="800" fill="#d9480f" text-anchor="middle">+</text>
+  <line x1="18" y1="15" x2="44" y2="15" stroke="#3b82c4" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>
+  <text x="54" y="20" font-size="15" font-weight="800" fill="#1c7ed6" text-anchor="middle">−</text>
+</svg>`;
 
 const app = document.getElementById('app')!;
 app.innerHTML = `
@@ -63,6 +70,7 @@ app.innerHTML = `
       <span>${POUCH(false, false)}한 원자가 가진 전자쌍</span>
       <span>${POUCH(false, true)}두 원자가 함께 가진 전자쌍(결합)</span>
       <span>${POUCH(true, false)}지금 바뀌는 전자쌍</span>
+      <span>${PULL}서로 당기는 곳(조금 +, 조금 −)</span>
     </div>
     <p class="say" aria-live="polite"></p>
     <div class="ctl">
@@ -104,8 +112,8 @@ newStage.onFrame = () => {
 function load(id: string): void {
   const sc = SCENES.find((s) => s.id === id) ?? SCENES[0];
   for (const s of both) s.load(sc.src);
-  // Start where the electrons first move: that is what this page is for.
-  const k = Math.max(0, newStage.tl!.steps.findIndex((s) => s.arrows.length > 0));
+  // Start where something first happens between the molecules: one comes to the other, or electrons move.
+  const k = Math.max(0, newStage.tl!.steps.findIndex((s) => s.arrows.length > 0 || !!s.shifts?.length || !!s.pulls?.length));
   for (const s of both) s.player.go(k);
   app.querySelectorAll<HTMLElement>('[data-scene]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.scene === sc.id)));
   history.replaceState(null, '', `#${sc.id}`);

@@ -473,3 +473,26 @@ svg[data-style='pairs'] .atom.crowd {
 svg[data-style='pairs'] .bond.crowd {
   stroke: var(--crowd, #b9cbdc);
 }
+
+/* Two places that attract each other, and the small charges that make them do so. */
+.pull {
+  stroke: var(--attract);
+  stroke-width: 2;
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+}
+.pq {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 800;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--water);
+  stroke-width: 3px;
+}
+.pq.pos {
+  fill: #d9480f;
+}
+.pq.neg {
+  fill: #1c7ed6;
+}

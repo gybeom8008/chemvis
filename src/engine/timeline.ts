@@ -96,6 +96,13 @@ export interface StepAnim {
   tally: { t: number; counts: [string, number][] }[];
   appear: Set<string>;
   lens?: Partial<Lens>;
+  /**
+   * A net reaction drawn without its mechanism still has a clear outcome for each electron pair:
+   * which atoms hold it afterwards. Only the 'pairs' style draws these (as pouches changing ends).
+   */
+  shifts?: { src: ElectronEnd; dst: ElectronEnd }[];
+  /** Atoms that are drawn together in this step: the one that comes (a) and the one it comes to (b). */
+  pulls?: { a: string; b: string }[];
   /** Energy before and after the step (energy diagram); barrier = height of the hump above `from`. */
   energy?: { from: number; to: number; barrier?: number; unit: string };
 }

@@ -1270,6 +1270,7 @@ class Ctx {
     this.focusMol(comp);
     // The molecule it comes up to is part of the scene too.
     this.focusMol(component(this.w, target));
+    (this.A.pulls ??= []).push({ a: mover, b: target });
   }
 
   /** move w to right / move w to 300,200 / move w near a */
@@ -2464,10 +2465,22 @@ class Ctx {
       .map((n) => this.w.atoms.get(n.id)!)
       .find((o) => o.el === 'O' && neighbors(this.w, o.id).length === 2 && neighbors(this.w, o.id).some((x) => this.w.atoms.get(x.id)!.el === 'H'));
     if (!oh) this.fail(`${ra}에 결합한 -OH가 없어요. 축합은 -OH와 결합한 원자를 먼저 적어요.`);
+    // Of B's hydrogens, the one nearest the -OH leaves with it.
     const hb = neighbors(this.w, B)
       .map((n) => this.w.atoms.get(n.id)!)
-      .find((h) => h.el === 'H');
+      .filter((h) => h.el === 'H')
+      .sort((p, q) => dist(p, oh!) - dist(q, oh!))[0];
     if (!hb) this.fail(`${rb}에 결합한 H가 없어요.`);
+    // Where each electron pair ends up: B's lone pair joins A, the A–OH pair stays on O, a lone
+    // pair of that O takes the H, and the B–H pair stays on B.
+    if (this.w.atoms.get(B)!.lp > 0 && oh.lp > 0) {
+      this.A.shifts = [
+        { src: { kind: 'lp', a: B }, dst: { kind: 'bond', a: B, b: A } },
+        { src: { kind: 'bond', a: A, b: oh.id }, dst: { kind: 'atom', a: oh.id } },
+        { src: { kind: 'lp', a: oh.id }, dst: { kind: 'bond', a: oh.id, b: hb.id } },
+        { src: { kind: 'bond', a: B, b: hb.id }, dst: { kind: 'atom', a: B } },
+      ];
+    }
     for (const [x, y] of [
       [A, oh.id],
       [B, hb.id],
@@ -2510,6 +2523,16 @@ class Ctx {
     const Bpos = this.w.atoms.get(B)!;
     Hs.sort((p, q) => dist(p, Bpos) - dist(q, Bpos));
     const hToB = Hs[0];
+    // Where each electron pair ends up: a lone pair of the water's O joins A, the A–B pair stays
+    // on B, a lone pair of B takes the H, and the O–H pair stays on O.
+    if (O.lp > 0 && this.w.atoms.get(B)!.lp > 0) {
+      this.A.shifts = [
+        { src: { kind: 'lp', a: O.id }, dst: { kind: 'bond', a: O.id, b: A } },
+        { src: { kind: 'bond', a: A, b: B }, dst: { kind: 'atom', a: B } },
+        { src: { kind: 'lp', a: B }, dst: { kind: 'bond', a: B, b: hToB.id } },
+        { src: { kind: 'bond', a: O.id, b: hToB.id }, dst: { kind: 'atom', a: O.id } },
+      ];
+    }
     this.w.bonds.delete(bondKey(A, B));
     this.w.bonds.delete(bondKey(O.id, hToB.id));
     this.w.bonds.set(bondKey(A, O.id), { a: A, b: O.id, order: 1 });

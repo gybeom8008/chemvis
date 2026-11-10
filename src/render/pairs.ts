@@ -39,6 +39,8 @@ export interface PairsInput {
   opacity(id: string): number;
   /** Electrons on the move are enlarged by this on small screens. */
   eScale: number;
+  /** Progress through the step (0..1). */
+  t: number;
 }
 
 const f1 = (n: number) => n.toFixed(1);
@@ -231,10 +233,77 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     }
   };
 
+  /**
+   * Why two molecules come together: where one is a little negative (electrons it holds close)
+   * and the other a little positive (its electrons are held by a greedier neighbour), they attract.
+   * Marked with a small − and + and a dotted line between the two places.
+   */
+  const pulls = () => {
+    if (!step?.pulls?.length) return;
+    const adj = adjacency(topo);
+    const en = (id: string) => ELECTRONEGATIVITY[topo.atoms.get(id)?.el ?? ''] ?? 2.2;
+    const show = clamp(inp.t / 0.15, 0, 1);
+    for (const { a, b } of step.pulls) {
+      const A0 = topo.atoms.get(a);
+      const B0 = topo.atoms.get(b);
+      const pa = pos.get(a);
+      const pb = pos.get(b);
+      if (!A0 || !B0 || !pa || !pb) continue;
+      /** +1: short of electrons here; -1: electrons held here; 0: neither. `mark`: no charge badge says so already. */
+      const lean = (x: Atom): { sign: number; mark: boolean } => {
+        const q = formalCharge(topo, x);
+        if (q > 0) return { sign: 1, mark: false };
+        if (q < 0) return { sign: -1, mark: false };
+        if ((adj.get(x.id) ?? []).some((o) => en(o) - en(x.id) >= 0.4)) return { sign: 1, mark: true };
+        if (x.lp > 0 || x.rad > 0) return { sign: -1, mark: x.lp > 0 && en(x.id) >= 2.5 };
+        return { sign: 0, mark: false };
+      };
+      const la = lean(A0);
+      const lb = lean(B0);
+      if (la.sign * lb.sign !== -1) continue;
+      const u = norm(sub(pb, pa));
+      // From the electrons that face the other atom (if this atom has some) to the other atom's edge.
+      const doms = domainsOf(topo, adj, a, pos);
+      const facing = doms.length ? doms.reduce((m, d) => (angDist(d.angle, angOf(pa, pb)) < angDist(m.angle, angOf(pa, pb)) ? d : m), doms[0]) : null;
+      const from = facing && angDist(facing.angle, angOf(pa, pb)) < 0.9 ? add(pa, fromAngle(facing.angle, R(a) + OUT + 7)) : add(pa, scale(u, R(a) + 2));
+      const to = sub(pb, scale(u, R(b) + 2));
+      const op = show * Math.min(opacity(a), opacity(b));
+      if (dist(from, to) > 6 && op > 0.01) over.push(`<line class="pull" x1="${f1(from.x)}" y1="${f1(from.y)}" x2="${f1(to.x)}" y2="${f1(to.y)}" opacity="${f1(op)}"/>`);
+      // The marks sit beside the two places, on the upper side of the line between them.
+      const up = perp(u).y < 0 ? perp(u) : scale(perp(u), -1);
+      const mark = (c: Vec, l: { sign: number; mark: boolean }) => {
+        if (!l.mark || op <= 0.01) return;
+        over.push(`<text class="pq ${l.sign > 0 ? 'pos' : 'neg'}" x="${f1(c.x)}" y="${f1(c.y)}" dy="0.35em" opacity="${f1(op)}">${l.sign > 0 ? '+' : '−'}</text>`);
+      };
+      const useTip = !!facing && angDist(facing.angle, angOf(pa, pb)) < 0.9;
+      mark(useTip ? add(sub(from, scale(u, 7)), scale(up, 13)) : add(pa, scale(up, R(a) + 9)), la);
+      mark(add(pb, scale(up, R(b) + 9)), lb);
+    }
+  };
+  const finish = (o: PairsOutput): PairsOutput => {
+    pulls();
+    return o;
+  };
+
   const one = () => 1;
   const netNew = new Set<string>();
   if (step && !step.events.length) for (const [k, b] of step.after.bonds) if (b.order > 0 && !(step.before.bonds.get(k)?.order ?? 0)) netNew.add(k);
-  if (!step || !step.arrows.some((ar) => ar.src && ar.dst) || step.events.length) {
+  // Electron moves of this step: the ones the script wrote, and for a net reaction the pairs that change holders.
+  const bound: ArrowAnim[] = step ? step.arrows.filter((ar) => ar.src && ar.dst) : [];
+  /** Part of the change window in which a move happens (the whole of it unless said otherwise). */
+  const span = new Map<ArrowAnim, [number, number]>();
+  const nShift = step?.shifts?.length ?? 0;
+  for (const [i, sh] of (step?.shifts ?? []).entries()) {
+    // The source's lone pair is chosen by the direction of p0: toward the atom it will join.
+    const other = sh.dst.kind === 'bond' ? (sh.dst.a === sh.src.a ? sh.dst.b! : sh.dst.a) : sh.dst.a;
+    const o = step!.before.atoms.get(other);
+    const p0 = o ? { x: o.x, y: o.y } : { x: 0, y: 0 };
+    const ar: ArrowAnim = { kind: 'pair', p0, c: p0, p1: p0, line: 0, src: sh.src, dst: sh.dst };
+    // A net reaction is told two pairs at a time: first one bond is exchanged, then the other.
+    if (nShift === 4) span.set(ar, i < 2 ? [0, 0.52] : [0.48, 1]);
+    bound.push(ar);
+  }
+  if (!step || !bound.length || step.events.length) {
     // Nothing is carried by electrons here. A change without them (a net reaction) fades from the old pouches to the new.
     if (step && win.during && !step.events.length) {
       const changed = new Set<string>();
@@ -247,11 +316,11 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       if (changed.size) {
         still(step.before, (id) => (changed.has(id) ? 1 - win.prog : step.appear.has(id) ? 0 : 1));
         still(step.after, (id) => (changed.has(id) ? win.prog : step.appear.has(id) ? 1 : 0), undefined, undefined, 0, netNew);
-        return { under, over };
+        return finish({ under, over });
       }
     }
     still(topo, one, undefined, undefined, 0, step && win.post ? netNew : undefined);
-    return { under, over };
+    return finish({ under, over });
   }
 
   // ---------------------------------------------------------------- a step in which electrons move
@@ -260,7 +329,6 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   const A = step.after;
   const adjB = adjacency(B);
   const adjA = adjacency(A);
-  const bound = step.arrows.filter((ar) => ar.src && ar.dst);
 
   // Lone pouches of every atom the arrows touch, before and after, with the electrons the arrows take or bring counted off.
   const touched = new Set<string>();
@@ -332,10 +400,8 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   }
 
   const e = win.during ? win.prog : win.post ? 1 : 0;
-  // A pouch that takes hold of a new atom goes first and one that lets go of an atom follows, so
-  // that in between the atom is held from both sides: nothing is ever left hanging loose.
-  const eTake = win.during ? smooth(clamp(win.frac / 0.62, 0, 1)) : e;
-  const eLet = win.during ? smooth(clamp((win.frac - 0.38) / 0.62, 0, 1)) : e;
+  // (Within a move's part of the window, a pouch that takes hold of a new atom goes first and one
+  // that lets go of an atom follows, so that in between the atom is held from both sides.)
 
   /**
    * An electron that goes from one atom to another atom flies there. Everything else stays with
@@ -412,7 +478,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       else if (m.from) (hotLone.get(S.a) ?? hotLone.set(S.a, []).get(S.a)!).push({ angle: m.from.angle, n: m.pair ? 2 : m.from.n });
     }
     still(B, one, hotLone, hotBond, win.cue);
-    return { under, over };
+    return finish({ under, over });
   }
 
   // ---- after the change: everything as it is now, the pouches that changed still tinted while the atoms settle
@@ -426,7 +492,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     }
     still(A, one, hotLone, hotBond, 1 - win.settle);
     for (const m of jumps) trail(m, 1, 0.7 * (1 - win.settle));
-    return { under, over };
+    return finish({ under, over });
   }
 
   // ---- during the change
@@ -554,7 +620,11 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     }
     const z: Vec = { x: 0, y: 0 };
     let hold: string;
-    let g = e;
+    const [f0, f1] = span.get(m.ar) ?? [0, 1];
+    const lf = clamp((win.frac - f0) / (f1 - f0), 0, 1);
+    const eTake = smooth(clamp(lf / 0.62, 0, 1));
+    const eLet = smooth(clamp((lf - 0.38) / 0.62, 0, 1));
+    let g = smooth(lf);
     let tip0: Vec;
     let tip1: Vec;
     let c0: Vec | null;
@@ -683,5 +753,5 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     electron(at(u), flying ? ' hot fly' : ' hot', 1, flying ? FLY * inp.eScale : DOT);
   }
 
-  return { under, over, charges, avoid };
+  return finish({ under, over, charges, avoid });
 }

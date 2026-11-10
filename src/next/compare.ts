@@ -72,7 +72,7 @@ app.innerHTML = `
         <button class="btn" data-act="replay" title="이 단계 다시 보기 (R)">${icon('replay')}<span>다시 보기</span></button>
         <button class="btn ink" data-act="next" title="다음 단계 (→)"><span>다음</span>${icon('next')}</button>
       </div>
-      <div class="right"><span>손으로 넘겨 보기</span><input type="range" id="scrub" min="0" max="1000" value="0" aria-label="이 단계 안에서 시간 옮기기" /></div>
+      <div class="right"><span>직접 움직여 보기</span><input type="range" id="scrub" min="0" max="1000" value="0" aria-label="이 단계 안에서 시간 옮기기" /></div>
     </div>
   </main>`;
 

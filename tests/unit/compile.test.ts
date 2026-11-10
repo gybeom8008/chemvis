@@ -300,7 +300,7 @@ step "ATP"
 });
 
 describe('one change window per reaction step', () => {
-  it('electron moves know where they start and end, and atoms glide while they travel', () => {
+  it('electron moves know where they start and end; atoms settle after the electrons have mostly travelled', () => {
     const r = compile('stage solution\nmol n = NH3 at left\nmol h = H+ at right\nstep "a"\n  approach n.N h.H\nstep "b"\n  arrow n.N:lp -> n.N~h.H\n');
     expect(r.errors).toEqual([]);
     const st = r.timeline!.steps[1];
@@ -308,11 +308,13 @@ describe('one change window per reaction step', () => {
     expect(st.arrows[0].dst).toMatchObject({ kind: 'bond' });
     const ph = st.phase!;
     expect(ph.b0).toBeGreaterThan(0);
-    expect(ph.c1).toBe(ph.b1);
-    // The H moves inside the window, not after it.
+    // Atoms hold still while the electrons travel (so their path stays clear), and start settling
+    // just before they arrive.
+    expect(ph.c0).toBeGreaterThan(ph.b0 + 0.2);
+    expect(ph.c0).toBeLessThanOrEqual(ph.b1);
     const tr = st.tracks.get('h.H')!;
-    expect(tr[0].t).toBeCloseTo(ph.b0);
-    expect(tr.find((k) => k.ease)!.t).toBeCloseTo(ph.b1);
+    expect(tr[0].t).toBeCloseTo(ph.c0);
+    expect(tr.find((k) => k.ease)!.t).toBeCloseTo(ph.c1!);
   });
 
   it('light comes first: the bond breaks only after the light is absorbed', () => {

@@ -62,10 +62,13 @@ export interface CompileResult {
 class ScriptError extends Error {}
 
 /**
- * The change window of a reaction step: what will change is marked until b0, everything changes
- * together until b1 (electrons travel, bonds grow and shrink, atoms glide), and the result holds after.
+ * The timing of a reaction step. Until b0 the electrons about to move are marked where they sit.
+ * From b0 to b1 they travel along their curved path, drawing the arrow behind them, while the
+ * atoms hold still so the path stays clear; the bond they leave shrinks away as they go and the
+ * bond they make grows in, complete as they arrive. Then (c0 to c1) the new bonds pull the atoms
+ * into place while the arrow fades.
  */
-const CHANGE = { b0: 0.18, b1: 0.86, c0: 0.18, c1: 0.86 };
+const CHANGE = { b0: 0.12, b1: 0.55, c0: 0.5, c1: 0.86 };
 
 const STEP_BASE = 2.6;
 const OP_DURATION: Record<string, number> = {
@@ -2843,7 +2846,16 @@ class Ctx {
         if (done.has(id) || !this.w.atoms.has(id)) continue;
         const comp = component(this.w, id);
         comp.forEach((x) => done.add(x));
-        relayout(this.w, comp);
+        // The molecule that was there before keeps its place; atoms that came from another
+        // molecule (an H passed over, a water joining) move to it, not the other way round.
+        const groups = new Map<string, string[]>();
+        for (const x of comp) {
+          const key = before.atoms.has(x) ? component(before, x).sort()[0] : x;
+          groups.set(key, [...(groups.get(key) ?? []), x]);
+        }
+        const heavy = (g: string[]) => g.filter((x) => this.w.atoms.get(x)!.el !== 'H').length;
+        const anchor = [...groups.values()].sort((p, q) => heavy(q) - heavy(p) || q.length - p.length)[0];
+        relayout(this.w, comp, anchor.length >= 2 ? anchor : comp);
       }
       for (const id of this.touched) {
         const at = this.w.atoms.get(id);
@@ -2895,8 +2907,13 @@ class Ctx {
     if (A.phase && A.photons.length) {
       const hit = Math.max(...A.photons.map((p) => p.t1)) + 0.03;
       if (A.phase.b0 < hit) {
-        const len = Math.max(0.4, (A.phase.b1 - A.phase.b0) * 0.85);
-        A.phase = { b0: hit, b1: Math.min(0.95, hit + len), c0: Math.max(A.phase.c0, hit), c1: Math.min(0.95, hit + len) };
+        // Shift the whole sequence after the light, squeezing it to end by 0.95.
+        const { b0, b1, c0 } = A.phase;
+        const c1 = A.phase.c1 ?? 1;
+        const end = Math.max(b1, c1);
+        const k = Math.min(1, (0.95 - hit) / Math.max(1e-6, end - b0));
+        const at = (x: number) => hit + (x - b0) * k;
+        A.phase = { b0: hit, b1: at(b1), c0: Math.max(hit, at(c0)), c1: at(c1) };
       }
     }
     // Atoms that moved without an explicit path glide inside the change window, together with the

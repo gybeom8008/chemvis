@@ -212,7 +212,6 @@ function buildSettings(pop: HTMLElement): void {
     <label class="sw"><input type="checkbox" data-lens="attract"><span>분자 사이 인력</span></label>
     <label class="sw"><input type="checkbox" data-lens="oxidation"><span>산화수</span></label>
     <label class="sw"><input type="checkbox" data-lens="numbers"><span>원자 일련번호</span></label>
-    <label class="sw" title="움직이는 전자 위에 교과서식 굽은 화살표를 겹쳐 보여 줘요"><input type="checkbox" data-lens="arrows"><span>교과서 화살표</span></label>
     <hr>
     <p class="pop-label">속도</p>
     <div class="speed" role="radiogroup" aria-label="속도">

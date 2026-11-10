@@ -1147,26 +1147,13 @@ code {
   background: radial-gradient(circle, var(--lp) 1.8px, transparent 2px) 0 0 / 6px 4px repeat-x;
 }
 
-/* A moving electron pair: two electrons at the tip of the bond they are making. */
+/* The curved arrow an electron pair draws: two lines. */
 .g-arrow {
-  position: relative;
-  width: 16px;
-  height: 3px;
-  margin-right: 6px;
-  border-radius: 2px;
-  background: var(--electron);
-}
-
-.g-arrow::after {
-  content: '';
-  position: absolute;
-  right: -6px;
-  top: -3.5px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--electron);
-  box-shadow: 0 5px 0 var(--electron);
+  width: 18px;
+  height: 10px;
+  border: 5px double var(--electron);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
 }
 
 .g-charge {
@@ -1285,24 +1272,23 @@ code {
   opacity: 0.8;
 }
 
-/* One moving electron: a single electron at the tip of the half bond it is making. */
+/* The curved arrow one electron draws: one line with a half head. */
 .g-hook {
   position: relative;
-  width: 16px;
-  height: 0;
-  margin-right: 6px;
-  border-top: 2px dashed var(--electron);
+  width: 18px;
+  height: 10px;
+  border: 2px solid var(--electron);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
 }
 
 .g-hook::after {
   content: '';
   position: absolute;
-  right: -6px;
-  top: -4px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--electron);
+  right: -5px;
+  bottom: -2px;
+  border-left: 5px solid transparent;
+  border-top: 6px solid var(--electron);
 }
 
 .g-e {

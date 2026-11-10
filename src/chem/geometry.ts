@@ -422,10 +422,14 @@ function mean(ps: Vec[]): Vec {
 }
 
 /** Re-draw a molecule in its ideal shape, keeping it where it was as much as possible. */
-export function relayout(w: World, ids: string[]): void {
+/**
+ * Re-draw a molecule after its bonds changed. `anchor` (optional) are the atoms that should stay
+ * where they are as far as possible; the rest are placed around them.
+ */
+export function relayout(w: World, ids: string[], anchor: string[] = ids): void {
   const rel = relativeLayout(w, ids);
   const target = new Map<string, Vec>();
-  for (const id of ids) {
+  for (const id of anchor.length ? anchor : ids) {
     const a = w.atoms.get(id)!;
     target.set(id, { x: a.x, y: a.y });
   }

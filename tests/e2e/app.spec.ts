@@ -294,27 +294,26 @@ test('phone: the legend button sits inside the canvas, menus stay on screen, ele
     .toBeGreaterThanOrEqual(7);
 });
 
-test('a reaction is one motion: electrons light up, then carry the bond line; textbook arrows only on request', async ({ page }) => {
+test('a reaction is one motion: electrons light up, travel drawing the arrow, then the atoms settle', async ({ page }) => {
   await page.goto('./?still#/t/arrows');
   const c = cv(page);
   const v = page.locator('#tut-viewer');
-  // Before the change: the lone pair about to move is marked where it sits, nothing has moved yet.
-  await c.tut.seek(2, 0.1);
+  // Before the change: the lone pair about to move is marked where it sits; no arrow yet.
+  await c.tut.seek(2, 0.08);
   await expect(v.locator('circle.e.cue')).toHaveCount(2);
-  await expect(v.locator('line.bond.hot')).toHaveCount(0);
-  // During the change: the pair travels as the tip of the growing bond line; no separate arrow.
-  await c.tut.seek(2, 0.5);
-  await expect(v.locator('circle.e.fly')).toHaveCount(2);
-  await expect(v.locator('line.bond.hot')).toHaveCount(1);
   await expect(v.locator('g.arrow')).toHaveCount(0);
-  // The textbook arrow can be laid over it from the view settings.
-  await page.locator('#tut-view').click();
-  await page.locator('#tut-view-pop [data-lens="arrows"]').check();
-  await c.tut.seek(2, 0.5);
+  // On the way: the pair travels and the arrow is drawn behind it, the new bond growing.
+  await c.tut.seek(2, 0.3);
+  await expect(v.locator('circle.e.fly')).toHaveCount(2);
   await expect(v.locator('g.arrow')).toHaveCount(1);
-  // After: an ordinary bond, no moving electrons left.
-  await c.tut.seek(2, 1);
+  await expect(v.locator('g.arrow polygon')).toHaveCount(0);
+  // Arrived: the arrow has its head; the electrons have become the bond.
+  await c.tut.seek(2, 0.6);
+  await expect(v.locator('g.arrow polygon')).toHaveCount(1);
   await expect(v.locator('circle.e.fly')).toHaveCount(0);
+  // Settled: only the new structure remains.
+  await c.tut.seek(2, 1);
+  await expect(v.locator('g.arrow')).toHaveCount(0);
   await expect(v.locator('line.bond.hot')).toHaveCount(0);
 });
 

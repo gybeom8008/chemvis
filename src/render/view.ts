@@ -162,11 +162,10 @@ export class StageView {
     y0 -= pad;
     x1 += pad;
     y1 += pad;
+    // Only the molecules' own extent (with a minimum); the shape of the screen is matched later
+    // (fitToElement), so a tall phone screen is not first widened to the stage's landscape shape.
     let w = Math.max(x1 - x0, 0.3 * st.width);
     let h = Math.max(y1 - y0, 0.3 * st.height);
-    const aspect = st.width / st.height;
-    if (w / h > aspect) h = w / aspect;
-    else w = h * aspect;
     w = Math.min(w, st.width);
     h = Math.min(h, st.height);
     const cx = (x0 + x1) / 2;
@@ -241,6 +240,9 @@ export class StageView {
     const evented = !!step && step.events.length > 0;
     const pre = !!step && !evented && t < w0;
     const during = !!step && !evented && t >= w0 && t < w1;
+    const post = !!step && !evented && t >= w1;
+    const c1 = ph?.c1 ?? 1;
+    const settle = post ? smooth(clamp((t - w1) / Math.max(0.05, c1 - w1), 0, 1)) : 0;
     const prog = !step ? 1 : w1 > w0 ? smooth(clamp((t - w0) / (w1 - w0), 0, 1)) : t >= w0 ? 1 : 0;
     const cue = pre && w0 > 0 ? smooth(clamp(t / w0, 0, 1)) : 0;
 
@@ -455,10 +457,10 @@ export class StageView {
 
     // Bonds. Outside the change they are drawn as they are; inside it, a bond that is made or
     // broken grows or shrinks while it happens (see drawBonds).
-    out.push(...this.drawBonds(step, t, { pre, during, prog, cue }, bonds, pos, atoms, isCrowd, opacity));
+    out.push(...this.drawBonds(step, t, { pre, during, post, settle, prog, cue }, bonds, pos, atoms, isCrowd, opacity));
     // Moving electrons: marked where they are before the change, then carried as the tip of the
     // bond they leave or make. The pieces of bond they drag go under the atoms, the electrons over.
-    const moving = step && step.arrows.length ? this.drawElectrons(step, { pre, during, prog, cue }, pos) : { under: [], over: [] };
+    const moving = step && step.arrows.length ? this.drawElectrons(step, { pre, during, post, settle, prog, cue }, pos) : { under: [], over: [] };
     out.push(...moving.under);
 
     // Atoms.
@@ -559,8 +561,7 @@ export class StageView {
       }
     }
 
-    // The electrons themselves; the textbook arrow only on request (lens).
-    if (step && step.arrows.length && opt.lens.arrows && (pre || during)) out.push(...textbookArrows(step));
+    // The electrons themselves, over the atoms.
     out.push(...moving.over);
 
     // Electrode stage: electrons waiting in each plate, and electrons running through the wire.
@@ -757,6 +758,7 @@ export class StageView {
     }
 
     const claims = step ? electronClaims(step) : { form: new Map<string, number>(), brk: new Map<string, number>() };
+    const driven = step ? drivenPieces(step) : new Map<string, Piece[]>();
     if (!step || !win.during) {
       for (const b of bonds) whole(b, opOf(b.a, b.b));
       // Cue: a bond about to break is coloured as the electrons that will leave it (pink), or,
@@ -837,6 +839,37 @@ export class StageView {
         this.meet(b.a, b.b, 1 - win.prog, o, u < 1, pos, (p0, p1) => seg(p0, p1, `bond brk${u < 1 ? ' half' : ''}`, op));
         brk -= u;
       }
+      // Bonds changed by moving electrons, in step with them: the bond they leave shrinks into the
+      // atom they go to during the first half of their trip (it stays pink, the colour of the
+      // leaving electrons); the bond they make grows out of the atom they come from and is
+      // complete when they arrive.
+      const pieces = driven.get(k) ?? [];
+      let jf = 0;
+      let jb = 0;
+      for (const pc of pieces) {
+        const from = pos.get(pc.at);
+        const other = pos.get(pc.at === b.a ? b.b : b.a);
+        if (!from || !other) continue;
+        const m = lerpV(from, other, 0.5);
+        if (pc.kind === 'form') {
+          const o = slotsOf(na)[na - 1 - jf++] ?? 0;
+          const q = smooth(clamp((win.prog - 0.4) / 0.6, 0, 1));
+          const end = lerpV(from, pc.half ? m : other, q);
+          // Pink while the electrons are still on their way (it is their bond), ordinary once they arrive.
+          const ink = smooth(clamp((win.prog - 0.85) / 0.15, 0, 1));
+          seg(add(from, scale(n, o)), add(end, scale(n, o)), `bond hot${pc.half ? ' half' : ''}`, op * (1 - ink));
+          seg(add(from, scale(n, o)), add(end, scale(n, o)), `bond${pc.half ? ' half' : ''}`, op * ink);
+        } else {
+          const o = slotsOf(nb)[nb - 1 - jb++] ?? 0;
+          const q = smooth(clamp(win.prog / 0.55, 0, 1));
+          if (pc.at === '') {
+            this.meet(b.a, b.b, 1 - q, o, pc.half, pos, (p0, p1) => seg(p0, p1, `bond hot${pc.half ? ' half' : ''}`, op));
+            continue;
+          }
+          const start = lerpV(pc.half ? m : other, from, q);
+          seg(add(from, scale(n, o)), add(start, scale(n, o)), `bond hot${pc.half ? ' half' : ''}`, op);
+        }
+      }
     }
     return out;
   }
@@ -877,48 +910,23 @@ export class StageView {
   }
 
   /**
-   * Moving electrons. Before the change they are coloured where they sit; during it they travel as
-   * the tip of the bond they leave (the line shrinks behind them) or make (the line grows behind
-   * them), and land as a lone pair, or melt into the finished bond line.
+   * Moving electrons. Before the change they turn pink where they sit. During it they travel along
+   * the curve a textbook arrow takes, following the atoms as those move, and draw that arrow behind
+   * them; on arrival the arrowhead closes it, at the moment the bonds they leave or make have
+   * finished changing (drawBonds). The arrow then stays, fainter, until the step ends, so a paused
+   * frame still says what happened.
    */
   private drawElectrons(step: StepAnim, win: Win, pos: Map<string, Vec>): { under: string[]; over: string[] } {
     const under: string[] = [];
     const out: string[] = [];
-    const P = (id: string) => pos.get(id);
-    const R = (id: string) => element((step.after.atoms.get(id) ?? step.before.atoms.get(id))!.el).r;
-    const surf = (x: string, y: string, gap: number) => add(P(x)!, scale(norm(sub(P(y)!, P(x)!)), R(x) + gap));
-    const before = (id: string) => step.before.atoms.get(id) ?? step.after.atoms.get(id)!;
-    const seg = (p0: Vec, p1: Vec, cls: string, op: number) =>
-      op > 0.01 ? under.push(`<line class="${cls}" x1="${f1(p0.x)}" y1="${f1(p0.y)}" x2="${f1(p1.x)}" y2="${f1(p1.y)}" opacity="${f1(op)}"/>`) : 0;
-    const formIdx = new Map<string, number>();
-    const brkIdx = new Map<string, number>();
-    const slotFor = (k: string, kind: 'form' | 'brk') => {
-      const m = kind === 'form' ? formIdx : brkIdx;
-      const j = m.get(k) ?? 0;
-      m.set(k, j + 1);
-      const ord = (kind === 'form' ? step.after : step.before).bonds.get(k)?.order ?? 1;
-      const L = lineCount(ord);
-      return slotsOf(L)[L - 1 - j] ?? 0;
-    };
-    const normalOf = (k: string) => {
-      const b = (step.after.bonds.get(k) ?? step.before.bonds.get(k))!;
-      const pa = P(b.a);
-      const pb = P(b.b);
-      return pa && pb ? perp(norm(sub(pb, pa))) : { x: 0, y: 0 };
-    };
+    const k = Math.min(eScale, 2);
     const off = Math.max(3.3, FLY_R * eScale * 1.1);
-    const dots = (tip: Vec, dir: Vec, pair: boolean, op: number, cls = 'e fly') => {
-      if (op <= 0.01) return;
-      const nn = perp(norm(dir));
-      if (pair) out.push(dot(add(tip, scale(nn, off)), cls, op), dot(sub(tip, scale(nn, off)), cls, op));
-      else out.push(dot(tip, cls, op));
-    };
+    const lane = 3 * k;
 
     const fromAtom = new Map<string, number>();
     for (const ar of step.arrows) {
       const pair = ar.kind === 'pair';
       const S = ar.src;
-      const D = ar.dst;
       const nth = S && S.kind !== 'bond' ? fromAtom.get(S.a) ?? 0 : 0;
       if (S && S.kind !== 'bond') fromAtom.set(S.a, nth + 1);
       const site = this.electronSite(step, ar, pos, nth);
@@ -933,107 +941,58 @@ export class StageView {
         } else if (!S) out.push(dot(ar.p0, 'e cue', win.cue));
         continue;
       }
-      if (!win.during) continue;
-      const p = win.prog;
+      if (!win.during && !win.post) continue;
 
-      // Electrons that belong to no atom (into or out of an electrode) fly freely.
-      if (!S || !D || !P(S.a) || !P(D.a)) {
-        const q = qbez(ar.p0, ar.c, ar.p1, p);
-        dots(q, qbezTangent(ar.p0, ar.c, ar.p1, p), pair, 1);
-        continue;
-      }
+      // The arrow's curve. The atoms hold still while the electrons travel, so it is drawn where
+      // they are; it starts exactly at the electrons that were marked.
+      const p0 = site ? (pair ? site.c : site.one) : ar.p0;
+      const p1 = ar.p1;
+      const c = ar.c;
+      const u = win.during ? win.prog : 1;
+      if (win.post && win.settle >= 1) continue;
 
-      // Each case gives the electrons' position for a progress u, and the bond piece they drag.
-      let at: (u: number) => { tip: Vec; piece?: { from: Vec; o: number; n: Vec; cls: string; op: number } };
-      let melt = 0; // how far the electrons have melted into a finished bond line
-      if (S.kind !== 'bond' && D.kind === 'bond') {
-        // From an atom into a bond it makes: the bond line grows from the atom behind the electrons.
-        const from = S.a;
-        const to = D.a === from ? D.b! : D.a;
-        const k = keyOf(D.a, D.b!);
-        const o = slotFor(k, 'form');
-        const n = normalOf(k);
-        const start = site ? (pair ? site.c : site.one) : surf(from, to, 5.5);
-        const end = pair ? surf(to, from, 3) : lerpV(P(from)!, P(to)!, 0.5);
-        const ctrl = surf(from, to, 14);
-        const ink = smooth(clamp((p - 0.72) / 0.28, 0, 1));
-        melt = pair ? smooth(clamp((p - 0.8) / 0.2, 0, 1)) : 0;
-        at = (u) => ({ tip: qbez(start, ctrl, end, u), piece: { from: P(from)!, o, n, cls: pair ? 'bond' : 'bond half', op: ink } });
-        const { tip, piece } = at(p);
-        // The growing line is pink while the electrons make it, and turns into an ordinary bond as they arrive.
-        seg(add(piece!.from, scale(n, o)), add(tip, scale(n, o)), `bond hot${pair ? '' : ' half'}`, 1 - ink);
-        seg(add(piece!.from, scale(n, o)), add(tip, scale(n, o)), piece!.cls, ink);
-        dots(tip, sub(at(Math.min(1, p + 0.02)).tip, at(Math.max(0, p - 0.02)).tip), pair, 1 - melt);
-        continue;
-      }
-      if (S.kind === 'bond' && D.kind === 'atom' && (D.a === S.a || D.a === S.b)) {
-        // From a bond onto one of its atoms: the line shrinks into that atom, carrying the electrons,
-        // which then settle beside it as a lone pair (or an unpaired electron).
-        const r = D.a;
-        const other = S.a === r ? S.b! : S.a;
-        const k = keyOf(S.a, S.b!);
-        const o = slotFor(k, 'brk');
-        const n = normalOf(k);
-        const start = pair ? surf(other, r, 2) : lerpV(P(r)!, P(other)!, 0.5);
-        const land = surf(r, other, 2);
-        const b0 = before(r);
-        const goal = Math.atan2(ar.p1.y - b0.y, ar.p1.x - b0.x);
-        const from = Math.atan2(land.y - P(r)!.y, land.x - P(r)!.x);
-        const split = 0.7;
-        at = (u) => {
-          if (u <= split) return { tip: lerpV(start, land, u / split), piece: { from: P(r)!, o, n, cls: 'bond hot', op: 1 } };
-          const v = (u - split) / (1 - split);
-          return { tip: add(P(r)!, fromAngle(from + angDelta(from, goal) * v, R(r) + 2 + 3.5 * v)) };
-        };
-        const { tip, piece } = at(p);
-        if (piece) seg(add(piece.from, scale(n, o)), add(tip, scale(n, o)), `bond hot${pair ? '' : ' half'}`, 1);
-        dots(tip, sub(at(Math.min(1, p + 0.02)).tip, at(Math.max(0, p - 0.02)).tip), pair, 1);
-        continue;
-      }
-      if (S.kind === 'bond' && D.kind === 'bond') {
-        // From one bond into a neighbouring one: the old line shrinks into the shared atom while the new one grows out of it.
-        const y = [S.a, S.b!].find((id) => id === D.a || id === D.b)!;
-        const x = S.a === y ? S.b! : S.a;
-        const z = D.a === y ? D.b! : D.a;
-        const ks = keyOf(S.a, S.b!);
-        const kd = keyOf(D.a, D.b!);
-        const os = slotFor(ks, 'brk');
-        const od = slotFor(kd, 'form');
-        const ns = normalOf(ks);
-        const nd = normalOf(kd);
-        const start = pair ? surf(x, y, 2) : lerpV(P(x)!, P(y)!, 0.5);
-        const inY = surf(y, x, 2);
-        const outY = surf(y, z, 2);
-        const end = pair ? surf(z, y, 3) : lerpV(P(y)!, P(z)!, 0.5);
-        const a1 = Math.atan2(inY.y - P(y)!.y, inY.x - P(y)!.x);
-        const a2 = Math.atan2(outY.y - P(y)!.y, outY.x - P(y)!.x);
-        at = (u) => {
-          if (u < 0.42) return { tip: lerpV(start, inY, u / 0.42), piece: { from: P(y)!, o: os, n: ns, cls: 'bond hot', op: 1 } };
-          if (u < 0.58) return { tip: add(P(y)!, fromAngle(a1 + angDelta(a1, a2) * ((u - 0.42) / 0.16), R(y) + 2)) };
-          return { tip: lerpV(outY, end, (u - 0.58) / 0.42), piece: { from: P(y)!, o: od, n: nd, cls: 'bond', op: 1 } };
-        };
-        const { tip, piece } = at(p);
-        const ink = smooth(clamp((p - 0.8) / 0.2, 0, 1));
-        if (piece && p < 0.42) seg(add(piece.from, scale(ns, os)), add(tip, scale(ns, os)), `bond hot${pair ? '' : ' half'}`, 1);
-        if (piece && p >= 0.58) {
-          seg(add(piece.from, scale(nd, od)), add(tip, scale(nd, od)), `bond hot${pair ? '' : ' half'}`, 1 - ink);
-          seg(add(piece.from, scale(nd, od)), add(tip, scale(nd, od)), `bond${pair ? '' : ' half'}`, ink);
+      // The arrow drawn so far: two lines for a pair, one for a single electron, with the head
+      // added when the electrons arrive.
+      const tan1 = qbezTangent(p0, c, p1, 1);
+      const head = 12 * k;
+      const end = u >= 0.985 ? 1 : u;
+      const reach = Math.max(0.02, end - (end >= 1 ? head / Math.max(30, dist(p0, p1) * 1.15) : 0));
+      const lanes = pair ? [lane, -lane] : [0];
+      const pts = (o: number) => {
+        const q: string[] = [];
+        const nSeg = Math.max(2, Math.round(18 * reach));
+        for (let i = 0; i <= nSeg; i++) {
+          const v = (reach * i) / nSeg;
+          const at = add(qbez(p0, c, p1, v), scale(perp(qbezTangent(p0, c, p1, v)), o));
+          q.push(`${f1(at.x)},${f1(at.y)}`);
         }
-        melt = pair ? smooth(clamp((p - 0.85) / 0.15, 0, 1)) : 0;
-        dots(tip, sub(at(Math.min(1, p + 0.02)).tip, at(Math.max(0, p - 0.02)).tip), pair, 1 - melt);
-        continue;
+        return q.join(' ');
+      };
+      // While the new bonds pull the atoms into place, the arrow fades: what it said is now the structure.
+      const fade = win.post ? 0.85 * (1 - win.settle) : 0.85;
+      let g = `<g class="arrow ${pair ? 'pair' : 'hook'}" opacity="${f1(fade)}">`;
+      for (const o of lanes) g += `<polyline points="${pts(o)}" style="stroke-width:${f1(2.2 * k)}px"/>`;
+      if (end >= 1) {
+        const tip = p1;
+        const nn = perp(tan1);
+        const base = sub(tip, scale(tan1, head));
+        const w = 7.5 * k;
+        g += pair
+          ? `<polygon points="${f1(tip.x)},${f1(tip.y)} ${f1(base.x + nn.x * w)},${f1(base.y + nn.y * w)} ${f1(base.x - nn.x * w)},${f1(base.y - nn.y * w)}"/>`
+          : `<polygon points="${f1(tip.x)},${f1(tip.y)} ${f1(base.x + nn.x * w)},${f1(base.y + nn.y * w)} ${f1(base.x)},${f1(base.y)}"/>`;
       }
-      // Electrons passing from one atom to another without a bond between them (electron transfer).
-      {
-        const start = S.kind === 'bond' ? lerpV(P(S.a)!, P(S.b!)!, 0.5) : site ? (pair ? site.c : site.one) : ar.p0;
-        const b1 = before(D.a);
-        const end =
-          D.kind === 'atom'
-            ? add(P(D.a)!, fromAngle(Math.atan2(ar.p1.y - b1.y, ar.p1.x - b1.x), R(D.a) + 5.5))
-            : lerpV(P(D.a)!, P(D.b!)!, 0.5);
-        const ctrl = add(lerpV(start, end, 0.5), sub(ar.c, lerpV(ar.p0, ar.p1, 0.5)));
-        const q = qbez(start, ctrl, end, p);
-        dots(q, qbezTangent(start, ctrl, end, p), pair, 1);
+      // Over the atoms, as in a textbook, so that a short arrow inside a molecule stays visible.
+      out.push(g + '</g>');
+
+      // The electrons at the front of the arrow; they melt into their new place as they arrive.
+      if (win.during) {
+        const at = qbez(p0, c, p1, u);
+        const nn = perp(qbezTangent(p0, c, p1, u));
+        const op = 1 - smooth(clamp((u - 0.9) / 0.1, 0, 1));
+        if (op > 0.01) {
+          if (pair) out.push(dot(add(at, scale(nn, off)), 'e fly', op), dot(sub(at, scale(nn, off)), 'e fly', op));
+          else out.push(dot(at, 'e fly', op));
+        }
       }
     }
     return { under, over: out };
@@ -1253,6 +1212,10 @@ function stepActors(step: StepAnim): Set<string> {
 interface Win {
   pre: boolean;
   during: boolean;
+  /** After the change, still inside the step. */
+  post: boolean;
+  /** How far the atoms have settled after the change (0..1): the arrow fades meanwhile. */
+  settle: number;
   prog: number;
   cue: number;
 }
@@ -1284,6 +1247,34 @@ function angDist(a: number, b: number): number {
   return Math.abs(angDelta(a, b));
 }
 
+/** A piece of bond that moving electrons make (grows out of `at`) or leave (shrinks into `at`; '' = into both atoms). */
+interface Piece {
+  kind: 'form' | 'brk';
+  at: string;
+  half: boolean;
+}
+
+function drivenPieces(step: StepAnim): Map<string, Piece[]> {
+  const out = new Map<string, Piece[]>();
+  const add1 = (k: string, p: Piece) => out.set(k, [...(out.get(k) ?? []), p]);
+  for (const ar of step.arrows) {
+    const S = ar.src;
+    const D = ar.dst;
+    if (!S || !D) continue;
+    const half = ar.kind !== 'pair';
+    const shared = S.kind === 'bond' && D.kind === 'bond' ? [S.a, S.b].find((x) => x === D.a || x === D.b) : undefined;
+    if (D.kind === 'bond' && D.b) {
+      const at = S.kind !== 'bond' ? S.a : shared;
+      if (at) add1(keyOf(D.a, D.b), { kind: 'form', at, half });
+    }
+    if (S.kind === 'bond' && S.b) {
+      const at = D.kind === 'atom' && (D.a === S.a || D.a === S.b) ? D.a : shared ?? '';
+      add1(keyOf(S.a, S.b), { kind: 'brk', at, half });
+    }
+  }
+  return out;
+}
+
 /** How many electron pairs moving electrons bring into each bond, and take out of each bond. */
 function electronClaims(step: StepAnim): { form: Map<string, number>; brk: Map<string, number> } {
   const form = new Map<string, number>();
@@ -1301,36 +1292,6 @@ function electronClaims(step: StepAnim): { form: Map<string, number>; brk: Map<s
     }
   }
   return { form, brk };
-}
-
-/** Textbook curved arrows (lens): two-line arrow with a full head for a pair, one line with a half head for one electron. */
-function textbookArrows(step: StepAnim): string[] {
-  const out: string[] = [];
-  const LANE = 3;
-  for (const ar of step.arrows) {
-    const pair = ar.kind === 'pair';
-    const tip = ar.p1;
-    const tan = qbezTangent(ar.p0, ar.c, ar.p1, 1);
-    const nn = perp(tan);
-    const base = sub(tip, scale(tan, 13));
-    const lane = (o: number) => {
-      const pts: string[] = [];
-      for (let i = 0; i <= 18; i++) {
-        const u = i / 18;
-        const q = add(qbez(ar.p0, ar.c, base, u), scale(perp(qbezTangent(ar.p0, ar.c, base, u)), o));
-        pts.push(`${f1(q.x)},${f1(q.y)}`);
-      }
-      return `<polyline points="${pts.join(' ')}"/>`;
-    };
-    if (pair) {
-      const head = `${f1(tip.x)},${f1(tip.y)} ${f1(base.x + nn.x * 8)},${f1(base.y + nn.y * 8)} ${f1(base.x - nn.x * 8)},${f1(base.y - nn.y * 8)}`;
-      out.push(`<g class="arrow pair" opacity="0.5">${lane(LANE)}${lane(-LANE)}<polygon points="${head}"/></g>`);
-    } else {
-      const head = `${f1(tip.x)},${f1(tip.y)} ${f1(base.x + nn.x * 8)},${f1(base.y + nn.y * 8)} ${f1(base.x)},${f1(base.y)}`;
-      out.push(`<g class="arrow hook" opacity="0.5">${lane(0)}<polygon points="${head}"/></g>`);
-    }
-  }
-  return out;
 }
 
 function keyOf(a: string, b: string): string {

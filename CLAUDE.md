@@ -13,8 +13,9 @@ AI가 쓴 짧은 장면 대본을 화학 반응의 장면(원자, 전자, 결합
 - 반응 표현은 비교 화면(`/concept/`, `src/next/compare.ts`)에서만 고친다. 윤범님이 새 방식을 확정하기 전에는 앱 전체를 바꾸지 않는다.
 - 화면을 고친 뒤에는 `npm run shot`으로 직접 보고, `npm run flicker`로 실제 속도에서 표시가 튀지 않는지 재고, `npm test`와 `npm run e2e`를 실행한다. 정지 화면만 보고 확인했다고 말하지 않는다.
 - 여럿 가운데 하나를 고르는 표시(전자쌍 방향, 전하 표시 방향)는 저장된 좌표로 한 번만 정하고 분자와 함께 회전시킨다(`src/render/pairs.ts`의 `stableDomains`, `stableFreeAngle`).
-- 실험실은 검토한 자료 행에 있는 반응만 실행한다. 모르는 조합을 "반응하지 않는다"고 답하지 않는다([docs/plan/lab-astra.md](docs/plan/lab-astra.md)).
+- 실험실은 검토한 자료 행에 있는 반응만 실행한다. 모르는 조합을 "반응하지 않는다"고 답하지 않는다([docs/plan/lab-decisions.md](docs/plan/lab-decisions.md)).
 - 화면 문구와 문서는 존댓말, 번역 투 없이. 윤범님 계정 설정의 금지어 목록을 화면 문구에도 적용한다.
+- 실험실 설계는 Astra와 함께 정한다. 부르는 방법과 지금까지 정한 것은 [docs/plan/lab-decisions.md](docs/plan/lab-decisions.md)에 있다.
 - `main`에만 push한다. PR은 요청이 있을 때만. 강제 push 금지. push하면 CI가 검사 후 GitHub Pages에 배포한다.
 - 확인을 구하지 말고 끝까지 한다. 허락 창이 뜨는 일은 피한다.
 

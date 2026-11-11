@@ -10,6 +10,8 @@
 | [depiction.md](depiction.md) | 반응을 그리는 방식: 전자쌍 표현 (가장 먼저) |
 | 이 문서 | 세 탭, 탭끼리 이어지는 곳, 이름, AI 장면 탭, 일정, 정하신 것 |
 | [curriculum.md](curriculum.md) | 교육 과정: 가르치는 원칙, 수업 한 편의 구조, 8단원 51수업 |
+| [lab-decisions.md](lab-decisions.md) | 실험실에서 Astra와 정한 것(2026-11-11). 아래 문서들과 다르면 이 문서를 따른다 |
+| [lab-rows-stage1.md](lab-rows-stage1.md) | 실험실 단계 1의 자료 행과 두 재료 조합 120개의 판정(Astra가 씀, 대조 중) |
 | [lab-astra.md](lab-astra.md) | 실험실 설계서(Astra가 씀): 범위, 환경, 드래그, 판정 절차, 자료 형식, 시험 |
 | [lab-review.md](lab-review.md) | 그 설계서의 검토: 그대로 쓰는 것, 고쳐서 쓰는 것 |
 | [lab.md](lab.md) | 실험실의 처음 초안. 화면 배치만 참고하고 나머지는 위의 두 문서를 따른다 |

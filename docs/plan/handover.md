@@ -90,8 +90,10 @@ npx playwright install chromium firefox
 | [curriculum.md](curriculum.md) | 8단원 51수업 |
 | [ui.md](ui.md) | 화면 규칙 R1–R18 |
 | [handoff.md](handoff.md) | Opus에게 맡겨도 결과가 일정하게 나오게 하는 장치 |
+| [lab-decisions.md](lab-decisions.md) | **Astra와 정한 것.** 설계서와 다르면 이 문서를 따른다 |
+| [lab-rows-stage1.md](lab-rows-stage1.md) | Astra가 쓴 단계 1의 자료 행과 조합 120개의 판정(대조 중) |
 | [lab-astra.md](lab-astra.md) | Astra가 쓴 실험실 설계서 원문 |
-| [lab-review.md](lab-review.md) | 그 설계서를 클라우드 세션이 확인한 내용과 의견 |
+| [lab-review.md](lab-review.md) | 그 설계서를 클라우드 세션이 확인한 내용과 의견(4절 이후는 lab-decisions.md로 대체) |
 | [lab-brief.md](lab-brief.md) | Astra에게 준 의뢰서 |
 | [lab.md](lab.md) | 실험실의 처음 초안(대체됨) |
 
@@ -118,7 +120,7 @@ npx playwright install chromium firefox
 
 | | 무엇 | 어디서 보이나 |
 |---|---|---|
-| 1 | 침전 한 쌍이 고체로 보이지 않는다. 금속이 원자 하나로만 나온다. | `img/lab-check-precipitate.png`, `img/lab-check-metal.png` |
+| 1 | 침전 한 쌍이 고체로 보이지 않는다. 금속이 원자 하나로만 나온다. 그리는 방법은 정했고([lab-decisions.md](lab-decisions.md) 4절) 아직 만들지 않았다 | `img/lab-check-precipitate.png`, `img/lab-check-metal.png` |
 | 2 | 반응하는 큰 분자(ADP, 인산)는 바뀌지 않는 원자의 전자까지 모두 그려서 점이 많다 | 앱에 `?style=pairs`, 예시 '미토콘드리아' 4–6단계 |
 | 3 | 축합의 마지막에 이어진 분자 전체가 크게 돈다 | 비교 화면 '축합' |
 | 4 | 예시 가운데 리튬 이온 전지와 종유석은 새 방식에서 아직 눈으로 보지 않았다. 석회 동굴, 미토콘드리아, 뿌리털은 2026-11-11에 봤다(`node tools/shot-app.cjs`) | 앱에 `?style=pairs` |
@@ -163,24 +165,18 @@ Astra는 `c814963`을 읽었다. 그 뒤에 바뀐 것을 Astra에게 알려야 
 | 비교 화면 | 장면 12개. `window.cmp.script(대본)`으로 아무 대본이나 볼 수 있다 |
 | 도구 | `npm run flicker`, `npm run shot` |
 
-### 8.3 Astra와 정할 것
+### 8.3 Astra와 정한 것
 
-1. 원자로 분자를 만드는 모드를 실험실에 넣을지. Astra는 낱원자를 전부 뺐고, 윤범님이 처음 말한 화면은 "원소를 직접 넣어 반응시킬 수 있는 화면"이었다.
-2. 1차 화면에서 조건(묽기)을 고르게 할지, 한 가지로 고정할지.
-3. 화면에 보이는 주의 문구의 양.
-4. 침전 한 쌍과 금속을 어떻게 그려야 고체로 보이는지. 이것은 반응 표현의 일이기도 하다.
-5. 화학 검토자. 설계서는 사람 검토자를 요구하는데 지금은 없다.
-6. E1(있던 상태에서 이어서 컴파일)과 E2(고른 이온만 침전)의 구체적인 API. 엔진을 고치는 쪽과 설계하는 쪽이 함께 정해야 한다.
+2026-11-11에 로컬 세션이 Astra와 두 차례 주고받아 여섯 가지를 모두 정했다. 내용은 [lab-decisions.md](lab-decisions.md)에 있다. Astra가 쓴 단계 1의 자료 행(재료 15종, 반응 8개, 두 재료 조합 120개의 판정)은 [lab-rows-stage1.md](lab-rows-stage1.md)에 있고, 수치와 유도값은 Claude가 출처 원문과 대조했다. 자료 행은 아직 `draft`다(이견 세 가지가 남았다).
 
-### 8.4 일 나누기 제안
+### 8.4 일 나누기
 
 | 누가 | 무엇 |
 |---|---|
-| Astra | 실험실의 설계, 자료 행(물질·수치·규칙)과 출처, 화학 검토, 인수 시험의 기대 결과 |
-| Claude | 반응 표현, 엔진(E1–E6), 실험실 구현, 검사와 배포 |
-| 함께 | 8.3의 항목. 합의한 내용은 `docs/plan/`의 문서에 적고 커밋한다 |
+| Astra | 실험실의 설계, 자료 행(물질·수치·규칙)과 출처, 인수 시험의 기대 결과 |
+| Claude | 반응 표현, 엔진(E1–E6), 실험실 구현, 자료 행의 원문 대조, 검사와 배포 |
 
-Astra에게 일을 줄 때는 최신 커밋 주소, 8.2의 표, 그리고 답을 원하는 질문을 함께 준다. Astra는 저장소의 공개 주소와 배포된 화면을 읽을 수 있었다.
+Astra를 부르는 방법은 [lab-decisions.md](lab-decisions.md) 10절에 있다. 일을 줄 때는 지금 커밋, 바뀐 것, 답을 원하는 질문을 함께 준다. Astra는 저장소를 직접 읽고 대본을 컴파일해 볼 수 있다.
 
 ## 9. 윤범님과 일하는 방식
 

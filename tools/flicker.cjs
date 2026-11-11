@@ -10,7 +10,7 @@
 const { chromium } = require('playwright');
 const args = process.argv.slice(2);
 const base = args[0] && args[0].startsWith('http') ? args.shift() : 'http://localhost:4173/concept/';
-const jobs = args.length ? args : ['acid:0,1,2', 'base:0,1', 'neutral:1,2', 'subst:1,2', 'add:1,2,4', 'cond:1,2,4', 'coord:1,2', 'redox:1,2,3', 'radical:0,1,2', 'cell:1,2,3'];
+const jobs = args.length ? args : ['acid:0,1,2', 'base:0,1', 'neutral:1,2', 'subst:1,2', 'add:1,2,4', 'cond:1,2,4', 'coord:1,2', 'redox:1,2,3', 'radical:0,1,2', 'cell:1,2,3', 'solid:1,2,3', 'metal:1,2,3'];
 const LIMIT = 14;
 // Which stage of the compare page to measure: the new drawing style (right) by default; SIDES=old,new measures both.
 const SIDES = (process.env.SIDES || 'new').split(',');

@@ -75,7 +75,7 @@ export function tokenize(src: string, line: number, errors: Diag[]): { words: st
   return { words, quoted };
 }
 
-const HEADER_OPS = new Set(['scene', 'stage', 'lens', 'crowd', 'crystal', 'electrode', 'protein']);
+const HEADER_OPS = new Set(['scene', 'stage', 'lens', 'crowd', 'crystal', 'metal', 'electrode', 'protein']);
 
 export function parse(src: string): ScriptAst {
   const errors: Diag[] = [];

@@ -27,7 +27,7 @@ import {
   type Vec,
 } from '../util/math';
 import { hashString } from '../util/rng';
-import { blendDomains, bystanders, drawPairs, stableDomains, stableFreeAngle } from './pairs';
+import { blendDomains, bystanders, drawPairs, drawSolids, stableDomains, stableFreeAngle } from './pairs';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const f1 = (n: number) => n.toFixed(1);
@@ -479,7 +479,7 @@ export class StageView {
     const quiet = tl.steps.some((s) => s.arrows.length > 0 || !!s.shifts?.length) ? 'quiet' : 'plain';
     if (this.svg.dataset.crowd !== quiet) this.svg.dataset.crowd = quiet;
     const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes, simple: this.collective, aside: bystanders(tl) }) : null;
-    if (pairs) out.push(...pairs.under);
+    if (pairs) out.push(...drawSolids(step?.before ?? topo, step ? after : topo, pos, !step ? 1 : pre ? 0 : during ? prog : 1, (n) => !!tl.stage.electrodes?.[n]), ...pairs.under);
     else out.push(...this.drawBonds(step, t, win, bonds, pos, atoms, isCrowd, opacity));
     // Moving electrons: marked where they are before the change, then carried as the tip of the
     // bond they leave or make. The pieces of bond they drag go under the atoms, the electrons over.
@@ -536,7 +536,7 @@ export class StageView {
       for (const a of atoms) {
         const p = pos.get(a.id)!;
         const r = element(a.el).r;
-        const keepOff = pairs?.avoid?.get(a.id) ?? [];
+        const keepOff = [...(pairs?.avoid?.get(a.id) ?? []), ...this.touching(after, a.id)];
         // Where the badge sits: decided once from the world's own coordinates and turned with the
         // molecule, so that it does not hop about.
         const at = (w: World, sweep = true) => {
@@ -744,6 +744,30 @@ export class StageView {
   }
 
   /** Lone pairs (two dots) and unpaired electrons (one dot) around an atom. */
+  /** Directions from an atom of a solid to the atoms packed against it (a charge badge keeps clear of them). */
+  private touchCache = new WeakMap<World, Map<string, number[]>>();
+  private touching(w: World, id: string): number[] {
+    let m = this.touchCache.get(w);
+    if (!m) {
+      m = new Map();
+      for (const ids of w.crystals.values()) {
+        for (const x of ids) {
+          const a = w.atoms.get(x);
+          if (!a) continue;
+          const out: number[] = [];
+          for (const y of ids) {
+            const b = w.atoms.get(y);
+            if (!b || y === x) continue;
+            if (Math.hypot(b.x - a.x, b.y - a.y) < element(a.el).r + element(b.el).r + 12) out.push(Math.atan2(b.y - a.y, b.x - a.x));
+          }
+          m.set(x, out);
+        }
+      }
+      this.touchCache.set(w, m);
+    }
+    return m.get(id) ?? [];
+  }
+
   private domainDots(w: World, a: Atom, p: Vec, pos: Map<string, Vec>, op: number, given?: { angle: number; single: boolean }[]): string[] {
     if (a.lp + a.rad <= 0 || op <= 0.01) return [];
     const out: string[] = [];

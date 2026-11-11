@@ -296,6 +296,83 @@ export function bystanders(tl: Timeline): Set<string> {
   return out;
 }
 
+/**
+ * What makes a solid read as a solid: its particles lie on one body. An ionic solid gets a pale
+ * angular slab behind its ions, a piece of metal one smooth surface around its atoms. The slab is
+ * a mark for "these belong to one solid", from the first pair on; it grows as ions join and
+ * shrinks as they leave. It is not a crystal face, and it draws no bond between the ions.
+ * `skip`: solids the stage draws itself (electrode plates).
+ * `prog`: how far the step's change has come (0..1), for atoms that become part of a solid where they are.
+ */
+export function drawSolids(before: World, after: World, pos: Map<string, Vec>, prog: number, skip: (name: string) => boolean): string[] {
+  const back: string[] = [];
+  const front: string[] = [];
+  const names = new Set([...before.crystals.keys(), ...after.crystals.keys()]);
+  for (const name of names) {
+    if (skip(name) || name === 'ice') continue;
+    const inB = new Set(before.crystals.get(name) ?? []);
+    const inA = new Set(after.crystals.get(name) ?? []);
+    const ids = [...new Set([...inB, ...inA])].filter((id) => pos.has(id));
+    if (!ids.length) continue;
+    const atomOf = (id: string) => after.atoms.get(id) ?? before.atoms.get(id)!;
+    // How firmly a particle is in the solid at this moment: fully while it is a member before and
+    // after; one that arrives counts as it nears its place, one that leaves until it has moved off.
+    const hold = (id: string, home: World, reach: number): number => {
+      if (inB.has(id) && inA.has(id)) return 1;
+      const h = home.atoms.get(id);
+      const p = pos.get(id);
+      if (!h || !p) return 0;
+      return clamp(1.3 - dist(p, h) / reach, 0, 1);
+    };
+    const metal = ids.some((id) => atomOf(id).lattice);
+    if (metal) {
+      // Only atoms that are metal (not ions resting against the piece) are inside the surface.
+      for (const id of ids) {
+        const a = atomOf(id);
+        const wasMetal = !!before.atoms.get(id)?.lattice && inB.has(id);
+        const isMetal = !!after.atoms.get(id)?.lattice && inA.has(id);
+        if (!wasMetal && !isMetal) continue;
+        const r = element(a.el).r;
+        // An atom that turns into metal where it rests is taken in as its electrons arrive; one that leaves, as it moves off.
+        const k = wasMetal && isMetal ? 1 : isMetal ? smooth(clamp((prog - 0.55) / 0.45, 0, 1)) : hold(id, before, r * 2.2);
+        if (k <= 0.01) continue;
+        const p = pos.get(id)!;
+        back.push(`<circle class="solid metal edge" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r + 8.5)}" opacity="${f1(k)}"/>`);
+        front.push(`<circle class="solid metal" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r + 7)}" opacity="${f1(k)}"/>`);
+      }
+      continue;
+    }
+    // Ionic solid: one square tile per ion, as wide as the ions are apart; together they make the slab.
+    const world = inA.size ? after : before;
+    const units: string[][] = [];
+    const seen = new Set<string>();
+    for (const id of ids) {
+      if (seen.has(id)) continue;
+      const w = after.atoms.has(id) ? after : before;
+      const c = component(w, id).filter((x) => pos.has(x));
+      c.forEach((x) => seen.add(x));
+      units.push(c);
+    }
+    const home = (u: string[], w: World) => {
+      const at = u.map((id) => w.atoms.get(id)).filter(Boolean) as Atom[];
+      return at.length ? { x: at.reduce((s, a) => s + a.x, 0) / at.length, y: at.reduce((s, a) => s + a.y, 0) / at.length } : null;
+    };
+    const homes = units.map((u) => home(u, world)).filter(Boolean) as Vec[];
+    let side = Infinity;
+    for (let i = 0; i < homes.length; i++) for (let j = i + 1; j < homes.length; j++) side = Math.min(side, dist(homes[i], homes[j]));
+    if (!Number.isFinite(side)) side = 2 * Math.max(...units[0].map((id) => element(atomOf(id).el).r)) + 7;
+    for (const u of units) {
+      const c = { x: u.reduce((s, id) => s + pos.get(id)!.x, 0) / u.length, y: u.reduce((s, id) => s + pos.get(id)!.y, 0) / u.length };
+      const k = Math.min(...u.map((id) => hold(id, inA.has(id) ? after : before, side * 0.4)));
+      if (k <= 0.01) continue;
+      const h = side / 2 + 5;
+      back.push(`<rect class="solid salt edge" x="${f1(c.x - h - 1.5)}" y="${f1(c.y - h - 1.5)}" width="${f1(2 * h + 3)}" height="${f1(2 * h + 3)}" rx="4" opacity="${f1(k)}"/>`);
+      front.push(`<rect class="solid salt" x="${f1(c.x - h)}" y="${f1(c.y - h)}" width="${f1(2 * h)}" height="${f1(2 * h)}" rx="3" opacity="${f1(k)}"/>`);
+    }
+  }
+  return [...back, ...front];
+}
+
 export function drawPairs(inp: PairsInput): PairsOutput {
   const { step, win, topo, after, pos, isCrowd, opacity } = inp;
   const under: string[] = [];

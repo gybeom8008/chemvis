@@ -21,6 +21,46 @@ step "O의 전자쌍이 H와 결합하고, H와 Cl을 잇던 전자쌍은 Cl에 
 step "이렇게 해서 하이드로늄 이온(H3O+)과 염화 이온(Cl-)이 생기고, 둘레의 물 분자가 두 이온을 둘러싸요"
   solvate all
 `;
+// Solids. An ionic solid from its first pair of ions on, and a piece of metal that gives electrons to ions.
+const SOLID = `scene "염화 은 고체가 생길 때"
+stage solution
+crowd H2O in water 28
+mol a1 = Ag+ at 300,220
+mol b1 = Cl- at 470,250
+mol a2 = Ag+ at 690,200
+mol b2 = Cl- at 640,400
+mol a3 = Ag+ at 280,420
+mol b3 = Cl- at 420,430
+
+step "물속에 은 이온(Ag+)과 염화 이온(Cl-)이 세 개씩 녹아 있어요"
+  solvate all
+step "은 이온 하나와 염화 이온 하나가 물 분자를 떨치고 만나 고체가 돼요"
+  precipitate using a1 b1 as s
+step "다음 한 쌍은 이미 있는 고체에 붙어요"
+  precipitate using a2 b2 onto s
+step "마지막 한 쌍도 같은 고체에 붙어서 고체가 커져요"
+  precipitate using a3 b3 onto s
+`;
+const METAL = `scene "아연 조각과 은 이온"
+stage solution
+crowd H2O in water 26
+metal m = Zn at 420,330 3x2
+mol a1 = Ag+ at 640,200
+mol a2 = Ag+ at 700,330
+
+step "아연 조각이 은 이온(Ag+)이 녹아 있는 물에 들어 있어요"
+  note m "아연 조각"
+  solvate a1
+  solvate a2
+step "은 이온 둘이 아연 조각의 표면에 닿아요"
+  land a1 a2 on m3
+step "표면의 아연 원자에서 전자가 하나씩 은 이온으로 건너가요"
+  hop m3.Zn -> a1.Ag
+  hop m3.Zn -> a2.Ag
+  join a1 a2 to m
+step "전자를 내준 아연은 이온이 되어 물속으로 나오고, 은은 조각 표면에 붙어 있어요"
+  leave m3 from m
+`;
 const chapter = (id: string) => CHAPTERS.find((c) => c.id === id)!.script;
 const SCENES: { id: string; name: string; src: string }[] = [
   { id: 'acid', name: '산: HCl과 물', src: ACID },
@@ -35,6 +75,8 @@ const SCENES: { id: string; name: string; src: string }[] = [
   { id: 'dissolve', name: '용해', src: chapter('dissolving') },
   { id: 'equil', name: '평형', src: chapter('equilibrium') },
   { id: 'radical', name: '라디칼', src: chapter('radical') },
+  { id: 'solid', name: '침전', src: SOLID },
+  { id: 'metal', name: '금속 조각', src: METAL },
 ];
 
 const POUCH = (hot: boolean, shared: boolean) => {

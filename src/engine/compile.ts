@@ -93,6 +93,9 @@ const OP_DURATION: Record<string, number> = {
   leach: 5.2,
   oxidize: 3.6,
   precipitate: 4.4,
+  land: 2.6,
+  join: 3.0,
+  leave: 3.6,
   freeze: 4.6,
   melt: 4.6,
   'gas-in': 3.6,
@@ -261,6 +264,8 @@ class Ctx {
         return this.crowd(cmd);
       case 'crystal':
         return this.crystal(cmd);
+      case 'metal':
+        return this.metal(cmd);
       case 'electrode':
         return this.electrode(cmd);
       case 'protein':
@@ -690,7 +695,13 @@ class Ctx {
       case 'ensemble':
         return this.ensemble(a);
       case 'precipitate':
-        return this.precipitate(a);
+        return a[0] === 'using' ? this.precipitateUsing(a) : this.precipitate(a);
+      case 'land':
+        return this.land(a);
+      case 'join':
+        return this.join(a);
+      case 'leave':
+        return this.leave(a);
       case 'freeze':
         return this.freeze(a);
       case 'melt':
@@ -725,6 +736,7 @@ class Ctx {
         return;
       case 'crowd':
       case 'crystal':
+      case 'metal':
       case 'load':
       case 'scene':
       case 'stage':
@@ -2387,6 +2399,274 @@ class Ctx {
       lattice.push(...comp);
       this.focusMol(comp);
     });
+  }
+
+  /**
+   * precipitate using a b [onto s] [as s] : exactly these two dissolved ions (by their declared
+   * names, cation first) shed their water and become one solid; with `onto`, they join a solid of
+   * the same salt that is already there. Nothing is chosen by formula, so no other ion is used up.
+   */
+  precipitateUsing(a: string[]): void {
+    const usage = 'precipitate using a b  (있던 고체에 더하려면 onto s, 새 고체에 이름을 붙이려면 as s)';
+    const refs: string[] = [];
+    let onto: string | null = null;
+    let asName: string | null = null;
+    for (let i = 1; i < a.length; i++) {
+      if (a[i] === 'onto') onto = a[++i] ?? '';
+      else if (a[i] === 'as') asName = a[++i] ?? '';
+      else refs.push(a[i]);
+    }
+    if (refs.length !== 2 || onto === '' || asName === '') this.fail(`고른 이온의 석출은 이렇게 적어요: ${usage}`);
+    if (onto && asName) this.fail('onto와 as는 함께 쓰지 않아요. 있던 고체에 더하면 그 고체의 이름을 그대로 써요.');
+    const unknown = refs.filter((r) => !this.w.names.has(r));
+    if (unknown.length) this.fail(`precipitate using에는 mol로 선언한 이름을 적어요(${unknown.join(', ')}은(는) 선언한 이름이 아니에요).`);
+    const cat = component(this.w, this.w.names.get(refs[0])!);
+    const an = component(this.w, this.w.names.get(refs[1])!);
+    if (cat[0] === an[0]) this.fail('같은 이온을 두 번 적었어요.');
+    const inSolid = new Set([...this.w.crystals.values()].flat());
+    const adsorbed = new Set(this.w.sites.map((x) => x.occupant).filter(Boolean) as string[]);
+    [cat, an].forEach((c, i) => {
+      const at = this.w.atoms.get(c[0])!;
+      if (c.length !== 1) this.fail(`${refs[i]}은(는) 원자 하나로 된 이온이 아니에요.`);
+      if (at.crowd || at.lattice || at.gone || at.sei || inSolid.has(at.id) || adsorbed.has(at.id)) this.fail(`${refs[i]}은(는) 물에 녹아 있는 이온이 아니에요.`);
+    });
+    const qc = componentCharge(this.w, cat);
+    const qa = componentCharge(this.w, an);
+    if (qc <= 0 || qa >= 0) this.fail('precipitate using은 양이온, 음이온 순서로 적어요.');
+    if (qc !== -qa) this.fail('전하 크기가 같은 이온 짝만 석출할 수 있어요.');
+    let s = this.ionRadius(cat) + this.ionRadius(an) + 7;
+    let name: string;
+    let goalCat: Vec;
+    let goalAn: Vec;
+    if (onto) {
+      const lat = this.w.crystals.get(onto);
+      if (!lat) this.fail(`'${onto}'이라는 고체가 없어요.`);
+      const units = this.latticeUnits(lat);
+      if (!units.length) this.fail(`'${onto}'에는 이온이 남아 있지 않아요.`);
+      const kinds = new Set(units.map((u) => formulaOf(this.w, u)));
+      if (kinds.size !== 2 || !kinds.has(formulaOf(this.w, cat)) || !kinds.has(formulaOf(this.w, an))) this.fail(`'${onto}'은(는) 같은 염의 고체가 아니에요.`);
+      const pts = units.map((u) => ({ p: centerOf(this.w, u), plus: componentCharge(this.w, u) > 0 }));
+      let m = Infinity;
+      for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) m = Math.min(m, dist(pts[i].p, pts[j].p));
+      if (Number.isFinite(m) && m < s * 1.6) s = m;
+      const taken = (q: Vec) => pts.some((x) => dist(x.p, q) < s * 0.5);
+      const dirs = [
+        { x: s, y: 0 },
+        { x: -s, y: 0 },
+        { x: 0, y: s },
+        { x: 0, y: -s },
+      ];
+      // A place for the pair: two free neighbouring spots, each beside ions of the other sign.
+      // The spots with the most neighbours come first (the solid stays compact), then the ones
+      // nearest the middle of the solid and nearest the pair.
+      const here = lerpV(centerOf(this.w, cat), centerOf(this.w, an), 0.5);
+      const cen = centroid(pts.map((x) => x.p));
+      const nb = (q: Vec) => pts.filter((y) => dist(y.p, q) < s * 1.1).length;
+      let best: { c: Vec; a: Vec; score: number } | null = null;
+      for (const x of pts) {
+        for (const d of dirs) {
+          const q1 = add(x.p, d);
+          if (taken(q1)) continue;
+          for (const d2 of dirs) {
+            const q2 = add(q1, d2);
+            if (taken(q2) || dist(q2, x.p) < 1) continue;
+            // q1 sits beside x, so it takes the other sign; q2, one step further, the same sign as x.
+            const mid = lerpV(q1, q2, 0.5);
+            const score = (nb(q1) + nb(q2)) * 1000 - dist(mid, cen) * 4 - dist(mid, here) * 0.2;
+            if (!best || score > best.score) best = { c: x.plus ? q2 : q1, a: x.plus ? q1 : q2, score };
+          }
+        }
+      }
+      if (!best) this.fail('고체에 이온 한 쌍이 들어갈 빈 곳이 없어요.');
+      name = onto;
+      goalCat = best.c;
+      goalAn = best.a;
+    } else {
+      name = asName ?? this.autoName('ppt');
+      if (this.w.crystals.has(name) || this.w.names.has(name)) this.fail(`'${name}'이라는 이름은 이미 쓰고 있어요.`);
+      const c = lerpV(centerOf(this.w, cat), centerOf(this.w, an), 0.5);
+      // Side by side where they meet, each on the side it came from.
+      const left = centerOf(this.w, cat).x <= centerOf(this.w, an).x;
+      goalCat = { x: c.x + (left ? -s / 2 : s / 2), y: c.y };
+      goalAn = { x: c.x + (left ? s / 2 : -s / 2), y: c.y };
+      this.w.crystals.set(name, []);
+    }
+    const lattice = this.w.crystals.get(name)!;
+    const moves: [string[], Vec][] = [
+      [cat, goalCat],
+      [an, goalAn],
+    ];
+    for (const u of this.latticeUnits(lattice)) this.focusMol(u);
+    for (const [comp, goal] of moves) {
+      this.detach(comp);
+      const start = centerOf(this.w, comp);
+      this.moveGroup(comp, start, this.wander(start, goal, null, 0.3), 0, 0.05, 0.95);
+      lattice.push(...comp);
+      this.focusMol(comp);
+    }
+  }
+
+  // ------------------------------------------------------------ ops: a piece of metal in a solution
+
+  /**
+   * metal m = Zn at center 3x2 : a piece of metal, its atoms named m1, m2, … row by row. The outer
+   * electrons of these atoms belong to the piece as a whole, so no dots are drawn on them.
+   */
+  metal(cmd: Cmd): void {
+    const a = cmd.args;
+    const mol = a[2] ? lookupMolecule(a[2]) : undefined;
+    if (a[1] !== '=' || !a[0] || !mol) this.fail('금속 조각은 이렇게 적어요: metal m = Zn at center 3x2');
+    if (mol.atoms.length !== 1 || !METALS.has(mol.atoms[0].el)) this.fail(`'${a[2]}'은(는) 금속 조각으로 쓸 수 없어요. Zn, Cu, Ag 같은 금속 원자를 적어 주세요.`);
+    const name = a[0];
+    let nx = 3;
+    let ny = 2;
+    let c = regionCenter(this.region(this.stage.defaultRegion));
+    for (let i = 3; i < a.length; i++) {
+      if (a[i] === 'at' && a[i + 1]) {
+        const xy = a[i + 1].match(/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
+        c = xy ? { x: parseFloat(xy[1]), y: parseFloat(xy[2]) } : regionCenter(this.region(a[i + 1]));
+        i++;
+        continue;
+      }
+      const d = a[i].match(/^(\d+)x(\d+)$/);
+      if (d) {
+        nx = clamp(parseInt(d[1], 10), 1, 6);
+        ny = clamp(parseInt(d[2], 10), 1, 4);
+      }
+    }
+    const r = element(mol.atoms[0].el).r;
+    const step = r * 2 + 2;
+    const rowH = step * 0.87;
+    const ids: string[] = [];
+    let k = 0;
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        // Rows are set half a step apart, as close-packed atoms sit.
+        const x = c.x + (i - (nx - 1) / 2) * step + (j % 2 ? step / 4 : -step / 4);
+        const y = c.y + (j - (ny - 1) / 2) * rowH;
+        const got = this.spawn(a[2], `${name}${++k}`, false, { x, y });
+        for (const id of got) this.w.atoms.get(id)!.lattice = true;
+        ids.push(...got);
+      }
+    }
+    this.w.crystals.set(name, ids);
+    this.w.names.set(name, ids[0]);
+  }
+
+  /** The piece of metal an atom is part of. */
+  pieceOf(id: string): string | null {
+    if (!this.w.atoms.get(id)?.lattice) return null;
+    for (const [name, ids] of this.w.crystals) if (ids.includes(id)) return name;
+    return null;
+  }
+
+  /**
+   * land a1 a2 on m1 : dissolved metal ions come to rest against a surface atom of a piece of
+   * metal, each on its own free spot. Their water stays behind.
+   */
+  land(a: string[]): void {
+    const onI = a.indexOf('on');
+    const refs = onI > 0 ? a.slice(0, onI) : [];
+    if (!refs.length || !a[onI + 1]) this.fail('land는 이렇게 적어요: land a1 a2 on m1  (금속 표면에 닿을 이온들, 닿을 표면 원자)');
+    const spot = this.w.atoms.get(this.mol(a[onI + 1])[0])!;
+    const piece = this.pieceOf(spot.id);
+    if (!piece) this.fail(`${a[onI + 1]}은(는) 금속 조각의 원자가 아니에요.`);
+    const members = this.w.crystals.get(piece)!.map((id) => this.w.atoms.get(id)!);
+    const cen = centroid(members);
+    const out = angleOf(dist(spot, cen) > 1 ? sub(spot, cen) : { x: 0, y: -1 });
+    const rs = element(spot.el).r;
+    const ions = refs.map((ref) => {
+      const c = this.mol(ref);
+      const at = this.w.atoms.get(c[0])!;
+      if (c.length !== 1 || !METALS.has(at.el) || at.lattice || this.w.crystals.get(piece)!.includes(at.id)) this.fail(`${ref}은(는) 물에 녹아 있는 금속 이온이 아니에요.`);
+      return at;
+    });
+    // Places touching the surface atom and clear of every other atom of the piece, nearest the outward side first.
+    const places: Vec[] = [];
+    const r0 = element(ions[0].el).r;
+    for (let k = 0; k < 24; k++) {
+      const ang = out + ((k % 2 ? -1 : 1) * Math.ceil(k / 2) * Math.PI) / 12;
+      const p = add(spot, fromAngle(ang, rs + r0 + 2));
+      if (members.some((m) => m.id !== spot.id && dist(m, p) < element(m.el).r + r0 + 1)) continue;
+      if (places.some((q) => dist(q, p) < r0 * 2 + 2)) continue;
+      places.push(p);
+    }
+    if (places.length < ions.length) this.fail('이 표면 원자 둘레에 이온이 닿을 자리가 모자라요.');
+    // Each ion takes the free place nearest to it, so that their paths do not cross.
+    const free = places.slice(0, ions.length);
+    for (const ion of [...ions].sort((p, q) => dist(p, spot) - dist(q, spot))) {
+      free.sort((p, q) => dist(p, ion) - dist(q, ion));
+      const goal = free.shift()!;
+      const start = { x: ion.x, y: ion.y };
+      this.detach([ion.id]);
+      this.moveGroup([ion.id], start, [start, lerpV(start, goal, 0.6), goal], 0, 0, 1);
+      // Its electrons, when they come, arrive on the side that touches the metal.
+      ion.face = angleOf(sub(spot, goal));
+      // From here on it stays where it touches the piece and moves with it.
+      this.w.crystals.get(piece)!.push(ion.id);
+    }
+    this.focus(this.w.crystals.get(piece)!);
+  }
+
+  /** join a1 a2 to m : atoms that have become neutral where they touch a piece of metal are part of it from now on. */
+  join(a: string[]): void {
+    const toI = a.indexOf('to');
+    const refs = toI > 0 ? a.slice(0, toI) : [];
+    const piece = a[toI + 1];
+    if (!refs.length || !piece) this.fail('join은 이렇게 적어요: join a1 a2 to m');
+    const lat = this.w.crystals.get(piece);
+    if (!lat || !lat.some((id) => this.w.atoms.get(id)?.lattice)) this.fail(`'${piece}'이라는 금속 조각이 없어요.`);
+    for (const ref of refs) {
+      const c = this.mol(ref);
+      const at = this.w.atoms.get(c[0])!;
+      if (c.length !== 1 || !METALS.has(at.el)) this.fail(`${ref}은(는) 금속 원자가 아니에요.`);
+      if (componentCharge(this.w, c) !== 0) this.fail(`${ref}은(는) 아직 이온이에요. 전자를 받아 원자가 된 뒤에 금속에 붙어요.`);
+      if (!lat.includes(at.id)) this.fail(`${ref}은(는) ${piece}에 닿아 있지 않아요. 먼저 land로 표면에 닿게 해 주세요.`);
+      at.lattice = true;
+      this.touched.add(at.id);
+    }
+    this.focus(lat);
+  }
+
+  /** leave m1 from m : a surface atom that has given up its electrons leaves the piece as an ion and goes out into the water. */
+  leave(a: string[]): void {
+    const ref = a[0];
+    const piece = a[2];
+    if (a[1] !== 'from' || !ref || !piece) this.fail('leave는 이렇게 적어요: leave m1 from m');
+    const lat = this.w.crystals.get(piece);
+    if (!lat) this.fail(`'${piece}'이라는 금속 조각이 없어요.`);
+    const c = this.mol(ref);
+    const at = this.w.atoms.get(c[0])!;
+    if (!lat.includes(at.id)) this.fail(`${ref}은(는) ${piece}의 원자가 아니에요.`);
+    if (componentCharge(this.w, c) <= 0) this.fail(`${ref}은(는) 전자를 내주지 않았어요. 이온이 된 원자만 금속에서 떨어져 나와요.`);
+    lat.splice(lat.indexOf(at.id), 1);
+    at.lattice = false;
+    const rest = lat.map((id) => this.w.atoms.get(id)!);
+    const cen = rest.length ? centroid(rest) : { x: at.x, y: at.y + 1 };
+    // Out through the widest opening between the atoms around it.
+    const near = rest
+      .filter((m) => dist(m, at) < element(m.el).r + element(at.el).r + 10)
+      .map((m) => angleOf(sub(m, at)))
+      .sort((p, q) => p - q);
+    let dirAng = angleOf(sub(at, cen));
+    if (near.length >= 2) {
+      let bestGap = -1;
+      near.forEach((a0, i) => {
+        const a1 = i + 1 < near.length ? near[i + 1] : near[0] + 2 * Math.PI;
+        if (a1 - a0 > bestGap) {
+          bestGap = a1 - a0;
+          dirAng = (a0 + a1) / 2;
+        }
+      });
+    }
+    const region = this.region(this.stage.defaultRegion);
+    const start = { x: at.x, y: at.y };
+    const far = add(start, fromAngle(dirAng, 150));
+    const goal = { x: clamp(far.x, region.x + 80, region.x + region.w - 80), y: clamp(far.y, region.y + 90, region.y + region.h - 80) };
+    this.moveGroup([at.id], start, [start, lerpV(start, goal, 0.5), goal], 0, 0, 0.6);
+    if (this.freeSolvent().length) this.hydrate([at.id], 0.35, 1);
+    this.focus([at.id, ...lat]);
+    this.touched.add(at.id);
   }
 
   /** freeze water : water molecules settle into the ordered hydrogen-bond network of ice. */

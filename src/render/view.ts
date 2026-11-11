@@ -27,7 +27,7 @@ import {
   type Vec,
 } from '../util/math';
 import { hashString } from '../util/rng';
-import { blendDomains, drawPairs, stableDomains, stableFreeAngle } from './pairs';
+import { blendDomains, bystanders, drawPairs, stableDomains, stableFreeAngle } from './pairs';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const f1 = (n: number) => n.toFixed(1);
@@ -478,7 +478,7 @@ export class StageView {
     // colour. Where the solvent itself is the subject (evaporation, ice), it keeps its colours.
     const quiet = tl.steps.some((s) => s.arrows.length > 0 || !!s.shifts?.length) ? 'quiet' : 'plain';
     if (this.svg.dataset.crowd !== quiet) this.svg.dataset.crowd = quiet;
-    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes, simple: this.collective }) : null;
+    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes, simple: this.collective, aside: bystanders(tl) }) : null;
     if (pairs) out.push(...pairs.under);
     else out.push(...this.drawBonds(step, t, win, bonds, pos, atoms, isCrowd, opacity));
     // Moving electrons: marked where they are before the change, then carried as the tip of the
@@ -539,9 +539,9 @@ export class StageView {
         const keepOff = pairs?.avoid?.get(a.id) ?? [];
         // Where the badge sits: decided once from the world's own coordinates and turned with the
         // molecule, so that it does not hop about.
-        const at = (w: World) => {
+        const at = (w: World, sweep = true) => {
           let ang = stableFreeAngle(w, a.id, pos, keepOff);
-          if (during && step && step.before.atoms.has(a.id) && after.atoms.has(a.id)) {
+          if (sweep && during && step && step.before.atoms.has(a.id) && after.atoms.has(a.id)) {
             // While the atom's surroundings change, the badge goes round from its old place to its new one.
             const from = stableFreeAngle(step.before, a.id, pos, keepOff);
             const to = stableFreeAngle(after, a.id, pos, keepOff);
@@ -570,8 +570,10 @@ export class StageView {
           const qb = b0 ? formalCharge(step.before, b0) : qa;
           if (qa === qb) badge(qa, opacity(a.id), at(after));
           else {
-            badge(qb, opacity(a.id) * (1 - turn), at(b0 ? step.before : after));
-            badge(qa, opacity(a.id) * turn, at(after));
+            // A charge that changes: the old badge fades where it was and the new one comes up in
+            // its own place. Neither travels round the atom, across the electron pairs that are moving.
+            badge(qb, opacity(a.id) * (1 - turn), at(b0 ? step.before : after, false));
+            badge(qa, opacity(a.id) * turn, at(after, false));
           }
           continue;
         }

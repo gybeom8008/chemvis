@@ -6,7 +6,8 @@
 //   node tools/shot.cjs out.png acid 1:0.1,1:0.4,1:0.7,1:1        a scene of the compare page (its button id)
 //   node tools/shot.cjs out.png my-scene.txt 0:1,1:0.5,1:1 3      any script file; last number = columns
 //
-// Each moment is step:time (time 0..1 within the step). SIDE=old|new (default new), BASE=<compare page url>.
+// Each moment is step:time (time 0..1 within the step). SIDE=old|new (default new), BASE=<compare page url>,
+// WIDTH=<pixels of each picture, default 520>.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const [outPng, what, spec, colsArg] = process.argv.slice(2);
@@ -39,7 +40,7 @@ const side = process.env.SIDE || 'new';
   const sheet = await browser.newPage({ viewport: { width: 1600, height: 900 } });
   await sheet.setContent(
     `<body style="margin:0;background:#333"><div id="g" style="display:grid;grid-template-columns:repeat(${cols},auto);gap:4px;width:max-content">` +
-      shots.map((b, i) => `<div style="position:relative"><img src="data:image/png;base64,${b}" style="display:block;width:520px"><span style="position:absolute;left:6px;top:4px;font:12px sans-serif;background:#fffc;padding:0 4px">${moments[i]}</span></div>`).join('') +
+      shots.map((b, i) => `<div style="position:relative"><img src="data:image/png;base64,${b}" style="display:block;width:${process.env.WIDTH || 520}px"><span style="position:absolute;left:6px;top:4px;font:12px sans-serif;background:#fffc;padding:0 4px">${moments[i]}</span></div>`).join('') +
       '</div></body>',
   );
   await sheet.waitForTimeout(200);

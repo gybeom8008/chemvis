@@ -189,6 +189,7 @@ export function compile(src: string): CompileResult {
     ctx.mid = null;
     ctx.touched = new Set();
     ctx.batteryMode = null;
+    ctx.upcoming = ast.steps[index + 1]?.cmds ?? [];
     let maxDur = 0;
     for (const cmd of s.cmds) {
       ctx.line = cmd.line;
@@ -238,6 +239,8 @@ class Ctx {
   anim: StepAnim | null = null;
   mid: World | null = null;
   touched = new Set<string>();
+  /** The commands of the step after this one: how a molecule comes up to another depends on what the two do next. */
+  upcoming: Cmd[] = [];
   autoCount = new Map<string, number>();
 
   fail(msg: string): never {
@@ -816,7 +819,18 @@ class Ctx {
       pts.push(q);
     }
     pts.push(p1);
-    return pts;
+    // Round the corners (three times): a particle drifts, it does not turn on the spot, and the trail it
+    // leaves should read as one path rather than a zigzag.
+    let out = pts;
+    for (let pass = 0; pass < 3; pass++) {
+      const next: Vec[] = [out[0]];
+      for (let i = 0; i + 1 < out.length; i++) {
+        next.push(lerpV(out[i], out[i + 1], 0.25), lerpV(out[i], out[i + 1], 0.75));
+      }
+      next.push(out[out.length - 1]);
+      out = next;
+    }
+    return out;
   }
 
   focus(ids: string[]): void {
@@ -1247,30 +1261,68 @@ class Ctx {
       dir = fromAngle(best);
     } else dir = norm(sub(M, T));
     const gap = element(T.el).r + element(M.el).r + 58;
-    const goal = add(T, scale(dir, gap));
-    // Turn so that the unpaired electron (radicals), else a lone pair, else the free side faces the target.
-    const want = angleOf(scale(dir, -1));
     const mn = neighbors(this.w, mover).map((n) => this.w.atoms.get(n.id)!);
-    let face: number;
-    if (!mn.length) {
-      // A lone atom: just turn its electrons; the first unpaired electron (or first pair) faces the target.
-      face = want;
-      M.face = want;
-    } else if (M.rad > 0 || M.lp > 0) {
-      const doms = domainsInWorld(this.w, mover);
-      const pick = doms.filter((d) => d.single === M.rad > 0);
-      const list = pick.length ? pick : doms;
-      face = list.reduce((b, d) => (angDiff(d.angle, want) < angDiff(b, want) ? d.angle : b), list[0].angle);
-    } else {
-      face = angleOf(sub(M, centroid(mn)));
-    }
-    const rot = signedAng(face, want);
     const pivot = { x: M.x, y: M.y };
+    // Where the mover ends up when it comes in from `d`, and how far it turns: its unpaired
+    // electron (radicals), else a lone pair, else its free side faces the target.
+    const pose = (d: Vec): { goal: Vec; rot: number; want: number } => {
+      const want = angleOf(scale(d, -1));
+      let face: number;
+      if (!mn.length) face = want;
+      else if (M.rad > 0 || M.lp > 0) {
+        const doms = domainsInWorld(this.w, mover);
+        const pick = doms.filter((x) => x.single === M.rad > 0);
+        const list = pick.length ? pick : doms;
+        face = list.reduce((b, x) => (angDiff(x.angle, want) < angDiff(b, want) ? x.angle : b), list[0].angle);
+      } else face = angleOf(sub(M, centroid(mn)));
+      return { goal: add(T, scale(d, gap)), rot: signedAng(face, want), want };
+    };
+    // If the two are about to condense, the H that will leave has to end up beside the -OH it
+    // leaves with. Otherwise the electron pair that takes the H crosses the one that makes the
+    // new bond. Among the gaps around the target, take the one that brings them closest.
+    const oh = this.leavingOH(target, mover);
+    if (oh && tn.length >= 2 && mn.length) {
+      const hs = mn.filter((h) => h.el === 'H');
+      const angs = tn.map((n) => Math.atan2(n.y - T.y, n.x - T.x)).sort((p, q) => p - q);
+      const gaps = angs.map((a0, i) => ({ mid: (a0 + (i + 1 < angs.length ? angs[i + 1] : angs[0] + 2 * Math.PI)) / 2, width: (i + 1 < angs.length ? angs[i + 1] : angs[0] + 2 * Math.PI) - a0 }));
+      const widest = Math.max(...gaps.map((g) => g.width));
+      let bestD = Infinity;
+      for (const g of gaps) {
+        if (g.width < widest - 0.5 || !hs.length) continue;
+        const d = fromAngle(g.mid);
+        const ps = pose(d);
+        const near = Math.min(...hs.map((h) => dist(add(ps.goal, rotate(sub(h, pivot), ps.rot)), oh)));
+        if (near < bestD - 1e-6) {
+          bestD = near;
+          dir = d;
+        }
+      }
+    }
+    const { goal, rot, want } = pose(dir);
+    // A lone atom: just turn its electrons; the first unpaired electron (or first pair) faces the target.
+    if (!mn.length) M.face = want;
     this.moveGroup(ids, pivot, [pivot, goal], mn.length ? rot : 0, 0, 1);
     this.focusMol(comp);
     // The molecule it comes up to is part of the scene too.
     this.focusMol(component(this.w, target));
     (this.A.pulls ??= []).push({ a: mover, b: target });
+  }
+
+  /** The O of the -OH that `a` gives up, if the next step condenses `a` with `b`. */
+  leavingOH(a: string, b: string): Atom | null {
+    for (const c of this.upcoming) {
+      if (c.op !== 'condensation' || c.args.length < 2) continue;
+      try {
+        if (this.atom(c.args[0]) !== a || this.atom(c.args[1]) !== b) continue;
+      } catch {
+        continue;
+      }
+      const oh = neighbors(this.w, a)
+        .map((n) => this.w.atoms.get(n.id)!)
+        .find((o) => o.el === 'O' && neighbors(this.w, o.id).length === 2 && neighbors(this.w, o.id).some((x) => this.w.atoms.get(x.id)!.el === 'H'));
+      if (oh) return oh;
+    }
+    return null;
   }
 
   /** move w to right / move w to 300,200 / move w near a */

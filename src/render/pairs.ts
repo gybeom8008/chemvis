@@ -12,8 +12,8 @@
  */
 import { ELECTRONEGATIVITY, element } from '../chem/elements';
 import { electronDomains } from '../chem/geometry';
-import { plateSlot, type ArrowAnim, type StepAnim } from '../engine/timeline';
-import { formalCharge, type Atom, type World } from '../engine/world';
+import { plateSlot, type ArrowAnim, type StepAnim, type Timeline } from '../engine/timeline';
+import { component, formalCharge, type Atom, type World } from '../engine/world';
 import { add, clamp, dist, fromAngle, lerp, lerpV, norm, perp, scale, smooth, sub, type Vec } from '../util/math';
 
 export interface PairWin {
@@ -45,6 +45,8 @@ export interface PairsInput {
   electrodes?: Record<string, { x: number; top: number }>;
   /** A scene about many molecules at once (collisions, counts): molecules are drawn without their electrons. */
   simple?: boolean;
+  /** Atoms of molecules and ions that take no part in the scene's reactions: drawn without their electrons. */
+  aside?: Set<string>;
 }
 
 const f1 = (n: number) => n.toFixed(1);
@@ -255,6 +257,45 @@ export interface PairsOutput {
   plate?: Map<string, number>;
 }
 
+/**
+ * The atoms of molecules and ions that take no part in any reaction of a scene (the sulfate ions
+ * of a cell, say). Their electrons are not drawn: every dot on the stage should be one that
+ * matters to what happens. Empty for a scene without reactions, where nothing competes for the eye.
+ */
+const asideCache = new WeakMap<Timeline, Set<string>>();
+export function bystanders(tl: Timeline): Set<string> {
+  let out = asideCache.get(tl);
+  if (out) return out;
+  out = new Set<string>();
+  asideCache.set(tl, out);
+  if (!tl.steps.some((s) => s.arrows.length > 0 || !!s.shifts?.length)) return out;
+  const active = new Set<string>();
+  const mark = (w: World, id: string | undefined) => {
+    if (id && w.atoms.has(id)) for (const x of component(w, id)) active.add(x);
+  };
+  for (const s of tl.steps) {
+    const ends: (string | undefined)[] = [];
+    for (const ar of s.arrows) ends.push(ar.src?.a, ar.src?.b, ar.dst?.a, ar.dst?.b, ar.free?.atom);
+    for (const sh of s.shifts ?? []) ends.push(sh.src.a, sh.src.b, sh.dst.a, sh.dst.b);
+    for (const pl of s.pulls ?? []) ends.push(pl.a, pl.b);
+    // Anything whose electrons or bonds are different after the step took part in it as well.
+    for (const [id, a] of s.after.atoms) {
+      const b = s.before.atoms.get(id);
+      if (b && (b.lp !== a.lp || b.rad !== a.rad)) ends.push(id);
+    }
+    for (const [k, bd] of s.after.bonds) if ((s.before.bonds.get(k)?.order ?? 0) !== bd.order) ends.push(bd.a, bd.b);
+    for (const [k, bd] of s.before.bonds) if (!s.after.bonds.has(k)) ends.push(bd.a, bd.b);
+    for (const id of ends) {
+      mark(s.before, id);
+      mark(s.after, id);
+    }
+  }
+  const all = new Map<string, Atom>(tl.initial.atoms);
+  for (const s of tl.steps) for (const [id, a] of s.after.atoms) all.set(id, a);
+  for (const [id, a] of all) if (!active.has(id) && !a.crowd && !a.lattice) out.add(id);
+  return out;
+}
+
 export function drawPairs(inp: PairsInput): PairsOutput {
   const { step, win, topo, after, pos, isCrowd, opacity } = inp;
   const under: string[] = [];
@@ -262,6 +303,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   const byId = new Map(inp.atoms.map((a) => [a.id, a]));
   /** Solvent: drawn plainly (lines, no electrons), whether it is background or a shell around an ion. */
   const crowd = (id: string) => !!byId.get(id)?.crowd;
+  const aside = (id: string) => !!inp.aside?.has(id);
   const faint = (id: string) => {
     const a = byId.get(id);
     return !!a && isCrowd(a);
@@ -377,12 +419,12 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       offs.forEach((o, i) => {
         // The strands that are about to leave (or have just arrived) are the last ones.
         const isHot = i >= n - hot && hotOp > 0.01;
-        strand(b.a, b.b, o, n, '', op, !inp.simple);
+        strand(b.a, b.b, o, n, '', op, !inp.simple && !aside(b.a));
         if (isHot) strand(b.a, b.b, o, n, ' hot', op * hotOp);
       });
     }
     for (const a of inp.atoms) {
-      if (inp.simple || crowd(a.id) || a.lattice || packed.has(a.id)) continue;
+      if (inp.simple || crowd(a.id) || a.lattice || packed.has(a.id) || aside(a.id)) continue;
       const wa = w.atoms.get(a.id);
       if (!wa) continue;
       const op = opacity(a.id) * fade(a.id);
@@ -757,7 +799,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       continue;
     }
     if (step.appear.has(b.a) || step.appear.has(b.b)) {
-      strandOffsets(oa).forEach((o) => strand(b.a, b.b, o, oa, '', op));
+      strandOffsets(oa).forEach((o) => strand(b.a, b.b, o, oa, '', op, !aside(b.a)));
       continue;
     }
     const base = 2 * ob - (eOut.get(k) ?? 0);
@@ -774,7 +816,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       const nn = scale(perp(u), lerp(offB[i] ?? 0, offA[i] ?? 0, e));
       pouch(add(add(pa, scale(u, R(b.a) - 3)), nn), add(sub(pb, scale(u, R(b.b) - 3)), nn), wide, '', op);
       const c = sharePoint(b.a, b.b, lerp(offB[i] ?? 0, offA[i] ?? 0, e));
-      if (c) electrons(c, u, 2, Math.max(ob, oa) <= 1, '', op);
+      if (c && !aside(b.a)) electrons(c, u, 2, Math.max(ob, oa) <= 1, '', op);
     }
     if (stay % 2 === 1) {
       // One electron of a strand stays while its partner leaves or a new one arrives: half a pouch, on the side the others do not use.
@@ -791,7 +833,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   // Lone pouches. Untouched atoms: as they are. Touched atoms: the pouches that stay turn from
   // their old directions to their new ones while the others leave and arrive.
   for (const a of inp.atoms) {
-    if (crowd(a.id) || a.lattice) continue;
+    if (crowd(a.id) || a.lattice || aside(a.id)) continue;
     const op = opacity(a.id);
     if (!touched.has(a.id) && packed.has(a.id)) continue;
     if (!B.atoms.has(a.id) || !A.atoms.has(a.id)) {

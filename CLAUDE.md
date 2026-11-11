@@ -11,6 +11,7 @@ AI가 쓴 짧은 장면 대본을 화학 반응의 장면(원자, 전자, 결합
 ## 지킬 것
 
 - 반응 표현은 비교 화면(`/concept/`, `src/next/compare.ts`)에서만 고친다. 윤범님이 새 방식을 확정하기 전에는 앱 전체를 바꾸지 않는다.
+- 고친 화면은 사진이 아니라 윤범님이 직접 조작할 수 있는 페이지로 보인다(비교 화면에 장면이나 옵션을 더하고 push한 뒤 주소를 드린다).
 - 화면을 고친 뒤에는 `npm run shot`으로 직접 보고, `npm run flicker`로 실제 속도에서 표시가 튀지 않는지 재고, `npm test`와 `npm run e2e`를 실행한다. 정지 화면만 보고 확인했다고 말하지 않는다.
 - 여럿 가운데 하나를 고르는 표시(전자쌍 방향, 전하 표시 방향)는 저장된 좌표로 한 번만 정하고 분자와 함께 회전시킨다(`src/render/pairs.ts`의 `stableDomains`, `stableFreeAngle`).
 - 실험실은 검토한 자료 행에 있는 반응만 실행한다. 모르는 조합을 "반응하지 않는다"고 답하지 않는다([docs/plan/lab-decisions.md](docs/plan/lab-decisions.md)).

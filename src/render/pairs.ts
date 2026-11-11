@@ -297,6 +297,31 @@ export function bystanders(tl: Timeline): Set<string> {
 }
 
 /**
+ * How much charge sits on an atom, as a number to draw: its formal charge, shifted by the electrons
+ * its bonds pull towards the atom that holds them harder (O in water is a little negative, its H
+ * atoms a little positive). The shifts cancel within a molecule, so the sum is the molecule's charge.
+ * Not a computed charge distribution: a steady rule of thumb from electronegativity.
+ */
+const leanCache = new WeakMap<World, Map<string, number>>();
+export function chargeOn(w: World, a: Atom): number {
+  let m = leanCache.get(w);
+  if (!m) leanCache.set(w, (m = new Map()));
+  let lean = m.get(a.id);
+  if (lean === undefined) {
+    lean = 0;
+    const ea = ELECTRONEGATIVITY[a.el] ?? 2.2;
+    for (const o of adjacency(w).get(a.id) ?? []) {
+      const b = w.atoms.get(o);
+      const bond = w.bonds.get(keyOf(a.id, o));
+      if (!b || !bond) continue;
+      lean += 0.25 * bond.order * clamp(((ELECTRONEGATIVITY[b.el] ?? 2.2) - ea) / 1.5, -1, 1);
+    }
+    m.set(a.id, lean);
+  }
+  return formalCharge(w, a) + lean;
+}
+
+/**
  * What makes a solid read as a solid: its particles lie on one body. An ionic solid gets a pale
  * angular slab behind its ions, a piece of metal one smooth surface around its atoms. The slab is
  * a mark for "these belong to one solid", from the first pair on; it grows as ions join and

@@ -41,6 +41,8 @@ export class Stage {
   motion = !STILL;
   /** How electrons are drawn: as pairs in pouches, or the earlier way (lines and curved arrows). */
   style: 'lines' | 'pairs' = 'pairs';
+  /** How atoms and charge look: element colours and badges, or plain atoms with charge as light. */
+  look: 'color' | 'glow' = 'color';
   /** Runs after each drawn frame. */
   onFrame: (() => void) | null = null;
 
@@ -76,14 +78,14 @@ export class Stage {
     this.player.speed = this.speed;
     this.player.tick(dt);
     if (!this.tl) return;
-    this.view.draw(this.player.k, this.player.t, { lens: this.lens, clock: this.motion ? clock : 0, motion: this.motion, dt: this.motion ? dt : 0, style: this.style });
+    this.view.draw(this.player.k, this.player.t, { lens: this.lens, clock: this.motion ? clock : 0, motion: this.motion, dt: this.motion ? dt : 0, style: this.style, look: this.look });
     this.onFrame?.();
   }
 
   /** Draw one moment and hold it. */
   still(k: number, t: number): void {
     this.player.seek(k, t);
-    if (this.tl) this.view.draw(this.player.k, this.player.t, { lens: this.lens, clock: 0, motion: false, style: this.style });
+    if (this.tl) this.view.draw(this.player.k, this.player.t, { lens: this.lens, clock: 0, motion: false, style: this.style, look: this.look });
     this.onFrame?.();
   }
 

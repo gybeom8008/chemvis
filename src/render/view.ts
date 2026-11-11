@@ -27,7 +27,7 @@ import {
   type Vec,
 } from '../util/math';
 import { hashString } from '../util/rng';
-import { blendDomains, bystanders, drawPairs, drawSolids, stableDomains, stableFreeAngle } from './pairs';
+import { blendDomains, bystanders, chargeOn, drawPairs, drawSolids, stableDomains, stableFreeAngle } from './pairs';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const f1 = (n: number) => n.toFixed(1);
@@ -62,6 +62,12 @@ export interface DrawOptions {
    * arrows. 'pairs': every electron pair as a pouch that lets go of an atom or takes hold of one.
    */
   style?: 'lines' | 'pairs';
+  /**
+   * How atoms and charge look. 'color': each element its own colour, charges as small badges.
+   * 'glow': atoms without colour (symbol and size tell them apart), and charge as light around
+   * the atom: red where electrons are short, blue where there are more of them.
+   */
+  look?: 'color' | 'glow';
 }
 
 interface Box {
@@ -474,12 +480,50 @@ export class StageView {
     const frac = !step ? 1 : w1 > w0 ? clamp((t - w0) / (w1 - w0), 0, 1) : t >= w0 ? 1 : 0;
     const win = { pre, during, post, settle, prog, cue, frac };
     if (this.svg.dataset.style !== (opt.style ?? 'lines')) this.svg.dataset.style = opt.style ?? 'lines';
+    const glow = opt.look === 'glow';
+    if (this.svg.dataset.look !== (opt.look ?? 'color')) this.svg.dataset.look = opt.look ?? 'color';
     // Where electrons are the subject (a scene with reactions), the solvent steps back to one quiet
     // colour. Where the solvent itself is the subject (evaporation, ice), it keeps its colours.
     const quiet = tl.steps.some((s) => s.arrows.length > 0 || !!s.shifts?.length) ? 'quiet' : 'plain';
     if (this.svg.dataset.crowd !== quiet) this.svg.dataset.crowd = quiet;
     const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes, simple: this.collective, aside: bystanders(tl) }) : null;
-    if (pairs) out.push(...drawSolids(step?.before ?? topo, step ? after : topo, pos, !step ? 1 : pre ? 0 : during ? prog : 1, (n) => !!tl.stage.electrodes?.[n]), ...pairs.under);
+    if (pairs) out.push(...drawSolids(step?.before ?? topo, step ? after : topo, pos, !step ? 1 : pre ? 0 : during ? prog : 1, (n) => !!tl.stage.electrodes?.[n]));
+    // Charge as light: under the atoms and their electrons, so that it reads as something the
+    // place has rather than a thing of its own. While charges change, the light changes with them.
+    if (glow) {
+      const turn = smooth(clamp((prog - 0.4) / 0.6, 0, 1));
+      const lights: string[] = [];
+      for (const a of atoms) {
+        if (a.crowd) continue;
+        let q: number;
+        const b0 = step?.before.atoms.get(a.id);
+        const z0 = after.atoms.get(a.id);
+        if (during && step && b0 && z0) {
+          const stepped = pairs?.charges?.get(a.id);
+          const qa = chargeOn(after, z0);
+          const qb = chargeOn(step.before, b0);
+          // An atom whose electrons leave or arrive one at a time: its light steps with them.
+          q = stepped !== undefined ? stepped + (qa - formalCharge(after, z0)) : qb + (qa - qb) * turn;
+        } else {
+          const w = chargeWorld.atoms.has(a.id) ? chargeWorld : after;
+          q = chargeOn(w, w.atoms.get(a.id)!);
+        }
+        const mag = Math.abs(q);
+        if (mag < 0.09) continue;
+        const p = pos.get(a.id)!;
+        const r = element(a.el).r + 9 + 15 * Math.pow(Math.min(mag, 2), 0.7);
+        const op = clamp(0.2 + 0.62 * mag, 0, 0.95) * opacity(a.id);
+        lights.push(`<circle class="glow ${q > 0 ? 'pos' : 'neg'}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r)}" opacity="${op.toFixed(2)}"/>`);
+      }
+      if (lights.length) {
+        out.push(
+          '<defs><radialGradient id="glow-pos"><stop offset="0.25" stop-color="#ff4b3e" stop-opacity="0.95"/><stop offset="1" stop-color="#ff4b3e" stop-opacity="0"/></radialGradient>' +
+            '<radialGradient id="glow-neg"><stop offset="0.25" stop-color="#2f7df6" stop-opacity="0.95"/><stop offset="1" stop-color="#2f7df6" stop-opacity="0"/></radialGradient></defs>',
+          ...lights,
+        );
+      }
+    }
+    if (pairs) out.push(...pairs.under);
     else out.push(...this.drawBonds(step, t, win, bonds, pos, atoms, isCrowd, opacity));
     // Moving electrons: marked where they are before the change, then carried as the tip of the
     // bond they leave or make. The pieces of bond they drag go under the atoms, the electrons over.

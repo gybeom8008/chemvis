@@ -1,6 +1,7 @@
 /**
- * The same reaction drawn two ways, side by side and in step:
- * left, lines and curved arrows; right, electron pairs as pouches that let go and take hold.
+ * The same reaction drawn two ways, side by side and in step. Right: the look under review (atoms
+ * without colour, charge as light). Left: what it is compared with, chosen from the menu above it
+ * (electron pairs with element colours, or the earlier lines and curved arrows).
  */
 import '../render/stage.css';
 import './compare.css';
@@ -80,22 +81,26 @@ const SCENES: { id: string; name: string; src: string }[] = [
 ];
 
 const POUCH = (hot: boolean, shared: boolean) => {
-  const c = hot ? 'rgba(214,51,108,.4)' : 'rgba(47,98,184,.26)';
-  const e = hot ? '#d6336c' : '#17233a';
+  const c = hot ? 'rgba(240,140,0,.5)' : 'rgba(52,104,196,.3)';
+  const e = hot ? '#e8890c' : '#17233a';
   const w = shared ? 74 : 48;
   return `<svg width="${w}" height="30" viewBox="0 0 ${w} 30" aria-hidden="true">
     <line x1="20" y1="15" x2="${shared ? 56 : 33}" y2="15" stroke="${c}" stroke-width="15" stroke-linecap="round"/>
-    <circle cx="13" cy="15" r="11.500" fill="#e03131" stroke="rgba(0,0,0,.3)"/>
-    ${shared ? '<circle cx="63" cy="15" r="8.500" fill="#f4f4f4" stroke="rgba(0,0,0,.3)"/>' : ''}
+    <circle cx="13" cy="15" r="11.500" fill="#fdfdfb" stroke="#2b3140" stroke-width="1.500"/>
+    ${shared ? '<circle cx="63" cy="15" r="8.500" fill="#fdfdfb" stroke="#2b3140" stroke-width="1.500"/>' : ''}
     <circle cx="${shared ? 40 : 33}" cy="11.200" r="2.700" fill="${e}"/><circle cx="${shared ? 40 : 33}" cy="18.800" r="2.700" fill="${e}"/>
   </svg>`;
 };
 
-const PULL = `<svg width="62" height="30" viewBox="0 0 62 30" aria-hidden="true">
-  <text x="8" y="20" font-size="15" font-weight="800" fill="#d9480f" text-anchor="middle">+</text>
-  <line x1="18" y1="15" x2="44" y2="15" stroke="#3b82c4" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>
-  <text x="54" y="20" font-size="15" font-weight="800" fill="#1c7ed6" text-anchor="middle">−</text>
-</svg>`;
+const LIGHT = (pos: boolean, strong: boolean) => {
+  const col = pos ? '#ff4b3e' : '#2f7df6';
+  const id = `k${pos ? 'p' : 'n'}${strong ? 's' : 'w'}`;
+  return `<svg width="46" height="40" viewBox="0 0 46 40" aria-hidden="true">
+    <defs><radialGradient id="${id}"><stop offset="0.25" stop-color="${col}" stop-opacity="0.95"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient></defs>
+    <circle cx="23" cy="20" r="${strong ? 20 : 15}" fill="url(#${id})" opacity="${strong ? 0.85 : 0.45}"/>
+    <circle cx="23" cy="20" r="9" fill="#fdfdfb" stroke="#2b3140" stroke-width="1.500"/>
+  </svg>`;
+};
 
 const app = document.getElementById('app')!;
 app.innerHTML = `
@@ -103,20 +108,25 @@ app.innerHTML = `
     <nav class="rx" aria-label="반응">${SCENES.map((s) => `<button data-scene="${s.id}" aria-pressed="false">${s.name}</button>`).join('')}</nav>
     <div class="two">
       <figure>
-        <figcaption>지금 방식 <small>결합은 선, 전자의 이동은 굽은 화살표</small></figcaption>
+        <figcaption>견줄 방식 <select id="left" aria-label="왼쪽에 놓을 방식">
+          <option value="pairs">전자쌍, 원소마다 색</option>
+          <option value="lines">선과 굽은 화살표</option>
+        </select></figcaption>
         <div id="old"></div>
       </figure>
       <figure>
-        <figcaption>새 방식 <small>전자쌍이 보이고, 그 전자쌍이 직접 움직임</small></figcaption>
+        <figcaption>검토할 방식 <small>원자에는 색이 없고, 전하가 빛으로 보임</small></figcaption>
         <div id="new"></div>
       </figure>
     </div>
-    <div class="key" aria-label="새 방식의 표시">
-      <b>새 방식의 표시</b>
+    <div class="key" aria-label="오른쪽 화면의 표시">
+      <b>오른쪽 화면의 표시</b>
+      <span>${LIGHT(true, true)}전자가 모자란 곳(+)</span>
+      <span>${LIGHT(false, true)}전자가 많은 곳(−)</span>
+      <span>${LIGHT(true, false)}${LIGHT(false, false)}조금 +, 조금 −</span>
       <span>${POUCH(false, false)}한 원자가 가진 전자쌍</span>
       <span>${POUCH(false, true)}두 원자가 함께 가진 전자쌍(결합)</span>
       <span>${POUCH(true, false)}지금 바뀌는 전자쌍</span>
-      <span>${PULL}서로 당기는 곳(조금 +, 조금 −)</span>
     </div>
     <p class="say" aria-live="polite"></p>
     <div class="ctl">
@@ -133,8 +143,14 @@ app.innerHTML = `
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => app.querySelector(s) as T;
 const oldStage = new Stage($('#old'));
 const newStage = new Stage($('#new'));
-oldStage.style = 'lines';
+const leftSel = $<HTMLSelectElement>('#left');
+const setLeft = (v: string) => {
+  oldStage.style = v === 'lines' ? 'lines' : 'pairs';
+  leftSel.value = oldStage.style;
+};
+setLeft(new URLSearchParams(location.search).get('left') ?? 'pairs');
 newStage.style = 'pairs';
+newStage.look = 'glow';
 const both = [oldStage, newStage];
 const say = $('.say');
 const scrub = $<HTMLInputElement>('#scrub');
@@ -185,6 +201,10 @@ scrub.addEventListener('input', () => {
   for (const s of both) s.player.seek(s.player.k, +scrub.value / 1000);
 });
 scrub.addEventListener('change', () => (scrubbing = false));
+leftSel.addEventListener('change', () => {
+  setLeft(leftSel.value);
+  oldStage.still(oldStage.player.k, oldStage.player.t);
+});
 slow.addEventListener('change', () => {
   for (const s of both) s.speed = slow.checked ? 0.35 : 1;
 });

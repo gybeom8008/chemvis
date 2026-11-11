@@ -6,7 +6,7 @@ const seek = (page: Page, k: number, t: number) => page.evaluate(([k, t]) => (wi
 test('pairs style: a proton transfer is one pair taking hold and another letting go', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('concept/?still#acid');
+  await page.goto('concept/?still&left=lines#acid');
   const oldSvg = page.locator('#old svg.stage');
   const newSvg = page.locator('#new svg.stage');
   await expect(newSvg.locator('.pouch').first()).toBeVisible();

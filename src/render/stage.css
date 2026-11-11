@@ -437,6 +437,75 @@
   fill: var(--s2);
 }
 
+/*
+ * The 'glow' look. Colour is kept for one thing: charge. Atoms have no colour of their own (their
+ * symbol and size tell them apart); a place short of electrons glows red, a place with more of
+ * them glows blue. The electron pairs themselves stay blue, and the pair that is changing is amber,
+ * so that nothing but charge is ever red.
+ */
+svg[data-look='glow'] {
+  --water: #f4f3ee;
+  --water-line: #c9c6ba;
+  --electron: #e8890c;
+  --pouch-hot: rgba(240, 140, 0, 0.5);
+  --pouch: rgba(52, 104, 196, 0.3);
+  --crowd: #dcdad2;
+  --attract: #8a8f9c;
+}
+.glow.pos {
+  fill: url(#glow-pos);
+}
+.glow.neg {
+  fill: url(#glow-neg);
+}
+svg[data-look='glow'] .atom:not(.crowd) {
+  fill: #fdfdfb;
+  stroke: #2b3140;
+  stroke-width: 1.5;
+}
+svg[data-look='glow'] .atom.crowd {
+  fill: var(--crowd);
+  stroke: none;
+}
+svg[data-look='glow'] .bond.crowd {
+  stroke: var(--crowd);
+}
+svg[data-look='glow'] .sym {
+  fill: #1d2129;
+}
+/* An ion's charge: its number in the colour of its light, without a ring (a ring reads as one more atom). */
+svg[data-look='glow'] .charge circle {
+  fill: none;
+  stroke: none;
+}
+svg[data-look='glow'] .charge text {
+  font-size: 15px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: var(--water);
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+}
+svg[data-look='glow'] .charge.pos text {
+  fill: #d92b1f;
+}
+svg[data-look='glow'] .charge.neg text {
+  fill: #1c5fd0;
+}
+/* The small + and − beside two places that attract: the light says it already. */
+svg[data-look='glow'] .pq {
+  display: none;
+}
+svg[data-look='glow'] .solid.salt {
+  fill: #ebe7da;
+}
+svg[data-look='glow'] .solid.salt.edge {
+  fill: #b9b29a;
+}
+svg[data-look='glow'] .solid.metal {
+  fill: #dadce2;
+}
+
 /* Electron pairs drawn as pouches ('pairs' style). */
 /* Solids: the slab behind the ions of an ionic solid, the surface around the atoms of a piece of metal. */
 .solid.salt {

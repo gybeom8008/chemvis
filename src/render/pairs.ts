@@ -10,7 +10,7 @@
  * Single electrons (radicals, redox) are half-size pouches with one electron; an electron
  * that goes from one atom to another flies there as a dot.
  */
-import { ELECTRONEGATIVITY, element } from '../chem/elements';
+import { ELECTRONEGATIVITY, METALS as METAL_ELS, element } from '../chem/elements';
 import { electronDomains } from '../chem/geometry';
 import { plateSlot, type ArrowAnim, type StepAnim, type Timeline } from '../engine/timeline';
 import { component, formalCharge, type Atom, type World } from '../engine/world';
@@ -297,28 +297,72 @@ export function bystanders(tl: Timeline): Set<string> {
 }
 
 /**
- * How much charge sits on an atom, as a number to draw: its formal charge, shifted by the electrons
- * its bonds pull towards the atom that holds them harder (O in water is a little negative, its H
- * atoms a little positive). The shifts cancel within a molecule, so the sum is the molecule's charge.
- * Not a computed charge distribution: a steady rule of thumb from electronegativity.
+ * How much charge to draw on each atom (the 'glow' look). Not a computed charge distribution: a
+ * steady rule of thumb that depends only on the bond graph, so it never flickers. It starts from
+ * the formal charges and corrects the three places where formal charge misleads the eye:
+ *
+ *  - Equal atoms get equal charge. The O atoms of a carboxylate, carbonate, sulfate or phosphate
+ *    that are bonded to nothing but the central atom share their formal charge and their bond
+ *    order evenly, whichever of them the Lewis structure happens to give the double bond to.
+ *  - The + of H3O+ or NH4+ is not on the O or N. It is spread over the H atoms bonded to it.
+ *  - Bond electrons lean towards the atom that holds them harder (O in water a little negative,
+ *    its H atoms a little positive). A lean too small to show (C–H) is left out at both ends, so
+ *    that it cannot tint one atom alone. A coordinate bond gets no lean: its formal charges
+ *    already put the whole pair on the donor.
+ *
+ * The sum over a molecule is always its charge.
  */
-const leanCache = new WeakMap<World, Map<string, number>>();
-export function chargeOn(w: World, a: Atom): number {
-  let m = leanCache.get(w);
-  if (!m) leanCache.set(w, (m = new Map()));
-  let lean = m.get(a.id);
-  if (lean === undefined) {
-    lean = 0;
-    const ea = ELECTRONEGATIVITY[a.el] ?? 2.2;
-    for (const o of adjacency(w).get(a.id) ?? []) {
-      const b = w.atoms.get(o);
-      const bond = w.bonds.get(keyOf(a.id, o));
-      if (!b || !bond) continue;
-      lean += 0.25 * bond.order * clamp(((ELECTRONEGATIVITY[b.el] ?? 2.2) - ea) / 1.5, -1, 1);
+const drawnCache = new WeakMap<World, Map<string, number>>();
+function drawnCharges(w: World): Map<string, number> {
+  let out = drawnCache.get(w);
+  if (out) return out;
+  out = new Map<string, number>();
+  drawnCache.set(w, out);
+  const adj = adjacency(w);
+  const f = new Map<string, number>();
+  const order = new Map<string, number>();
+  for (const a of w.atoms.values()) if (!a.crowd) f.set(a.id, formalCharge(w, a));
+  for (const [k, b] of w.bonds) order.set(k, b.order);
+  const real = (el: string) => el in ELECTRONEGATIVITY && el !== 'Ad';
+  // Equal O atoms around one centre.
+  for (const z of w.atoms.values()) {
+    if (z.crowd) continue;
+    const ends = (adj.get(z.id) ?? []).filter((o) => {
+      const t = w.atoms.get(o);
+      return !!t && t.el === 'O' && (adj.get(o) ?? []).length === 1 && !w.bonds.get(keyOf(z.id, o))?.dative;
+    });
+    if (ends.length < 2) continue;
+    const fm = ends.reduce((sum, o) => sum + (f.get(o) ?? 0), 0) / ends.length;
+    const bm = ends.reduce((sum, o) => sum + (order.get(keyOf(z.id, o)) ?? 1), 0) / ends.length;
+    for (const o of ends) {
+      f.set(o, fm);
+      order.set(keyOf(z.id, o), bm);
     }
-    m.set(a.id, lean);
   }
-  return formalCharge(w, a) + lean;
+  // A positive centre with H atoms on it: the charge is drawn on the H atoms.
+  for (const x of w.atoms.values()) {
+    const fx = f.get(x.id) ?? 0;
+    if (x.crowd || fx <= 0 || METAL_ELS.has(x.el)) continue;
+    const hs = (adj.get(x.id) ?? []).filter((o) => w.atoms.get(o)?.el === 'H');
+    if (!hs.length) continue;
+    for (const h of hs) f.set(h, (f.get(h) ?? 0) + fx / hs.length);
+    f.set(x.id, 0);
+  }
+  for (const [id, v] of f) out.set(id, v);
+  for (const [k, b] of w.bonds) {
+    const A = w.atoms.get(b.a);
+    const Z = w.atoms.get(b.b);
+    if (!A || !Z || A.crowd || Z.crowd || b.dative || !real(A.el) || !real(Z.el)) continue;
+    const unit = 0.25 * clamp(((ELECTRONEGATIVITY[Z.el] ?? 2.2) - (ELECTRONEGATIVITY[A.el] ?? 2.2)) / 1.5, -1, 1);
+    if (Math.abs(unit) < 0.07) continue;
+    const t = unit * (order.get(k) ?? b.order);
+    out.set(A.id, (out.get(A.id) ?? 0) + t);
+    out.set(Z.id, (out.get(Z.id) ?? 0) - t);
+  }
+  return out;
+}
+export function chargeOn(w: World, a: Atom): number {
+  return drawnCharges(w).get(a.id) ?? 0;
 }
 
 /**
@@ -819,9 +863,13 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   const left = (m: Move) => (flight.get(m) ?? 0) > 0.02;
   const arrived = (m: Move) => (flight.get(m) ?? 0) >= 0.999;
   const arc = (m: Move): ((u: number) => Vec) | null => {
-    const p0 = site(m, 'src');
+    let p0 = site(m, 'src');
     const p1 = site(m, 'dst');
     if (!p0 || !p1) return null;
+    // From an atom of a piece of metal the electron comes out of the surface on the side of the
+    // ion it goes to (the metal's electrons are not kept in a pouch on one side of the atom).
+    const ps = pos.get(m.ar.src!.a);
+    if (ps && B.atoms.get(m.ar.src!.a)?.lattice) p0 = add(add(ps, scale(norm(sub(p1, ps)), R(m.ar.src!.a) + 1)), scale(perp(norm(sub(p1, ps))), 3.2 * m.side0));
     const bend = add(lerpV(p0, p1, 0.5), scale(perp(norm(sub(p1, p0))), Math.min(26, dist(p0, p1) * 0.22) * m.side0));
     return (u) => lerpV(lerpV(p0, bend, u), lerpV(bend, p1, u), u);
   };
@@ -1122,11 +1170,11 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     if (!at) continue;
     const u = flight.get(m) ?? 0;
     // The pouch an electron waits in or has landed in, when no other electron keeps it drawn.
-    if (m.from && m.from.left === 0 && waiting.has(m.from)) {
+    if (m.from && m.from.left === 0 && waiting.has(m.from) && !B.atoms.get(m.ar.src!.a)?.lattice) {
       lone(m.ar.src!.a, m.from.angle + turnB(m.ar.src!.a), waiting.get(m.from)!, ' hot', opacity(m.ar.src!.a), false);
       waiting.delete(m.from);
     }
-    if (m.to && m.to.left === 0 && landed.has(m.to)) {
+    if (m.to && m.to.left === 0 && landed.has(m.to) && !A.atoms.get(m.ar.dst!.a)?.lattice) {
       lone(m.ar.dst!.a, m.to.angle + turnA(m.ar.dst!.a), landed.get(m.to)!, ' hot', opacity(m.ar.dst!.a), false);
       landed.delete(m.to);
     }

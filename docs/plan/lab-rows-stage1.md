@@ -3,10 +3,11 @@
 - 작성 모델: Astra(이 설계 협의의 작성 역할)
 - 작성일: 2026-11-11
 - 기준 커밋: `56ea710`
-- 상태: **draft, 대조 전**
+- 상태: **2판 · draft, 변경 행 대조 전** — F1–F3 반영, 검토 기준 `0dc74b3`
+- 조합 수: **120행 = 양성 8 · 부정 인증 초안 13 · 모름 99**
 - 검토 방식: 작성 모델의 원문 열람 → Claude의 독립 원문 대조 → 계산·맥락·표현·인수 시험 확인이다. 현재 `reviewer`는 미지정이며, 완료 후 `reviewer: '모델 대조'`와 실제 대조 모델·실행 기록을 함께 저장한다.
 
-이 문서는 단계 1의 자료 초안과 구현 인수 기준이다. 수치 원문을 이번에 읽었다는 사실과 다른 모델의 대조를 통과했다는 사실은 다르다. 여기서 ‘검토된 부정’은 구현할 판정 종류이며, 현재 승인 완료 상태라는 뜻이 아니다. 모든 행은 아직 `draft`다. 다른 기획서나 엔진 파일을 변경하지 않는다.
+이 문서는 단계 1의 자료 초안과 구현 인수 기준이다. 수치 원문을 이번에 읽었다는 사실과 다른 모델의 대조를 통과했다는 사실은 다르다. 여기서 ‘검토된 부정’은 구현할 판정 종류이며, 현재 승인 완료 상태라는 뜻이 아니다. 모든 행은 아직 `draft`다. 1판의 수치 대조 기록은 `lab-decisions.md` §5에 있으며, 이 판에서 바뀐 문구·조건 설명과 신규 인증은 다시 대조한다.
 
 ## 1. 먼저 막아야 할 잘못된 해석
 
@@ -16,6 +17,8 @@
 4. **‘모름’을 ‘반응하지 않음’으로 바꾸지 않는다.** 착물, 수산화물·산화물, 부식, 공통 이온, 포화, 평형 분포는 여덟 양성 사건의 빈칸을 임의로 메울 근거가 아니다.
 
 ### 확인한 사실과 정한 계약
+
+이하 엔진 구현 현황과 금속 대본의 설명은 1판 작성 당시를 기준으로 읽는다. 2판의 검토 기준 `0dc74b3`에는 E2의 `using/onto/as`와 `metal/land/join/leave`가 이미 들어 있다. 이번 작업에서는 E1과 `addSpecies`도 구현하며, 그 검사는 `tests/unit/compile-from.test.ts`에 둔다. 이 판의 자료 행 수정 범위는 F1–F3이며, §7의 금속 대본을 새 명령으로 옮기거나 그 표현까지 검증 완료했다고 주장하지 않는다.
 
 저장소에서 확인한 사실은 다음과 같다. `src/chem/library.ts`는 H₃O⁺의 수소를 `H1..H3`, OH⁻의 수소를 `H`, NH₄⁺의 수소를 `H1..H4`로 만든다. Zn·Cu의 중성 모형은 `lp=1, rad=0`, Ag는 `lp=0, rad=1`이다. 현재 `hop`은 전자 장부를 바꾸지만 금속의 상·조각 소속을 완성하지 않는다. 현재 `precipitate`는 화학식으로 입자를 골라 사용하므로, 아래의 `using`은 합의한 E2 구현 뒤에 실행할 문법이다. `compileFrom`도 이 문서가 이미 구현됐다고 주장하는 API가 아니다.
 
@@ -71,9 +74,9 @@ conditions = {
 | V01 `kw-water` | 1.0×10⁻¹⁴ | 평형상수, 무차원 관례 | 25 °C 수용액, 용매 물 제외; 원문은 농도곱 표기 | [OpenStax 14.2](https://openstax.org/books/chemistry-2e/pages/14-2-ph-and-poh) | `Kw=[H3O+][OH−]` 식 뒤 25 °C 문단 | 예 |
 | V02 `kb-ammonia` | 1.8×10⁻⁵ | 평형상수, 무차원 관례 | 25 °C 수용액, NH₃+H₂O⇌NH₄⁺+OH⁻ | [OpenStax Appendix I](https://openstax.org/books/chemistry-2e/pages/i-ionization-constants-of-weak-bases) | Table I1, ammonia | 예 |
 | V03 `ksp-agcl` | 1.6×10⁻¹⁰ | 용해도곱, 무차원 관례 | 25 °C 수용액, AgCl(s)⇌Ag⁺+Cl⁻; 1:1 | [OpenStax Appendix J](https://openstax.org/books/chemistry-2e/pages/j-solubility-products) | Table J1, silver → AgCl | 예 |
-| V04 `E-Ag` | +0.7996 | V vs SHE | 표준 환원 전위, Ag⁺+e⁻→Ag(s), 25 °C | [OpenStax Appendix L](https://openstax.org/books/chemistry-2e/pages/l-standard-electrode-half-cell-potentials) | Table L1, Ag⁺+e⁻→Ag | 예 |
-| V05 `E-Cu` | +0.337 | V vs SHE | 표준 환원 전위, Cu²⁺+2e⁻→Cu(s), 25 °C | [OpenStax Appendix L](https://openstax.org/books/chemistry-2e/pages/l-standard-electrode-half-cell-potentials) | Table L1, Cu²⁺+2e⁻→Cu | 예 |
-| V06 `E-Zn` | −0.7618 | V vs SHE | 표준 환원 전위, Zn²⁺+2e⁻→Zn(s), 25 °C | [OpenStax Appendix L](https://openstax.org/books/chemistry-2e/pages/l-standard-electrode-half-cell-potentials) | Table L1, Zn²⁺+2e⁻→Zn | 예 |
+| V04 `E-Ag` | +0.7996 | V vs SHE | 표준 환원 전위, Ag⁺+e⁻→Ag(s), 25 °C. 온도 근거: [17.3 Table 17.1의 제목](https://openstax.org/books/chemistry-2e/pages/17-3-electrode-and-cell-potentials), Selected Standard Reduction Potentials at 25 °C. 부록 L에는 온도 표기 없음 | [OpenStax Appendix L](https://openstax.org/books/chemistry-2e/pages/l-standard-electrode-half-cell-potentials) | Table L1, Ag⁺+e⁻→Ag | 예; 2판에서 온도 근거도 재열람 |
+| V05 `E-Cu` | +0.337 | V vs SHE | 표준 환원 전위, Cu²⁺+2e⁻→Cu(s), 25 °C. 온도 근거: [17.3 Table 17.1의 제목](https://openstax.org/books/chemistry-2e/pages/17-3-electrode-and-cell-potentials)과 Figure 17.6의 T=298 K. 수치는 온도 근거 표의 반올림값 +0.34가 아닌 부록 L에서 취함 | [OpenStax Appendix L](https://openstax.org/books/chemistry-2e/pages/l-standard-electrode-half-cell-potentials) | Table L1, Cu²⁺+2e⁻→Cu | 예; 2판에서 온도 근거도 재열람 |
+| V06 `E-Zn` | −0.7618 | V vs SHE | 표준 환원 전위, Zn²⁺+2e⁻→Zn(s), 25 °C. 온도 근거: [17.3 Table 17.1의 제목](https://openstax.org/books/chemistry-2e/pages/17-3-electrode-and-cell-potentials), Selected Standard Reduction Potentials at 25 °C. 부록 L에는 온도 표기 없음 | [OpenStax Appendix L](https://openstax.org/books/chemistry-2e/pages/l-standard-electrode-half-cell-potentials) | Table L1, Zn²⁺+2e⁻→Zn | 예; 2판에서 온도 근거도 재열람 |
 | V07 `R` | 8.314462618… | J mol⁻¹ K⁻¹ | 2022 CODATA, 정의상 정확한 상수의 표시 자릿수 | [NIST 상수 전체 표](https://physics.nist.gov/cuu/Constants/Table/allascii.txt) | `molar gas constant` | 예 |
 | V08 `F` | 96485.33212… | C mol⁻¹ | 2022 CODATA, 정의상 정확한 상수의 표시 자릿수 | [NIST 상수 전체 표](https://physics.nist.gov/cuu/Constants/Table/allascii.txt) | `Faraday constant` | 예 |
 
@@ -188,7 +191,7 @@ NaCl의 가용성에는 S01·S03의 정성 근거를 쓴다. 단계 1에 NaCl의
 | T020 | H₃O⁺ | Ag⁺ | 모름 · `NO_REVIEWED_RULE` | 산성 맥락의 은 이온에 대한 독립 두 재료 행이 없다. |
 | T021 | H₃O⁺ | Cl⁻ | 검토된 부정 · N09 | HCl 분자가 주된 생성물로 남는 순변화를 부정한다(S03). |
 | T022 | H₃O⁺ | AgCl(s) | 모름 · `EQUILIBRIUM_REQUIRED` | 산성 용액의 AgCl 용해·종 분포를 계산하지 않는다. |
-| T023 | H₃O⁺ | Na⁺ | 모름 · `NO_REVIEWED_RULE` | H₃O⁺·Na⁺ 관찰자 쌍의 독립 인증은 아직 등록하지 않는다. |
+| T023 | H₃O⁺ | Na⁺ | 검토된 부정 · N23 | Na⁺가 H₃O⁺를 중화하여 새 산·염기 생성물을 만드는 순변화를 부정한다(S02). 수화·물 사이 H 교환은 제외한다. |
 | T024 | H₃O⁺ | NaCl(s) | 모름 · `NO_REVIEWED_RULE` | 산성 맥락의 고체 용해를 D01에 자동 결합하지 않는다. |
 | T025 | H₃O⁺ | Zn(s) | 모름 · `NO_REVIEWED_RULE` | 수소 발생을 포함한 산과 아연의 반응 계열이 미등록이다. |
 | T026 | H₃O⁺ | Zn²⁺ | 모름 · `EQUILIBRIUM_REQUIRED` | 아연 이온의 산성 용액 종 분포를 계산하지 않는다. |
@@ -199,7 +202,7 @@ NaCl의 가용성에는 S01·S03의 정성 근거를 쓴다. 단계 1에 NaCl의
 | T031 | OH⁻ | NH₃ | 모름 · `EQUILIBRIUM_REQUIRED` | NH₃의 염기 평형에 대한 공통 OH⁻ 효과를 계산하지 않는다. |
 | T032 | OH⁻ | NH₄⁺ | 양성 · A05 | NH₄⁺의 현재 N–H 결합에서 H 한 개를 OH⁻의 O로 옮긴다(C05). |
 | T033 | OH⁻ | Ag⁺ | 모름 · `NO_REVIEWED_RULE` | 은 산화물 계열은 미등록이다. 단순 AgOH 고체를 만들지 않는다. |
-| T034 | OH⁻ | Cl⁻ | 모름 · `NO_REVIEWED_RULE` | OH⁻·Cl⁻ 관찰자 쌍의 독립 인증은 아직 등록하지 않는다. |
+| T034 | OH⁻ | Cl⁻ | 검토된 부정 · N24 | Cl⁻가 OH⁻를 중화하거나 HCl을 주된 생성물로 만드는 순변화를 부정한다(S02, S03). |
 | T035 | OH⁻ | AgCl(s) | 모름 · `NO_REVIEWED_RULE` | AgCl와 OH⁻의 결합된 용해·고체 전환은 미등록이다. |
 | T036 | OH⁻ | Na⁺ | 검토된 부정 · N07 | NaOH 공유 분자 또는 침전의 생성을 부정한다(S01). |
 | T037 | OH⁻ | NaCl(s) | 모름 · `NO_REVIEWED_RULE` | OH⁻가 있는 고체 용해를 D01에 자동 결합하지 않는다. |
@@ -213,7 +216,7 @@ NaCl의 가용성에는 S01·S03의 정성 근거를 쓴다. 단계 1에 NaCl의
 | T045 | NH₃ | Ag⁺ | 모름 · `NO_REVIEWED_RULE` | Ag–NH₃ 착물이 알려져 있지만 단계 1 규칙은 없다(S05). |
 | T046 | NH₃ | Cl⁻ | 모름 · `NO_REVIEWED_RULE` | NH₃·Cl⁻ 관찰자 쌍의 독립 인증은 아직 등록하지 않는다. |
 | T047 | NH₃ | AgCl(s) | 모름 · `NO_REVIEWED_RULE` | 착물 형성과 AgCl 용해가 결합된 경우다(S05). |
-| T048 | NH₃ | Na⁺ | 모름 · `NO_REVIEWED_RULE` | NH₃·Na⁺ 관찰자 쌍의 독립 인증은 아직 등록하지 않는다. |
+| T048 | NH₃ | Na⁺ | 검토된 부정 · N25 | Na⁺가 NH₃와 산·염기 순반응을 하여 NH₄⁺를 만드는 것을 부정한다(S02, V02). NH₃와 물의 평형은 제외한다. |
 | T049 | NH₃ | NaCl(s) | 모름 · `NO_REVIEWED_RULE` | 암모니아 용액의 고체 용해를 D01에 자동 결합하지 않는다. |
 | T050 | NH₃ | Zn(s) | 모름 · `NO_REVIEWED_RULE` | 암모니아·금속·공기가 얽힌 표면 반응은 미등록이다. |
 | T051 | NH₃ | Zn²⁺ | 모름 · `NO_REVIEWED_RULE` | 아연–암모니아 배위·종 분포 규칙이 없다. |
@@ -258,7 +261,7 @@ NaCl의 가용성에는 S01·S03의 정성 근거를 쓴다. 단계 1에 NaCl의
 | T090 | AgCl(s) | Cu(s) | 모름 · `NO_REVIEWED_RULE` | AgCl 고체가 직접 참여하는 금속 환원은 자유 Ag⁺의 R03과 다른 행이다. |
 | T091 | AgCl(s) | Cu²⁺ | 모름 · `EQUILIBRIUM_REQUIRED` | 구리 이온이 있는 AgCl 용해·종 분포는 미계산이다. |
 | T092 | AgCl(s) | Ag(s) | 모름 · `EQUILIBRIUM_REQUIRED` | Ag/AgCl/Cl⁻ 전극·용해 평형은 미지원이다. |
-| T093 | Na⁺ | Na⁺ | 모름 · `NO_REVIEWED_RULE` | Na⁺ 동종 쌍의 독립 부정 인증은 아직 등록하지 않는다. |
+| T093 | Na⁺ | Na⁺ | 검토된 부정 · N26 | 두 Na⁺의 접촉을 산·염기 반응이나 새 중성 분자·염 결정 생성으로 처리하는 것을 부정한다(S01, S02). |
 | T094 | Na⁺ | NaCl(s) | 모름 · `EQUILIBRIUM_REQUIRED` | Na⁺ 공통 이온·포화가 있는 용해 양을 계산하지 않는다. |
 | T095 | Na⁺ | Zn(s) | 모름 · `NO_REVIEWED_RULE` | 물속 아연의 부식 맥락을 Na⁺ 관찰자라는 이유로 일반 부정하지 않는다. |
 | T096 | Na⁺ | Zn²⁺ | 모름 · `NO_REVIEWED_RULE` | Na⁺·Zn²⁺ 관찰자 쌍의 독립 인증은 아직 등록하지 않는다. |
@@ -289,7 +292,9 @@ NaCl의 가용성에는 S01·S03의 정성 근거를 쓴다. 단계 1에 NaCl의
 
 ### 부정 인증의 범위와 화면 문구
 
-N01·N07·N09·N12·N15–N17은 기존 설계의 ID를 유지한다. N21·N22는 이 초안에서 추가하는 좁은 가수분해 인증이다. 부정 인증의 기본 맥락은 **해당 두 종+H₂O만**이다. 제3 물질까지 확대하는 것은 별도 대조를 필요로 하며 이 초안에서는 하지 않는다. 수화·인력·배향·다른 물질과의 반응을 부정하지 않는다.
+N01·N07·N09·N12·N15–N17은 기존 설계의 ID를 유지한다. N21·N22는 1판에서 추가한 좁은 가수분해 인증이며, N23–N26은 2판의 F2에 따라 추가한 관찰자 쌍 인증이다. 부정 인증의 기본 맥락은 **해당 두 종+H₂O만**이다. 제3 물질까지 확대하는 것은 별도 대조를 필요로 하며 이 초안에서는 하지 않는다. 수화·인력·배향·다른 물질과의 반응을 부정하지 않는다.
+
+F2는 네 쌍에만 좁은 부정을 추가하는 것으로 정한다. 근거는 S02의 Na⁺가 눈에 띄는 산·염기 이온화를 하지 않는다는 문단, Cl⁻ 가수분해가 무시할 만하다는 문단이며 2판 작성 때 직접 다시 읽었다. Na⁺·Na⁺의 중성 염 결정은 반대 전하 구성원도 없다(S01의 이온 염 설명과 전하 보존). **원문이 이 네 접촉을 각각 실험했다고 주장하지 않는다.** 원문의 종 성질을 해당 두 종+물이라는 좁은 맥락에 적용한 판단이다. NH₃가 물과 일부 반응하는 사실은 N25와 별개다. 나머지 99행은 이번에 부정 인증을 확대할 근거가 부족하거나 평형·착물·고체·금속 표면 문제가 남아 모름으로 유지한다. Na⁺가 한쪽에 있다는 이유만으로 모든 상대에 인증을 복사하지 않는다.
 
 | 인증 | 부정하는 순변화와 근거 | 결과 제목 | 자세히에 덧붙일 문장 |
 |---|---|---|---|
@@ -302,17 +307,23 @@ N01·N07·N09·N12·N15–N17은 기존 설계의 ID를 유지한다. N21·N22�
 | N17 | Ag에 의한 Cu²⁺의 지속적인 Cu 순석출; C14 | 구리 금속이 생기지 않아요 | 이 참고 조건에서 은이 구리 이온을 구리 금속으로 바꾸는 방향은 지지되지 않아요. |
 | N21 | Cl⁻의 물 가수분해로 눈에 띄는 HCl·OH⁻ 생성; S02 | 염화 이온으로 남아요 | 물이 주변을 둘러쌀 수 있지만, 이 조건에서 가수분해로 바뀌는 양은 무시할 수 있어요. |
 | N22 | Na⁺ 수화 이온의 산·염기 가수분해로 새 종 생성; S02 | 나트륨 이온으로 남아요 | 물이 주변을 둘러싸도, 이 조건에서는 산·염기 반응으로 새 물질이 생기는 것으로 다루지 않아요. |
+| N23 | Na⁺에 의한 H₃O⁺ 중화·산염기 생성물 형성; S02의 Salts with Basic Ions, Na⁺ 문단 | 나트륨 이온은 중화에 참여하지 않아요 | Na⁺가 H₃O⁺의 수소를 받아 중화하는 반응은 없어요. 물의 움직임이나 수소 교환까지 없다는 뜻은 아니에요. |
+| N24 | OH⁻·Cl⁻의 중화 및 HCl이 주된 생성물이 되는 순변화; S02의 Salts with Acidic Ions, Cl⁻ 문단과 S03의 HCl 설명 | 두 이온은 서로 중화하지 않아요 | Cl⁻는 OH⁻와 만나 물을 만드는 산으로 작용하지 않아요. 이 묽은 물속에서 HCl 분자로 바꾸어 그리지 않아요. |
+| N25 | Na⁺가 참여하는 NH₃의 산·염기 전환; S02 Na⁺ 문단과 V02 | 나트륨 이온은 이 반응에 참여하지 않아요 | Na⁺가 암모니아에 수소를 주거나 받는 반응은 없어요. 암모니아와 물은 일부 반응할 수 있지만, 그 비율은 계산하지 않아요. |
+| N26 | Na⁺ 두 개의 산·염기 전환·중성 분자·염 결정 형성; S02 Na⁺ 문단, S01, 전하 보존 | 나트륨 이온 둘로 남아요 | Na⁺ 둘을 중성 분자나 소금 결정으로 묶지 않아요. 주변 물과의 상호작용은 있을 수 있어요. |
 
 각 ‘자세히’에는 §2 A의 공통 첫 두 문장을 앞에 붙인다. ‘아무 일도 일어나지 않아요’는 어느 부정 행에도 쓰지 않는다. 특히 N15–N17은 생성 이온의 활동도가 0인 모든 초기 상태·외부 전압·부식까지 부정하지 않는다.
 
-모름의 내부 코드는 `lab-astra.md`의 코드를 유지한다. 첫 화면 문장은 아래 네 가지로 묶고, 표의 구체적 이유는 ‘자세히’에 둔다.
+모름의 내부 코드는 `lab-astra.md`의 코드를 유지한다. F1에 따라 화학적 모름의 첫 화면 문장은 아래 네 가지로 통일하고, 표의 구체적 이유는 ‘자세히’에 둔다. 평형 사유에 다른 제목을 덮어씌우지 않는다. 규칙 충돌·표현 실패는 `lab-decisions.md` §3대로 화학적 모름과 분리한다.
 
 | 코드 | 화면 문장 |
 |---|---|
 | SPECIES_UNREVIEWED, SPECIATION_UNSUPPORTED, SITE_UNREVIEWED, NO_REVIEWED_RULE | 아직 이 조합은 판단할 수 없어요. |
-| ENV_UNSUPPORTED, CONDITION_MISSING, CONDITION_BORDERLINE, EQUILIBRIUM_REQUIRED | 이 조건에서는 판단할 수 없어요. |
+| ENV_UNSUPPORTED, CONDITION_MISSING, CONDITION_BORDERLINE | 이 조건에서는 판단할 수 없어요. |
 | CONTEXT_UNREVIEWED, COMPETING_PATHWAYS | 함께 있는 재료 때문에 판단할 수 없어요. |
-| RULE_CONFLICT, REPRESENTATION_UNAVAILABLE | 이 변화는 아직 보여 줄 수 없어요. |
+| EQUILIBRIUM_REQUIRED | 얼마나 반응하는지는 계산하지 않아요. |
+
+별도 실행 실패 문장: `RULE_CONFLICT`, `REPRESENTATION_UNAVAILABLE` → **“장면을 정확히 만들지 못했어요.”** 실패한 장면을 반응하지 않는다는 화학 판정으로 표시하지 않는다.
 
 ## 6. 사건별 맥락과 실행 공통 계약
 
@@ -529,7 +540,7 @@ step "구리 이온이 물속으로 나와요"
 
 ### 8.1 자료와 구현의 필수 검사
 
-1. §5의 120개 정규화 쌍을 모두 한 번씩 검사한다. 중복·누락0, 양성8·부정9·모름103이어야 한다. 입력 순서를 바꾸어도 같은 행이다. 행이 없다고 부정 인증을 자동 생성하지 않는다.
+1. §5의 120개 정규화 쌍을 모두 한 번씩 검사한다. 중복·누락0, 양성8·부정13·모름99이어야 한다. 입력 순서를 바꾸어도 같은 행이다. 행이 없다고 부정 인증을 자동 생성하지 않는다.
 2. §7의 여덟 fixture를 각각 실행하고 지정한 AtomId·결합·전자·전하·상·소속을 비교한다. E1/E2·금속 기능 미구현으로 실패한 것을 화학 검증 완료로 세지 않는다.
 3. A02→A05에서 `a.H1`의 ID를 추적한다. `owner`가 다르다는 이유로 실패하거나 가짜 `b.H4`를 만들면 불합격이다.
 4. P01에 자유 Ag⁺ `a1,a2,a3`와 Cl⁻ `b`를 놓고 a3를 선택한다. 고체는 정확히 `{a3.Ag,b.Cl}`이다. 다음 쌍의 onto 뒤 같은 고체 ID·판이 유지되며 먼저 있던 ID는 바뀌지 않는다. 전자 이동·공유 결합은0이다.
@@ -590,6 +601,7 @@ type RowCrossCheck = {
 - **A05·C05와 A02→A05:** 큰 K를 완전 전환으로 쓰지 않았는지, 이동 H의 실제 ID가 보존되는지 대조한다.
 - **N15–N17:** 유한한 참고 구간의 역방향 순석출 부정을 모든 초기 조성·표면·미량 교환으로 확대하지 않았는지 대조한다.
 - **N21·N22:** 좁은 가수분해 부정의 신규 인증이다. 수화까지 부정하는 문장으로 읽히지 않는지 확인한다. 전문가가 검토한 부정으로 표시하지 않는다.
+- **N23–N26 / T023·T034·T048·T093:** 2판 신규 인증이다. 원문에서 확인한 종의 성질과 해당 쌍으로의 적용 판단을 나눠 대조한다. 특히 N25가 NH₃와 물의 평형까지 부정하지 않는지 확인한다.
 - **D01 및 NaCl(s)가 다른 용질과 만나는 모름 행:** 배경 물이 있다는 이유로 선택하지 않은 용해 사건을 자동 실행하지 않는지, 포화·공통 이온을 계산한 것처럼 보이지 않는지 대조한다.
 - **R01→R03 및 §6.1 R 맥락:** 실제 조각을 여러 원자로 바꾼 데 따른 경쟁 차단이다. R03의 Cu가 Zn 위에 붙어 있을 때 독립 Cu처럼 처리하지 않는지 대조한다.
 - **금속 템플릿 전체:** 현재 엔진의 hop 성공을 고체상·표면·점의 연속성 완료로 오인하지 않는지 확인한다. 특히 두 Ag의 겹침, Zn⁺·Cu⁺의 중간 표시, 도착 전 전하 변경을 확인한다.

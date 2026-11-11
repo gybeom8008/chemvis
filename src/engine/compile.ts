@@ -8,7 +8,7 @@ import { ELECTRONEGATIVITY, METALS, bondLength, element } from '../chem/elements
 import { domainsInWorld, lonePairDirsInWorld, placeNew, relayout } from '../chem/geometry';
 import { SmilesError } from '../chem/smiles';
 import { formulaCharge, lookupMolecule, normalizeFormula } from '../chem/library';
-import { parse, type Cmd, type Diag } from '../dsl/parser';
+import { parse, type Cmd, type Diag, type StepAst } from '../dsl/parser';
 import { STAGES, channelArcAtY, getStage, inRegion, randomInRegion, regionCenter, type Region, type StageDef } from '../stage/stages';
 import {
   add,
@@ -57,6 +57,118 @@ export interface CompileResult {
   timeline: Timeline | null;
   errors: Diag[];
   warnings: Diag[];
+}
+
+export interface EngineEffect {
+  kind: 'precipitate';
+  stepIndex: number;
+  crystalName: string;
+  addedAtomIds: string[];
+  onto: boolean;
+}
+
+export type CompileFromResult =
+  | { timeline: Timeline; end: World; effects: EngineEffect[]; errors: []; warnings: Diag[] }
+  | { timeline: null; end: null; effects: []; errors: Diag[]; warnings: Diag[] };
+
+export type AddSpeciesResult =
+  | { world: World; addedAtomIds: string[]; errors: [] }
+  | { world: null; addedAtomIds: []; errors: Diag[] };
+
+/** Bump when continuation geometry/random choices change; independent of scene titles. */
+const CONTINUATION_VERSION = 'chemvis-compile-from-v1';
+const CREATION_OPS = new Set(['mol', 'place', 'load', 'crystal', 'crowd', 'metal', 'electrode', 'protein']);
+
+/** Stable input encoding: Map/object insertion order must not choose a random seed. */
+function canonical(value: unknown): string {
+  const ordered = (v: unknown): unknown => {
+    if (v instanceof Map) return [...v].sort(([a], [b]) => String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0)
+      .map(([k, x]) => [k, ordered(x)]);
+    if (v instanceof Set) return [...v].sort().map(ordered);
+    if (Array.isArray(v)) return v.map(ordered);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+      .filter(([, x]) => typeof x !== 'function').map(([k, x]) => [k, ordered(x)]));
+    return v;
+  };
+  return JSON.stringify(ordered(value));
+}
+
+/** Validate stored references before a command can dereference them. No chemical rule selection here. */
+function worldErrors(w: World): Diag[] {
+  const errors: Diag[] = [];
+  const bad = (message: string) => errors.push({ line: 1, message });
+  for (const [id, a] of w.atoms) {
+    if (id !== a.id || !Number.isFinite(a.x) || !Number.isFinite(a.y) ||
+        !Number.isInteger(a.lp) || a.lp < 0 || !Number.isInteger(a.rad) || a.rad < 0) bad(`원자 '${id}'의 저장 상태가 올바르지 않아요.`);
+  }
+  for (const [key, b] of w.bonds) {
+    if (!w.atoms.has(b.a) || !w.atoms.has(b.b) || b.a === b.b || key !== bondKey(b.a, b.b) ||
+        !Number.isInteger(b.order) || b.order <= 0 || (b.dative && b.dative !== b.a && b.dative !== b.b)) bad(`결합 '${key}'의 저장 상태가 올바르지 않아요.`);
+  }
+  for (const [name, id] of w.names) if (!w.atoms.has(id)) bad(`이름 '${name}'이 없는 원자를 가리켜요.`);
+  const solid = new Set<string>();
+  for (const [name, ids] of w.crystals) for (const id of ids) {
+    if (!w.atoms.has(id) || solid.has(id)) bad(`고체 '${name}'의 원자 '${id}'가 없거나 중복됐어요.`);
+    solid.add(id);
+  }
+  for (const [id, shell] of w.attached) {
+    if (!w.atoms.has(id) || shell.some((x) => !w.atoms.has(x))) bad(`수화 연결 '${id}'이 없는 원자를 가리켜요.`);
+  }
+  for (const site of w.sites) if (site.occupant && !w.atoms.has(site.occupant)) bad(`자리 '${site.id}'가 없는 원자를 가리켜요.`);
+  if (!Number.isInteger(w.counter) || w.counter < 0 || [...w.atoms.values()].some((a) => a.num > w.counter)) bad('원자 번호의 저장 상태가 올바르지 않아요.');
+  return errors;
+}
+
+/** Compile only steps against a private copy, publishing nothing if any step fails. */
+export function compileFrom(base: World, stage: StageDef, steps: string, opts?: { title?: string }): CompileFromResult {
+  const ast = parse(steps);
+  const ctx = new Ctx();
+  ctx.continuation = true;
+  ctx.stage = stage;
+  ctx.w = cloneWorld(base);
+  ctx.errors.push(...ast.errors, ...worldErrors(base));
+  for (const cmd of ast.header) ctx.errors.push({ line: cmd.line, message: 'compileFrom에는 step 블록만 적어요. 재료와 무대는 미리 준비해 주세요.' });
+  for (const s of ast.steps) for (const cmd of s.cmds) if (CREATION_OPS.has(cmd.op)) {
+    ctx.errors.push({ line: cmd.line, message: `compileFrom의 단계 안에서는 '${cmd.op}'으로 재료를 만들 수 없어요.` });
+  }
+  if (!Number.isFinite(stage.width) || !Number.isFinite(stage.height) || stage.width <= 0 || stage.height <= 0 || !stage.regions[stage.defaultRegion]) {
+    ctx.errors.push({ line: 1, message: '무대의 크기나 기본 구역이 올바르지 않아요.' });
+  }
+  if (ctx.errors.length) return { timeline: null, end: null, effects: [], errors: ctx.errors, warnings: ctx.warnings };
+  ctx.rng = new Rng(canonical([CONTINUATION_VERSION, base, stage, ast]));
+  // Canonical iteration also makes solvent selection and equal-distance ties reproducible.
+  const sorted = <T>(m: Map<string, T>) => new Map([...m].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+  ctx.w.atoms = sorted(ctx.w.atoms);
+  ctx.w.bonds = sorted(ctx.w.bonds);
+  ctx.w.names = sorted(ctx.w.names);
+  ctx.w.crystals = sorted(ctx.w.crystals);
+  ctx.w.attached = sorted(ctx.w.attached);
+  const initial = cloneWorld(base);
+  if (!ast.steps.length) ctx.warnings.push({ line: 1, message: 'step이 없어서 있던 상태를 그대로 돌려줘요.' });
+  const animations = compileSteps(ctx, ast.steps);
+  if (ctx.errors.length) return { timeline: null, end: null, effects: [], errors: ctx.errors, warnings: ctx.warnings };
+  return {
+    timeline: { title: opts?.title || '제목 없는 장면', stage, initial, steps: animations, warnings: ctx.warnings },
+    end: cloneWorld(animations.at(-1)?.after ?? base), effects: ctx.effects, errors: [], warnings: ctx.warnings,
+  };
+}
+
+/** Add one molecular graph at an exact position; phase/aggregate creation belongs to the lab. */
+export function addSpecies(base: World, formulaOrSmiles: string, name: string, at: Vec): AddSpeciesResult {
+  const errors = worldErrors(base);
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) errors.push({ line: 1, message: '재료 이름은 영문자로 시작하고 영문자, 숫자, 밑줄로 적어요.' });
+  if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) errors.push({ line: 1, message: '재료 위치에는 유한한 좌표를 적어요.' });
+  if (errors.length) return { world: null, addedAtomIds: [], errors };
+  const ctx = new Ctx();
+  ctx.continuation = true;
+  ctx.w = cloneWorld(base);
+  try {
+    const addedAtomIds = ctx.spawn(formulaOrSmiles, name, false, at);
+    return { world: ctx.w, addedAtomIds, errors: [] };
+  } catch (e) {
+    if (!(e instanceof ScriptError || e instanceof SmilesError)) throw e;
+    return { world: null, addedAtomIds: [], errors: [{ line: 1, message: e.message }] };
+  }
 }
 
 class ScriptError extends Error {}
@@ -162,8 +274,21 @@ export function compile(src: string): CompileResult {
     ctx.warnings.push({ line: 1, message: 'step이 하나도 없어서 처음 모습만 보여요.' });
   }
 
+  const steps = compileSteps(ctx, ast.steps);
+
+  if (ctx.errors.length) return { timeline: null, errors: ctx.errors, warnings: ctx.warnings };
+  return {
+    timeline: { title: title || '제목 없는 장면', stage, initial, steps, warnings: ctx.warnings },
+    errors: [],
+    warnings: ctx.warnings,
+  };
+}
+
+/** Shared step processing; legacy compile retains its original seed, layout and diagnostics. */
+function compileSteps(ctx: Ctx, input: StepAst[]): StepAnim[] {
   const steps: StepAnim[] = [];
-  ast.steps.forEach((s, index) => {
+  input.forEach((s, index) => {
+    if (ctx.continuation && ctx.errors.length) return;
     const before = cloneWorld(ctx.w);
     const anim: StepAnim = {
       index,
@@ -192,30 +317,33 @@ export function compile(src: string): CompileResult {
     ctx.mid = null;
     ctx.touched = new Set();
     ctx.batteryMode = null;
-    ctx.upcoming = ast.steps[index + 1]?.cmds ?? [];
+    ctx.upcoming = input[index + 1]?.cmds ?? [];
     let maxDur = 0;
     for (const cmd of s.cmds) {
       ctx.line = cmd.line;
       try {
+        const crystals = ctx.continuation && cmd.op === 'precipitate'
+          ? new Map([...ctx.w.crystals].map(([name, ids]) => [name, new Set(ids)])) : null;
         ctx.op(cmd);
+        if (crystals) for (const [name, ids] of ctx.w.crystals) {
+          const addedAtomIds = ids.filter((id) => !crystals.get(name)?.has(id));
+          if (addedAtomIds.length) ctx.effects.push({ kind: 'precipitate', stepIndex: index, crystalName: name, addedAtomIds, onto: crystals.has(name) });
+        }
         maxDur = Math.max(maxDur, OP_DURATION[cmd.op] ?? STEP_BASE);
       } catch (e) {
         if (e instanceof ScriptError || e instanceof SmilesError) ctx.errors.push({ line: cmd.line, message: e.message });
         else throw e;
       }
+      if (ctx.continuation && ctx.errors.length) return;
     }
     anim.duration = ctx.durationOverride ?? (maxDur || STEP_BASE);
     ctx.durationOverride = null;
+    if (ctx.continuation) ctx.layoutMovable = ctx.changedAtoms(before);
     ctx.finishStep(before);
+    if (ctx.continuation) ctx.errors.push(...worldErrors(ctx.w).map((d) => ({ ...d, line: s.line })));
     steps.push(anim);
   });
-
-  if (ctx.errors.length) return { timeline: null, errors: ctx.errors, warnings: ctx.warnings };
-  return {
-    timeline: { title: title || '제목 없는 장면', stage, initial, steps, warnings: ctx.warnings },
-    errors: [],
-    warnings: ctx.warnings,
-  };
+  return steps;
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +373,43 @@ class Ctx {
   /** The commands of the step after this one: how a molecule comes up to another depends on what the two do next. */
   upcoming: Cmd[] = [];
   autoCount = new Map<string, number>();
+  continuation = false;
+  effects: EngineEffect[] = [];
+  /** null preserves legacy whole-scene cleanup; a set limits continuation cleanup. */
+  layoutMovable: Set<string> | null = null;
+
+  canLayout(ids: string[]): boolean {
+    return this.layoutMovable === null || ids.some((id) => this.layoutMovable!.has(id));
+  }
+
+  changedAtoms(before: World): Set<string> {
+    const changed = new Set([...this.touched, ...this.A.tracks.keys(), ...this.A.appear, ...this.drift.flatMap((d) => d.ids)]);
+    for (const [id, at] of this.w.atoms) if (canonical(at) !== canonical(before.atoms.get(id))) changed.add(id);
+    for (const w of [before, this.w]) {
+      const other = w === before ? this.w : before;
+      for (const [key, b] of w.bonds) if (canonical(b) !== canonical(other.bonds.get(key))) {
+        changed.add(b.a); changed.add(b.b);
+      }
+      for (const [name, ids] of w.crystals) for (const id of ids) if (!other.crystals.get(name)?.includes(id)) changed.add(id);
+      for (const [id, shell] of w.attached) if (canonical(shell) !== canonical(other.attached.get(id))) {
+        changed.add(id); shell.forEach((x) => changed.add(x));
+      }
+    }
+    // Include both old/new molecular components (a transferred H keeps its old ID), and shells.
+    for (const w of [before, this.w]) for (const id of [...changed]) if (w.atoms.has(id)) {
+      for (const x of component(w, id)) {
+        changed.add(x);
+        for (const sh of w.attached.get(x) ?? []) for (const y of component(w, sh)) changed.add(y);
+      }
+    }
+    return changed;
+  }
+
+  nameInUse(name: string): boolean {
+    const matches = (key: string) => key === name || key.startsWith(`${name}.`);
+    return [...this.w.atoms].some(([id, a]) => matches(id) || a.owner === name) ||
+      [...this.w.names.keys(), ...this.w.crystals.keys()].some(matches);
+  }
 
   fail(msg: string): never {
     throw new ScriptError(msg);
@@ -549,7 +714,8 @@ class Ctx {
   }
 
   autoName(base: string): string {
-    const n = (this.autoCount.get(base) ?? 0) + 1;
+    let n = (this.autoCount.get(base) ?? 0) + 1;
+    if (this.continuation) while (this.nameInUse(`${base}#${n}`)) n++;
     this.autoCount.set(base, n);
     return `${base}#${n}`;
   }
@@ -558,6 +724,7 @@ class Ctx {
     const def = lookupMolecule(formula);
     if (!def) this.fail(unknownFormula(formula));
     const ids = def.atoms.map((a) => `${owner}.${a.label}`);
+    if (this.continuation && (this.nameInUse(owner) || ids.some((id) => this.nameInUse(id)))) this.fail(`이름 '${owner}' 또는 그 원자 ID가 이미 있어요.`);
     def.atoms.forEach((a, i) => {
       const atom: Atom = {
         id: ids[i],
@@ -2483,7 +2650,7 @@ class Ctx {
       goalAn = best.a;
     } else {
       name = asName ?? this.autoName('ppt');
-      if (this.w.crystals.has(name) || this.w.names.has(name)) this.fail(`'${name}'이라는 이름은 이미 쓰고 있어요.`);
+      if (this.w.crystals.has(name) || this.w.names.has(name) || (this.continuation && this.nameInUse(name))) this.fail(`'${name}'이라는 이름은 이미 쓰고 있어요.`);
       const c = lerpV(centerOf(this.w, cat), centerOf(this.w, an), 0.5);
       // Side by side where they meet, each on the side it came from.
       const left = centerOf(this.w, cat).x <= centerOf(this.w, an).x;
@@ -3528,6 +3695,7 @@ function separateSolutes(ctx: Ctx): void {
   const pinned = new Set<string>([...w.crystals.values()].flat());
   for (const s of w.sites) if (s.occupant) component(w, s.occupant).forEach((x) => pinned.add(x));
   for (const a of w.atoms.values()) if (a.sei) pinned.add(a.id);
+  if (ctx.layoutMovable) for (const c of allComponents(w)) if (!ctx.canLayout(c)) c.forEach((id) => pinned.add(id));
   const groups = allComponents(w)
     .filter((c) => !w.atoms.get(c[0])!.crowd && !c.some((x) => pinned.has(x)))
     .map((c) => ctx.group(c));
@@ -3583,6 +3751,7 @@ function keepInside(ctx: Ctx): void {
   const pinned = new Set<string>([...w.crystals.values()].flat());
   for (const s of w.sites) if (s.occupant) pinned.add(s.occupant);
   for (const c of allComponents(w)) {
+    if (!ctx.canLayout(c)) continue;
     if (c.some((x) => pinned.has(x) || w.atoms.get(x)!.sei || w.atoms.get(x)!.gone)) continue;
     const ids = ctx.group(c);
     const atoms = ids.map((x) => w.atoms.get(x)!);
@@ -3621,7 +3790,13 @@ function resolveOverlaps(ctx: Ctx, _focus: Set<string>): void {
   const comps = allComponents(w);
   const inLattice = new Set([...w.crystals.values()].flat());
   const live = comps.filter((c) => !w.atoms.get(c[0])!.gone);
-  const free = live.filter((c) => w.atoms.get(c[0])!.crowd && !c.some((x) => attached.has(x) || inLattice.has(x) || w.atoms.get(x)!.sei));
+  const candidates = live.filter((c) => w.atoms.get(c[0])!.crowd && !c.some((x) => attached.has(x) || inLattice.has(x) || w.atoms.get(x)!.sei));
+  const active = ctx.layoutMovable ? [...ctx.layoutMovable].map((id) => w.atoms.get(id)).filter((a): a is Atom => !!a) : [];
+  const free = ctx.layoutMovable ? candidates.filter((c) => ctx.canLayout(c) || c.some((id) => {
+    const a = w.atoms.get(id)!;
+    return active.some((b) => !c.includes(b.id) && dist(a, b) < element(a.el).r + element(b.el).r + 18);
+  })) : candidates;
+  if (ctx.layoutMovable) for (const c of free) for (const id of c) ctx.layoutMovable.add(id);
   const solid = live.filter((c) => !free.includes(c)).flat();
   const S = stage.surfaceY;
   for (let iter = 0; iter < 8; iter++) {

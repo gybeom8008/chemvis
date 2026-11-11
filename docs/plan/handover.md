@@ -169,7 +169,7 @@ Astra는 `c814963`을 읽었다. 그 뒤에 바뀐 것을 Astra에게 알려야 
 
 ### 8.3 Astra와 정한 것
 
-2026-11-11에 로컬 세션이 Astra와 두 차례 주고받아 여섯 가지를 모두 정했다. 내용은 [lab-decisions.md](lab-decisions.md)에 있다. Astra가 쓴 단계 1의 자료 행(재료 15종, 반응 8개, 두 재료 조합 120개의 판정)은 [lab-rows-stage1.md](lab-rows-stage1.md)에 있고, 수치와 유도값은 Claude가 출처 원문과 대조했다. 자료 행은 아직 `draft`다(이견 세 가지가 남았다).
+2026-11-11에 로컬 세션이 Astra와 두 차례 주고받아 여섯 가지를 모두 정했다. 내용은 [lab-decisions.md](lab-decisions.md)에 있다. Astra가 쓴 단계 1의 자료 행(재료 15종, 반응 8개, 두 재료 조합 120개의 판정)은 [lab-rows-stage1.md](lab-rows-stage1.md)에 있고, 수치와 유도값은 Claude가 출처 원문과 대조했다. 자료 행은 아직 `draft`다(2판에서 바뀐 행의 대조가 남았다). 엔진의 E1(`compileFrom`, `addSpecies`)과 E2(`precipitate using`)는 들어갔다. 윤범님이 Astra를 틈틈이 쓰라고 했으므로(ChatGPT 사용량은 남는다) 내 일을 시작할 때 Astra에게도 일을 하나씩 맡겨 뒤에서 돌린다.
 
 ### 8.4 일 나누기
 

@@ -81,7 +81,7 @@ const SCENES: { id: string; name: string; src: string }[] = [
 ];
 
 const POUCH = (hot: boolean, shared: boolean) => {
-  const c = hot ? 'rgba(240,140,0,.5)' : 'rgba(52,104,196,.3)';
+  const c = hot ? 'rgba(240,140,0,.62)' : 'rgba(70,78,96,.2)';
   const e = hot ? '#e8890c' : '#17233a';
   const w = shared ? 74 : 48;
   return `<svg width="${w}" height="30" viewBox="0 0 ${w} 30" aria-hidden="true">

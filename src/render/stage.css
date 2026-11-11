@@ -447,8 +447,9 @@ svg[data-look='glow'] {
   --water: #f4f3ee;
   --water-line: #c9c6ba;
   --electron: #e8890c;
-  --pouch-hot: rgba(240, 140, 0, 0.5);
-  --pouch: rgba(52, 104, 196, 0.3);
+  --pouch-hot: rgba(240, 140, 0, 0.62);
+  /* Pairs are grey, not blue: a pair is electrons, but a bond is not a negative place. Blue is kept for charge. */
+  --pouch: rgba(70, 78, 96, 0.2);
   --crowd: #dcdad2;
   --attract: #8a8f9c;
 }
@@ -473,24 +474,41 @@ svg[data-look='glow'] .bond.crowd {
 svg[data-look='glow'] .sym {
   fill: #1d2129;
 }
-/* An ion's charge: its number in the colour of its light, without a ring (a ring reads as one more atom). */
-svg[data-look='glow'] .charge circle {
-  fill: none;
-  stroke: none;
+/*
+ * An ion's charge is written inside the atom, raised beside its symbol, in the colour of its
+ * light. The badge beside the atom is not shown (a ring there reads as one more atom).
+ */
+svg[data-look='glow'] .charge {
+  display: none;
 }
-svg[data-look='glow'] .charge text {
-  font-size: 15px;
+.ionq {
+  font-family: var(--sans);
+  font-size: 19px;
   font-weight: 800;
+  text-anchor: middle;
   paint-order: stroke;
   stroke: var(--water);
-  stroke-width: 3.5px;
+  stroke-width: 4px;
   stroke-linejoin: round;
 }
-svg[data-look='glow'] .charge.pos text {
+.ionq.pos {
   fill: #d92b1f;
 }
-svg[data-look='glow'] .charge.neg text {
+.ionq.neg {
   fill: #1c5fd0;
+}
+svg[data-look='glow'] .sym .sup {
+  font-weight: 800;
+}
+svg[data-look='glow'] .sym .sup.pos {
+  fill: #d92b1f;
+}
+svg[data-look='glow'] .sym .sup.neg {
+  fill: #1c5fd0;
+}
+/* Metals are a shade greyer than other atoms: the one thing besides the symbol that tells them apart. */
+svg[data-look='glow'] .atom.metal:not(.crowd) {
+  fill: #e3e5ea;
 }
 /* The small + and − beside two places that attract: the light says it already. */
 svg[data-look='glow'] .pq {

@@ -2,10 +2,10 @@
  * Draws one moment of a timeline into an SVG element: atoms, bonds, lone
  * pairs, charges, electron arrows, moving electrons, notes and so on.
  */
-import { bondLength, element } from '../chem/elements';
+import { METALS, bondLength, element } from '../chem/elements';
 import { electronDomains, lonePairAngles } from '../chem/geometry';
 import { plateSlot, tallyBox, type ArrowAnim, type Keyframe, type NoteTarget, type StepAnim, type Timeline } from '../engine/timeline';
-import { component, formalCharge, oxidationState, type Atom, type Lens, type World } from '../engine/world';
+import { allComponents, component, formalCharge, oxidationState, type Atom, type Lens, type World } from '../engine/world';
 import { inRegion } from '../stage/stages';
 import {
   add,
@@ -503,16 +503,18 @@ export class StageView {
           const qa = chargeOn(after, z0);
           const qb = chargeOn(step.before, b0);
           // An atom whose electrons leave or arrive one at a time: its light steps with them.
-          q = stepped !== undefined ? stepped + (qa - formalCharge(after, z0)) : qb + (qa - qb) * turn;
+          q = stepped !== undefined ? qa + (stepped - formalCharge(after, z0)) : qb + (qa - qb) * turn;
         } else {
           const w = chargeWorld.atoms.has(a.id) ? chargeWorld : after;
           q = chargeOn(w, w.atoms.get(a.id)!);
         }
-        const mag = Math.abs(q);
-        if (mag < 0.09) continue;
+        // The light comes up from nothing as the charge grows: no threshold at which it pops in.
+        const mag = Math.max(Math.abs(q) - 0.04, 0);
+        if (mag < 0.01) continue;
         const p = pos.get(a.id)!;
-        const r = element(a.el).r + 9 + 15 * Math.pow(Math.min(mag, 2), 0.7);
-        const op = clamp(0.2 + 0.62 * mag, 0, 0.95) * opacity(a.id);
+        const r = element(a.el).r + 8 + 16 * Math.pow(Math.min(mag, 2), 0.7);
+        const op = 0.95 * (1 - Math.exp(-mag / 0.42)) * opacity(a.id);
+        if (op < 0.03) continue;
         lights.push(`<circle class="glow ${q > 0 ? 'pos' : 'neg'}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r)}" opacity="${op.toFixed(2)}"/>`);
       }
       if (lights.length) {
@@ -537,13 +539,62 @@ export class StageView {
       const crowd = isCrowd(a);
       const op = opacity(a.id) * (crowd ? 0.55 : 1);
       out.push(
-        `<circle class="atom${crowd ? ' crowd' : ''}"${crowd ? '' : ` data-id="${a.id}"`} cx="${f1(p.x)}" cy="${f1(p.y)}" r="${e.r}" fill="${e.color}" opacity="${f1(op)}"/>`,
+        `<circle class="atom${crowd ? ' crowd' : ''}${METALS.has(a.el) ? ' metal' : ''}"${crowd ? '' : ` data-id="${a.id}"`} cx="${f1(p.x)}" cy="${f1(p.y)}" r="${e.r}" fill="${e.color}" opacity="${f1(op)}"/>`,
       );
       if (!crowd) {
-        const size = a.el.length > 1 ? e.r * 0.92 : e.r * 1.08;
+        let size = a.el.length > 1 ? e.r * 0.92 : e.r * 1.08;
+        // In the 'glow' look an ion's charge is written the way it is in a formula: raised, beside the symbol (Cl⁻, Zn²⁺).
+        let sup = '';
+        // Only for an ion of one atom: there the atom is the whole ion. A molecule's charge is
+        // written once beside the molecule (below), not on the atom its formal charge falls on.
+        if (glow && opt.lens.charge && !this.bonded(step && during ? after : chargeWorld.atoms.has(a.id) ? chargeWorld : after, a.id)) {
+          let q: number;
+          const stepped = during && step ? pairs?.charges?.get(a.id) : undefined;
+          if (stepped !== undefined) q = stepped;
+          else if (during && step) {
+            const b0 = step.before.atoms.get(a.id);
+            const z0 = after.atoms.get(a.id);
+            const qa = z0 ? formalCharge(after, z0) : 0;
+            q = prog < 0.7 && b0 ? formalCharge(step.before, b0) : qa;
+          } else {
+            const w = chargeWorld.atoms.has(a.id) ? chargeWorld : after;
+            q = formalCharge(w, w.atoms.get(a.id)!);
+          }
+          if (q !== 0) {
+            sup = `<tspan class="sup ${q > 0 ? 'pos' : 'neg'}" dy="-0.42em" font-size="0.72em">${Math.abs(q) > 1 ? Math.abs(q) : ''}${q > 0 ? '+' : '−'}</tspan>`;
+            size *= a.el.length > 1 ? 0.8 : 0.9;
+          }
+        }
         out.push(
-          `<text class="sym" x="${f1(p.x)}" y="${f1(p.y)}" dy="0.36em" font-size="${f1(size)}" fill="${e.ink}" opacity="${f1(op)}">${a.el}</text>`,
+          `<text class="sym" x="${f1(p.x)}" y="${f1(p.y)}" dy="0.36em" font-size="${f1(size)}" fill="${e.ink}" opacity="${f1(op)}">${a.el}${sup}</text>`,
         );
+      }
+    }
+
+    // The charge of an ion of several atoms, written once beside the whole ion (as in H3O+, not
+    // on the atom its formal charge falls on: the light shows where the charge is).
+    if (glow && opt.lens.charge) {
+      const W = !step ? tl.initial : pre ? step.before : during ? (prog < 0.7 ? step.before : after) : after;
+      for (const ion of this.ions(W)) {
+        const ps = ion.ids.map((id) => pos.get(id)).filter(Boolean) as Vec[];
+        if (ps.length !== ion.ids.length) continue;
+        let q = ion.q;
+        if (during && step && pairs?.charges) {
+          q = 0;
+          for (const id of ion.ids) q += pairs.charges.get(id) ?? formalCharge(W, W.atoms.get(id)!);
+        }
+        if (q === 0) continue;
+        const c = { x: ps.reduce((s, p) => s + p.x, 0) / ps.length, y: ps.reduce((s, p) => s + p.y, 0) / ps.length };
+        // Up and to the right of the ion, just outside its outermost atom on that side.
+        const u = { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
+        let reach = 0;
+        ion.ids.forEach((id, i) => {
+          const d = (ps[i].x - c.x) * u.x + (ps[i].y - c.y) * u.y + element(W.atoms.get(id)!.el).r;
+          if (d > reach) reach = d;
+        });
+        const at = add(c, scale(u, reach + 14));
+        const op = Math.min(...ion.ids.map((id) => opacity(id)));
+        out.push(`<text class="ionq ${q > 0 ? 'pos' : 'neg'}" x="${f1(at.x)}" y="${f1(at.y)}" dy="0.36em" opacity="${f1(op)}">${Math.abs(q) > 1 ? Math.abs(q) : ''}${q > 0 ? '+' : '−'}</text>`);
       }
     }
 
@@ -788,6 +839,38 @@ export class StageView {
   }
 
   /** Lone pairs (two dots) and unpaired electrons (one dot) around an atom. */
+  /** The charged molecules of a world (more than one atom, not background solvent), with their charge. */
+  private ionCache = new WeakMap<World, { ids: string[]; q: number }[]>();
+  private ions(w: World): { ids: string[]; q: number }[] {
+    let list = this.ionCache.get(w);
+    if (!list) {
+      list = [];
+      for (const ids of allComponents(w)) {
+        if (ids.length < 2 || w.atoms.get(ids[0])!.crowd) continue;
+        const q = ids.reduce((s, id) => s + formalCharge(w, w.atoms.get(id)!), 0);
+        if (q !== 0) list.push({ ids, q });
+      }
+      this.ionCache.set(w, list);
+    }
+    return list;
+  }
+
+  private bondedCache = new WeakMap<World, Set<string>>();
+  private bonded(w: World, id: string): boolean {
+    let s = this.bondedCache.get(w);
+    if (!s) {
+      s = new Set<string>();
+      for (const b of w.bonds.values()) {
+        if (b.order > 0) {
+          s.add(b.a);
+          s.add(b.b);
+        }
+      }
+      this.bondedCache.set(w, s);
+    }
+    return s.has(id);
+  }
+
   /** Directions from an atom of a solid to the atoms packed against it (a charge badge keeps clear of them). */
   private touchCache = new WeakMap<World, Map<string, number[]>>();
   private touching(w: World, id: string): number[] {

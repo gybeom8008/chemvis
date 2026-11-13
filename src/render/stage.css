@@ -452,12 +452,23 @@ svg[data-look='glow'] {
   --pouch: rgba(70, 78, 96, 0.2);
   --crowd: #dcdad2;
   --attract: #8a8f9c;
+  --q-pos: #ff4b3e;
+  --q-neg: #2f7df6;
+  --q-pos-ink: #b42318;
+  --q-neg-ink: #174ea6;
 }
-.glow.pos {
-  fill: url(#glow-pos);
+/* The other convention: red where there are more electrons (−), blue where they are short (+). */
+svg[data-look='glow'][data-palette='red-negative'] {
+  --q-pos: #2f7df6;
+  --q-neg: #ff4b3e;
+  --q-pos-ink: #174ea6;
+  --q-neg-ink: #b42318;
 }
-.glow.neg {
-  fill: url(#glow-neg);
+.glow-pos stop {
+  stop-color: var(--q-pos);
+}
+.glow-neg stop {
+  stop-color: var(--q-neg);
 }
 svg[data-look='glow'] .atom:not(.crowd) {
   fill: #fdfdfb;
@@ -475,8 +486,8 @@ svg[data-look='glow'] .sym {
   fill: #1d2129;
 }
 /*
- * An ion's charge is written inside the atom, raised beside its symbol, in the colour of its
- * light. The badge beside the atom is not shown (a ring there reads as one more atom).
+ * An ion's charge is written once, outside, beside the ion, in a darker shade of its light. The
+ * badge on an atom (the other look) is not shown: a ring there reads as one more atom.
  */
 svg[data-look='glow'] .charge {
   display: none;
@@ -492,19 +503,10 @@ svg[data-look='glow'] .charge {
   stroke-linejoin: round;
 }
 .ionq.pos {
-  fill: #d92b1f;
+  fill: var(--q-pos-ink);
 }
 .ionq.neg {
-  fill: #1c5fd0;
-}
-svg[data-look='glow'] .sym .sup {
-  font-weight: 800;
-}
-svg[data-look='glow'] .sym .sup.pos {
-  fill: #d92b1f;
-}
-svg[data-look='glow'] .sym .sup.neg {
-  fill: #1c5fd0;
+  fill: var(--q-neg-ink);
 }
 /* Metals are a shade greyer than other atoms: the one thing besides the symbol that tells them apart. */
 svg[data-look='glow'] .atom.metal:not(.crowd) {
@@ -520,8 +522,18 @@ svg[data-look='glow'] .solid.salt {
 svg[data-look='glow'] .solid.salt.edge {
   fill: #b9b29a;
 }
-svg[data-look='glow'] .solid.metal {
-  fill: #dadce2;
+svg[data-look='glow'] .solid.metal:not(.edge) {
+  fill: #cfd3dc;
+  stroke: #cfd3dc;
+}
+svg[data-look='glow'] .solid.metal.edge {
+  fill: #7d8596;
+  stroke: #7d8596;
+}
+svg[data-look='glow'] .atom.metal.lat:not(.crowd) {
+  fill: #e9ebf0;
+  stroke: #a3a9b6;
+  stroke-width: 1;
 }
 
 /* Electron pairs drawn as pouches ('pairs' style). */
@@ -534,9 +546,16 @@ svg[data-look='glow'] .solid.metal {
 }
 .solid.metal {
   fill: #d5d8e0;
+  stroke: #d5d8e0;
+  stroke-linecap: round;
 }
 .solid.metal.edge {
   fill: #9aa1b0;
+  stroke: #9aa1b0;
+}
+/* An atom inside a piece of metal: a place in the piece, not a ball of its own. */
+.atom.lat {
+  stroke: rgba(0, 0, 0, 0.16);
 }
 .pouch {
   stroke: var(--pouch, rgba(47, 98, 184, 0.26));

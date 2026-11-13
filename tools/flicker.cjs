@@ -44,6 +44,7 @@ const SIDES = (process.env.SIDES || 'new').split(',');
             const push = (kind, el, x, y) => { const a = atoms[el.dataset.a]; if (a) marks.push([kind, el.dataset.a, Math.atan2(y - a[1], x - a[0]) * 180 / Math.PI]); };
             for (const el of svg.querySelectorAll('.pe[data-a], .lp[data-a]')) push('electron', el, +el.getAttribute('cx'), +el.getAttribute('cy'));
             for (const el of svg.querySelectorAll('.pouch[data-a]')) push('pouch', el, +el.getAttribute('x2'), +el.getAttribute('y2'));
+            for (const el of svg.querySelectorAll('.ionq[data-a]')) push('charge', el, +el.getAttribute('x'), +el.getAttribute('y'));
             for (const el of svg.querySelectorAll('.charge[data-a]')) { const c = el.querySelector('circle'); push('charge', el, +c.getAttribute('cx'), +c.getAttribute('cy')); }
             out.push({ t: Math.round(performance.now() - t0), marks });
             if (performance.now() - t0 < 6000) requestAnimationFrame(tick); else done();
@@ -61,7 +62,9 @@ const SIDES = (process.env.SIDES || 'new').split(',');
         for (const [key, angs] of B) {
           const was = A.get(key);
           if (!was || was.length !== angs.length) continue; // appeared, vanished or changed in number: a change of state, not a hop
-          for (const x of angs) if (Math.min(...was.map((y) => diff(x, y))) > LIMIT) { const h = hops.get(key) ?? []; h.push(frames[i].t); hops.set(key, h); }
+          // A frame that came late (a busy machine) covers more time, and a molecule turns further in it.
+          const limit = LIMIT * Math.max(1, (frames[i].t - frames[i - 1].t) / 20);
+          for (const x of angs) if (Math.min(...was.map((y) => diff(x, y))) > limit) { const h = hops.get(key) ?? []; h.push(frames[i].t); hops.set(key, h); }
         }
       }
       let n = 0;

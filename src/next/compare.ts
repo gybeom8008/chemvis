@@ -49,18 +49,18 @@ metal m = Zn at 420,330 3x2
 mol a1 = Ag+ at 640,200
 mol a2 = Ag+ at 700,330
 
-step "아연 조각이 은 이온(Ag+)이 녹아 있는 물에 들어 있어요"
+step "아연 조각이 은 이온(Ag+)이 녹아 있는 물에 들어 있어요. 금속의 바깥 전자는 조각 전체에 퍼져 있어요"
   note m "아연 조각"
   solvate a1
   solvate a2
 step "은 이온 둘이 아연 조각의 표면에 닿아요"
   land a1 a2 on m3
-step "표면의 아연 원자에서 전자가 하나씩 은 이온으로 건너가요"
-  hop m3.Zn -> a1.Ag
-  hop m3.Zn -> a2.Ag
+step "조각의 전자가 하나씩 은 이온으로 건너가요. 전자를 받은 은은 금속이 되어 표면에 붙어요"
+  hop m4.Zn -> a1.Ag
+  hop m4.Zn -> a2.Ag
   join a1 a2 to m
-step "전자를 내준 아연은 이온이 되어 물속으로 나오고, 은은 조각 표면에 붙어 있어요"
-  leave m3 from m
+step "조각은 전자 둘을 잃었어요. 그만큼 아연 원자 하나가 이온(Zn2+)이 되어 물속으로 나와요"
+  leave m4 from m
 `;
 const chapter = (id: string) => CHAPTERS.find((c) => c.id === id)!.script;
 const SCENES: { id: string; name: string; src: string }[] = [
@@ -92,8 +92,9 @@ const POUCH = (hot: boolean, shared: boolean) => {
   </svg>`;
 };
 
-const LIGHT = (pos: boolean, strong: boolean) => {
-  const col = pos ? '#ff4b3e' : '#2f7df6';
+type Palette = 'red-positive' | 'red-negative';
+const LIGHT = (pos: boolean, strong: boolean, palette: Palette) => {
+  const col = pos === (palette === 'red-positive') ? '#ff4b3e' : '#2f7df6';
   const id = `k${pos ? 'p' : 'n'}${strong ? 's' : 'w'}`;
   return `<svg width="46" height="40" viewBox="0 0 46 40" aria-hidden="true">
     <defs><radialGradient id="${id}"><stop offset="0.25" stop-color="${col}" stop-opacity="0.95"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient></defs>
@@ -115,19 +116,14 @@ app.innerHTML = `
         <div id="old"></div>
       </figure>
       <figure>
-        <figcaption>검토할 방식 <small>원자에는 색이 없고, 전하가 빛으로 보임</small></figcaption>
+        <figcaption>검토할 방식 <small>원자에는 색이 없고, 전하가 빛으로 보임</small>
+          <span class="seg" role="group" aria-label="전하 색">전하 색
+            <button data-palette="red-positive" aria-pressed="true">빨강이 +</button><button data-palette="red-negative" aria-pressed="false">빨강이 −</button>
+          </span></figcaption>
         <div id="new"></div>
       </figure>
     </div>
-    <div class="key" aria-label="오른쪽 화면의 표시">
-      <b>오른쪽 화면의 표시</b>
-      <span>${LIGHT(true, true)}전자가 모자란 곳(+)</span>
-      <span>${LIGHT(false, true)}전자가 많은 곳(−)</span>
-      <span>${LIGHT(true, false)}${LIGHT(false, false)}조금 +, 조금 −</span>
-      <span>${POUCH(false, false)}한 원자가 가진 전자쌍</span>
-      <span>${POUCH(false, true)}두 원자가 함께 가진 전자쌍(결합)</span>
-      <span>${POUCH(true, false)}지금 바뀌는 전자쌍</span>
-    </div>
+    <div class="key" aria-label="오른쪽 화면의 표시"></div>
     <p class="say" aria-live="polite"></p>
     <div class="ctl">
       <div class="left"><label class="sw"><input type="checkbox" id="slow" /> 느리게</label></div>
@@ -151,6 +147,35 @@ const setLeft = (v: string) => {
 setLeft(new URLSearchParams(location.search).get('left') ?? 'pairs');
 newStage.style = 'pairs';
 newStage.look = 'glow';
+
+// Which colour means which charge. The choice is kept for the next visit.
+const keyBox = $('.key');
+const setPalette = (v: string | null, redraw = true) => {
+  const palette: Palette = v === 'red-negative' ? 'red-negative' : 'red-positive';
+  newStage.palette = palette;
+  app.querySelectorAll<HTMLElement>('[data-palette]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.palette === palette)));
+  keyBox.innerHTML = `
+      <b>오른쪽 화면의 표시</b>
+      <span>${LIGHT(true, true, palette)}전자가 모자란 곳(+)</span>
+      <span>${LIGHT(false, true, palette)}전자가 많은 곳(−)</span>
+      <span>${LIGHT(true, false, palette)}${LIGHT(false, false, palette)}조금 +, 조금 −</span>
+      <span>${POUCH(false, false)}한 원자가 가진 전자쌍</span>
+      <span>${POUCH(false, true)}두 원자가 함께 가진 전자쌍(결합)</span>
+      <span>${POUCH(true, false)}지금 바뀌는 전자쌍</span>`;
+  try {
+    localStorage.setItem('chemvis.palette', palette);
+  } catch {
+    /* private window: the choice just is not kept */
+  }
+  if (redraw && newStage.tl) newStage.still(newStage.player.k, newStage.player.t);
+};
+let savedPalette: string | null = null;
+try {
+  savedPalette = localStorage.getItem('chemvis.palette');
+} catch {
+  /* no storage */
+}
+setPalette(new URLSearchParams(location.search).get('palette') ?? savedPalette, false);
 const both = [oldStage, newStage];
 const say = $('.say');
 const scrub = $<HTMLInputElement>('#scrub');
@@ -190,9 +215,10 @@ const act = (name: string) => {
   }
 };
 app.addEventListener('click', (e) => {
-  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-scene], [data-act]');
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-scene], [data-act], [data-palette]');
   if (!b) return;
-  if (b.dataset.scene) load(b.dataset.scene);
+  if (b.dataset.palette) setPalette(b.dataset.palette);
+  else if (b.dataset.scene) load(b.dataset.scene);
   else act(b.dataset.act!);
   if ((e as MouseEvent).detail > 0) b.blur();
 });

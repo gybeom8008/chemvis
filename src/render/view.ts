@@ -21,13 +21,14 @@ import {
   polyAt,
   qbez,
   qbezTangent,
+  rotate,
   scale,
   smooth,
   sub,
   type Vec,
 } from '../util/math';
 import { hashString } from '../util/rng';
-import { blendDomains, bystanders, chargeOn, drawPairs, drawSolids, stableDomains, stableFreeAngle } from './pairs';
+import { blendDomains, bystanders, chargeOn, drawPairs, drawSolids, stableDomains, stableFreeAngle, turnOf } from './pairs';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const f1 = (n: number) => n.toFixed(1);
@@ -69,7 +70,24 @@ export interface DrawOptions {
    * the atom: red where electrons are short, blue where there are more of them.
    */
   look?: 'color' | 'glow';
+  /**
+   * Which colour means which charge in the 'glow' look. 'red-positive': red where electrons are
+   * short, blue where there are more. 'red-negative': the other way round, as electrostatic
+   * potential maps and molecule viewers usually have it.
+   */
+  palette?: 'red-positive' | 'red-negative';
 }
+
+/** Where an ion's charge is written: an offset from one of its atoms, in the world's coordinates. */
+interface IonLabel {
+  key: string;
+  ids: string[];
+  q: number;
+  anchor: string;
+  off: Vec;
+}
+
+let viewCount = 0;
 
 interface Box {
   x: number;
@@ -483,6 +501,7 @@ export class StageView {
     if (this.svg.dataset.style !== (opt.style ?? 'lines')) this.svg.dataset.style = opt.style ?? 'lines';
     const glow = opt.look === 'glow';
     if (this.svg.dataset.look !== (opt.look ?? 'color')) this.svg.dataset.look = opt.look ?? 'color';
+    if (this.svg.dataset.palette !== (opt.palette ?? 'red-positive')) this.svg.dataset.palette = opt.palette ?? 'red-positive';
     // Where electrons are the subject (a scene with reactions), the solvent steps back to one quiet
     // colour. Where the solvent itself is the subject (evaporation, ice), it keeps its colours.
     const quiet = tl.steps.some((s) => s.arrows.length > 0 || !!s.shifts?.length) ? 'quiet' : 'plain';
@@ -516,12 +535,12 @@ export class StageView {
         const r = element(a.el).r + 8 + 16 * Math.pow(Math.min(mag, 2), 0.7);
         const op = 0.95 * (1 - Math.exp(-mag / 0.42)) * opacity(a.id);
         if (op < 0.03) continue;
-        lights.push(`<circle class="glow ${q > 0 ? 'pos' : 'neg'}" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r)}" opacity="${op.toFixed(2)}"/>`);
+        lights.push(`<circle class="glow" fill="url(#${this.uid}-${q > 0 ? 'pos' : 'neg'})" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r)}" opacity="${op.toFixed(2)}"/>`);
       }
       if (lights.length) {
         out.push(
-          '<defs><radialGradient id="glow-pos"><stop offset="0.25" stop-color="#ff4b3e" stop-opacity="0.95"/><stop offset="1" stop-color="#ff4b3e" stop-opacity="0"/></radialGradient>' +
-            '<radialGradient id="glow-neg"><stop offset="0.25" stop-color="#2f7df6" stop-opacity="0.95"/><stop offset="1" stop-color="#2f7df6" stop-opacity="0"/></radialGradient></defs>',
+          `<defs><radialGradient id="${this.uid}-pos" class="glow-pos"><stop offset="0.25" stop-opacity="0.95"/><stop offset="1" stop-opacity="0"/></radialGradient>` +
+            `<radialGradient id="${this.uid}-neg" class="glow-neg"><stop offset="0.25" stop-opacity="0.95"/><stop offset="1" stop-opacity="0"/></radialGradient></defs>`,
           ...lights,
         );
       }
@@ -540,62 +559,62 @@ export class StageView {
       const crowd = isCrowd(a);
       const op = opacity(a.id) * (crowd ? 0.55 : 1);
       out.push(
-        `<circle class="atom${crowd ? ' crowd' : ''}${METALS.has(a.el) ? ' metal' : ''}"${crowd ? '' : ` data-id="${a.id}"`} cx="${f1(p.x)}" cy="${f1(p.y)}" r="${e.r}" fill="${e.color}" opacity="${f1(op)}"/>`,
+        `<circle class="atom${crowd ? ' crowd' : ''}${METALS.has(a.el) ? ' metal' : ''}${a.lattice ? ' lat' : ''}"${crowd ? '' : ` data-id="${a.id}"`} cx="${f1(p.x)}" cy="${f1(p.y)}" r="${e.r}" fill="${e.color}" opacity="${f1(op)}"/>`,
       );
       if (!crowd) {
-        let size = a.el.length > 1 ? e.r * 0.92 : e.r * 1.08;
-        // In the 'glow' look an ion's charge is written the way it is in a formula: raised, beside the symbol (Cl⁻, Zn²⁺).
-        let sup = '';
-        // Only for an ion of one atom: there the atom is the whole ion. A molecule's charge is
-        // written once beside the molecule (below), not on the atom its formal charge falls on.
-        if (glow && opt.lens.charge && !this.bonded(step && during ? after : chargeWorld.atoms.has(a.id) ? chargeWorld : after, a.id)) {
-          let q: number;
-          const stepped = during && step ? pairs?.charges?.get(a.id) : undefined;
-          if (stepped !== undefined) q = stepped;
-          else if (during && step) {
-            const b0 = step.before.atoms.get(a.id);
-            const z0 = after.atoms.get(a.id);
-            const qa = z0 ? formalCharge(after, z0) : 0;
-            q = prog < 0.7 && b0 ? formalCharge(step.before, b0) : qa;
-          } else {
-            const w = chargeWorld.atoms.has(a.id) ? chargeWorld : after;
-            q = formalCharge(w, w.atoms.get(a.id)!);
-          }
-          if (q !== 0) {
-            sup = `<tspan class="sup ${q > 0 ? 'pos' : 'neg'}" dy="-0.42em" font-size="0.72em">${Math.abs(q) > 1 ? Math.abs(q) : ''}${q > 0 ? '+' : '−'}</tspan>`;
-            size *= a.el.length > 1 ? 0.8 : 0.9;
-          }
-        }
+        const size = a.el.length > 1 ? e.r * 0.92 : e.r * 1.08;
         out.push(
-          `<text class="sym" x="${f1(p.x)}" y="${f1(p.y)}" dy="0.36em" font-size="${f1(size)}" fill="${e.ink}" opacity="${f1(op)}">${a.el}${sup}</text>`,
+          `<text class="sym" x="${f1(p.x)}" y="${f1(p.y)}" dy="0.36em" font-size="${f1(size)}" fill="${e.ink}" opacity="${f1(op)}">${a.el}</text>`,
         );
       }
     }
 
-    // The charge of an ion of several atoms, written once beside the whole ion (as in H3O+, not
-    // on the atom its formal charge falls on: the light shows where the charge is).
+    // An ion's charge is written once, outside, beside the ion (one atom or several): never inside
+    // an atom and never on the atom a formal charge happens to fall on. The light shows where the
+    // charge is. A label keeps its place on the ion; when the charge changes, the old one fades
+    // where it was and the new one comes up in its own place.
     if (glow && opt.lens.charge) {
-      const W = !step ? tl.initial : pre ? step.before : during ? (prog < 0.7 ? step.before : after) : after;
-      for (const ion of this.ions(W)) {
-        const ps = ion.ids.map((id) => pos.get(id)).filter(Boolean) as Vec[];
-        if (ps.length !== ion.ids.length) continue;
-        let q = ion.q;
-        if (during && step && pairs?.charges) {
-          q = 0;
-          for (const id of ion.ids) q += pairs.charges.get(id) ?? formalCharge(W, W.atoms.get(id)!);
+      const label = (W: World, ion: IonLabel, q: number, op: number) => {
+        const anchor = pos.get(ion.anchor);
+        if (!anchor || q === 0 || op <= 0.02) return;
+        const at = add(anchor, rotate(ion.off, turnOf(W, ion.anchor, pos)));
+        out.push(
+          `<text class="ionq ${q > 0 ? 'pos' : 'neg'}" data-a="${ion.anchor}" x="${f1(at.x)}" y="${f1(at.y)}" dy="0.36em" opacity="${f1(op * Math.min(...ion.ids.map((id) => opacity(id))))}">${Math.abs(q) > 1 ? Math.abs(q) : ''}${q > 0 ? '+' : '−'}</text>`,
+        );
+      };
+      if (during && step) {
+        const turn = smooth(clamp((prog - 0.4) / 0.6, 0, 1));
+        const A = new Map(this.ionLabels(step.before).map((x) => [x.key, x]));
+        const Z = new Map(this.ionLabels(after).map((x) => [x.key, x]));
+        for (const [key, a] of A) {
+          // An atom whose electrons leave or arrive one at a time: its number steps with them.
+          const stepped = a.ids.length === 1 ? pairs?.charges?.get(a.ids[0]) : undefined;
+          const z = Z.get(key);
+          if (stepped !== undefined) {
+            label(step.before, a, stepped, 1);
+            Z.delete(key);
+          } else if (z && z.q === a.q) {
+            // The same ion with the same charge: its sign stays. If what is around it changes so
+            // much that the sign needs another place, it fades there instead of travelling.
+            if (z.anchor === a.anchor && dist(z.off, a.off) < 3) label(after, z, z.q, 1);
+            else {
+              label(step.before, a, a.q, 1 - prog);
+              label(after, z, z.q, prog);
+            }
+            Z.delete(key);
+          } else label(step.before, a, a.q, 1 - turn);
         }
-        if (q === 0) continue;
-        const c = { x: ps.reduce((s, p) => s + p.x, 0) / ps.length, y: ps.reduce((s, p) => s + p.y, 0) / ps.length };
-        // Up and to the right of the ion, just outside its outermost atom on that side.
-        const u = { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
-        let reach = 0;
-        ion.ids.forEach((id, i) => {
-          const d = (ps[i].x - c.x) * u.x + (ps[i].y - c.y) * u.y + element(W.atoms.get(id)!.el).r;
-          if (d > reach) reach = d;
-        });
-        const at = add(c, scale(u, reach + 14));
-        const op = Math.min(...ion.ids.map((id) => opacity(id)));
-        out.push(`<text class="ionq ${q > 0 ? 'pos' : 'neg'}" x="${f1(at.x)}" y="${f1(at.y)}" dy="0.36em" opacity="${f1(op)}">${Math.abs(q) > 1 ? Math.abs(q) : ''}${q > 0 ? '+' : '−'}</text>`);
+        // A new ion's sign comes up once its atoms have settled (below), not while they are still moving.
+        for (const z of Z.values()) {
+          const stepped = z.ids.length === 1 ? pairs?.charges?.get(z.ids[0]) : undefined;
+          if (stepped !== undefined) label(after, z, stepped, 1);
+        }
+      } else if (post && step) {
+        const A = new Map(this.ionLabels(step.before).map((x) => [x.key, x.q]));
+        for (const ion of this.ionLabels(after)) label(after, ion, ion.q, A.get(ion.key) === ion.q ? 1 : settle);
+      } else {
+        const W = !step ? tl.initial : pre ? step.before : after;
+        for (const ion of this.ionLabels(W)) label(W, ion, ion.q, 1);
       }
     }
 
@@ -840,37 +859,69 @@ export class StageView {
   }
 
   /** Lone pairs (two dots) and unpaired electrons (one dot) around an atom. */
-  /** The charged molecules of a world (more than one atom, not background solvent), with their charge. */
-  private ionCache = new WeakMap<World, { ids: string[]; q: number }[]>();
-  private ions(w: World): { ids: string[]; q: number }[] {
-    let list = this.ionCache.get(w);
-    if (!list) {
-      list = [];
-      for (const ids of allComponents(w)) {
-        if (ids.length < 2 || w.atoms.get(ids[0])!.crowd) continue;
-        const q = ids.reduce((s, id) => s + formalCharge(w, w.atoms.get(id)!), 0);
-        if (q !== 0) list.push({ ids, q });
+  /**
+   * Where the charge of each ion of a world is written: beside the ion, up and to the right if
+   * that is clear, else the nearest direction that is clear of atoms and of the ion's own lone
+   * pairs. Decided once from the world's own coordinates and kept as an offset from one atom, so
+   * that it turns with the ion and never hops. Every molecule and lone atom gets a place (its
+   * charge may be zero now and not later); ions inside a solid get none: there the light says it.
+   */
+  private labelCache = new WeakMap<World, IonLabel[]>();
+  private ionLabels(w: World): IonLabel[] {
+    let list = this.labelCache.get(w);
+    if (list) return list;
+    list = [];
+    const solid = new Set([...w.crystals.values()].flat());
+    const metalPiece = new Set([...w.crystals.values()].filter((ids) => ids.some((id) => w.atoms.get(id)?.lattice)).flat());
+    const all = [...w.atoms.values()].filter((a) => !a.crowd && !a.gone);
+    const wpos = new Map(all.map((a) => [a.id, { x: a.x, y: a.y }]));
+    for (const ids of allComponents(w)) {
+      const first = w.atoms.get(ids[0])!;
+      // Not atoms of a piece of metal, nor ions of an ionic solid. An ion resting against a piece of metal keeps its sign.
+      if (first.crowd || first.gone || ids.some((id) => w.atoms.get(id)!.lattice || (solid.has(id) && !metalPiece.has(id)))) continue;
+      const mine = ids.map((id) => w.atoms.get(id)!);
+      const q = mine.reduce((sum, a) => sum + formalCharge(w, a), 0);
+      const c = { x: mine.reduce((sum, a) => sum + a.x, 0) / mine.length, y: mine.reduce((sum, a) => sum + a.y, 0) / mine.length };
+      // The tips of the ion's lone pairs, to keep clear of.
+      const tips: Vec[] = [];
+      for (const a of mine) for (const d of stableDomains(w, a.id, wpos)) tips.push(add(a, fromAngle(d.angle, element(a.el).r + 9)));
+      const inIon = new Set(ids);
+      let best: Vec | null = null;
+      let bestClear = -Infinity;
+      // The water held round the ion is in the way too: the sign goes outside it.
+      const shell: Atom[] = [];
+      for (const id of ids) for (const sh of w.attached.get(id) ?? []) if (w.atoms.has(sh)) for (const x of component(w, sh)) shell.push(w.atoms.get(x)!);
+      for (let k = 0; k < 48 && !(best && bestClear === Infinity); k++) {
+        const ang = -Math.PI / 4 + (((k % 16) % 2 ? 1 : -1) * Math.ceil((k % 16) / 2) * Math.PI) / 8;
+        const u = fromAngle(ang);
+        let reach = 0;
+        for (const a of mine) reach = Math.max(reach, (a.x - c.x) * u.x + (a.y - c.y) * u.y + element(a.el).r);
+        const p = add(c, scale(u, reach + 13 + 22 * Math.floor(k / 16)));
+        let clear = Infinity;
+        for (const a of shell) clear = Math.min(clear, dist(p, a) - element(a.el).r - 13);
+        // Well away from other molecules: a sign between two ions would belong to neither.
+        for (const a of all) clear = Math.min(clear, dist(p, a) - element(a.el).r - (inIon.has(a.id) ? 9 : 36));
+        for (const t of tips) clear = Math.min(clear, dist(p, t) - 11);
+        if (clear >= 0) {
+          best = p;
+          bestClear = Infinity;
+          break;
+        }
+        if (clear > bestClear) {
+          bestClear = clear;
+          best = p;
+        }
       }
-      this.ionCache.set(w, list);
+      // Kept relative to the atom nearest the label.
+      const anchor = mine.reduce((b, a) => (dist(a, best!) < dist(b, best!) ? a : b), mine[0]);
+      list.push({ key: [...ids].sort().join(' '), ids, q, anchor: anchor.id, off: sub(best!, anchor) });
     }
+    this.labelCache.set(w, list);
     return list;
   }
 
-  private bondedCache = new WeakMap<World, Set<string>>();
-  private bonded(w: World, id: string): boolean {
-    let s = this.bondedCache.get(w);
-    if (!s) {
-      s = new Set<string>();
-      for (const b of w.bonds.values()) {
-        if (b.order > 0) {
-          s.add(b.a);
-          s.add(b.b);
-        }
-      }
-      this.bondedCache.set(w, s);
-    }
-    return s.has(id);
-  }
+  /** Names the gradients of this view apart from those of another view on the same page. */
+  private uid = `v${++viewCount}`;
 
   /** Directions from an atom of a solid to the atoms packed against it (a charge badge keeps clear of them). */
   private touchCache = new WeakMap<World, Map<string, number[]>>();

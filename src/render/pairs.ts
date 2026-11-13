@@ -121,7 +121,7 @@ function domainsOf(w: World, id: string): Dom[] {
 }
 
 /** How far the atom's molecule is turned now, compared with the world's coordinates. */
-function turnOf(w: World, id: string, pos: Map<string, Vec>): number {
+export function turnOf(w: World, id: string, pos: Map<string, Vec>): number {
   const a = w.atoms.get(id);
   const p = pos.get(id);
   if (!a || !p) return 0;
@@ -396,6 +396,7 @@ export function drawSolids(before: World, after: World, pos: Map<string, Vec>, p
     const metal = ids.some((id) => atomOf(id).lattice);
     if (metal) {
       // Only atoms that are metal (not ions resting against the piece) are inside the surface.
+      const whole: { p: Vec; r: number }[] = [];
       for (const id of ids) {
         const a = atomOf(id);
         const wasMetal = !!before.atoms.get(id)?.lattice && inB.has(id);
@@ -406,8 +407,20 @@ export function drawSolids(before: World, after: World, pos: Map<string, Vec>, p
         const k = wasMetal && isMetal ? 1 : isMetal ? smooth(clamp((prog - 0.55) / 0.45, 0, 1)) : hold(id, before, r * 2.2);
         if (k <= 0.01) continue;
         const p = pos.get(id)!;
-        back.push(`<circle class="solid metal edge" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r + 8.5)}" opacity="${f1(k)}"/>`);
-        front.push(`<circle class="solid metal" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r + 7)}" opacity="${f1(k)}"/>`);
+        back.push(`<circle class="solid metal edge" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r + 12.5)}" opacity="${f1(k)}"/>`);
+        front.push(`<circle class="solid metal" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(r + 11)}" opacity="${f1(k)}"/>`);
+        if (k > 0.99) whole.push({ p, r });
+      }
+      // Between atoms that touch, the surface runs straight across: one body, not a bunch of balls.
+      for (let i = 0; i < whole.length; i++) {
+        for (let j = i + 1; j < whole.length; j++) {
+          const A = whole[i];
+          const B = whole[j];
+          if (dist(A.p, B.p) > A.r + B.r + 8) continue;
+          const w = Math.min(A.r, B.r) * 2;
+          back.push(`<line class="solid metal edge" x1="${f1(A.p.x)}" y1="${f1(A.p.y)}" x2="${f1(B.p.x)}" y2="${f1(B.p.y)}" stroke-width="${f1(w + 25)}"/>`);
+          front.push(`<line class="solid metal" x1="${f1(A.p.x)}" y1="${f1(A.p.y)}" x2="${f1(B.p.x)}" y2="${f1(B.p.y)}" stroke-width="${f1(w + 22)}"/>`);
+        }
       }
       continue;
     }
@@ -440,6 +453,152 @@ export function drawSolids(before: World, after: World, pos: Map<string, Vec>, p
     }
   }
   return [...back, ...front];
+}
+
+/*
+ * The electrons of a piece of metal. A metal's outer electrons are not kept by single atoms: they
+ * are shared by the whole piece. So they are drawn as loose dots between and around the atoms,
+ * inside the piece's surface, as many as the atoms brought in (the engine's count). The places are
+ * decided from the world's own coordinates and move with the piece; they are not where electrons
+ * "really" are. When the piece gives an electron to an ion, one of these very dots goes over.
+ */
+interface Sea {
+  /** An atom of the piece and where it is in the world: the dots keep their place relative to it. */
+  anchor: string;
+  at: Vec;
+  slots: Vec[];
+  /** Atoms and their electron counts, to tell whether two worlds have the same sea. */
+  sig: string;
+}
+const seaCache = new WeakMap<World, Map<string, Sea | null>>();
+function seaOf(w: World, name: string): Sea | null {
+  let m = seaCache.get(w);
+  if (!m) seaCache.set(w, (m = new Map()));
+  if (m.has(name)) return m.get(name)!;
+  const atoms = (w.crystals.get(name) ?? []).map((id) => w.atoms.get(id)).filter((a): a is Atom => !!a && !!a.lattice);
+  let sea: Sea | null = null;
+  const n = atoms.reduce((s, a) => s + 2 * a.lp + a.rad, 0);
+  if (atoms.length && n > 0) {
+    const R = (a: Atom) => element(a.el).r;
+    const touch = (a: Atom, b: Atom) => a !== b && dist(a, b) < R(a) + R(b) + 6;
+    const cand: Vec[] = [];
+    const push = (p: Vec, apart: number) => {
+      if (!cand.some((q) => dist(p, q) < apart)) cand.push(p);
+    };
+    const ring = (dense: number) => {
+      for (const a of atoms) {
+        const nb = atoms.filter((b) => touch(a, b)).sort((p, q) => angOf(a, p) - angOf(a, q));
+        if (!nb.length) {
+          for (let k = 0; k < 6; k++) push(add(a, fromAngle((Math.PI * k) / 3 + 0.4, R(a) + 6.5)), 8);
+          continue;
+        }
+        nb.forEach((b, i) => {
+          const c = nb[(i + 1) % nb.length];
+          const a0 = angOf(a, b);
+          let width = angOf(a, c) - a0;
+          if (width <= 1e-6) width += Math.PI * 2;
+          if (nb.length > 1 && width < 1.75 && touch(b, c)) {
+            // The gap between three atoms that touch one another.
+            push({ x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 }, 4);
+            return;
+          }
+          if (width < 1.75) return;
+          // The open side of a surface atom: places along it, just outside the atom.
+          const count = Math.max(1, Math.round(width / (0.96 / dense)) - 1);
+          for (let k = 1; k <= count; k++) {
+            const p = add(a, fromAngle(a0 + (width * k) / (count + 1), R(a) + 6.5));
+            if (!atoms.some((o) => o !== a && dist(o, p) < R(o) + 4.5)) push(p, 8);
+          }
+        });
+      }
+    };
+    ring(1);
+    if (cand.length < n) ring(2);
+    // Spread out: start nearest the middle, then always the place farthest from those taken.
+    const mid = { x: atoms.reduce((s, a) => s + a.x, 0) / atoms.length, y: atoms.reduce((s, a) => s + a.y, 0) / atoms.length };
+    const slots: Vec[] = [];
+    const left = [...cand];
+    while (slots.length < n && left.length) {
+      let bi = 0;
+      let best = -Infinity;
+      left.forEach((p, i) => {
+        const score = slots.length ? Math.min(...slots.map((q) => dist(p, q))) : -dist(p, mid);
+        if (score > best + 1e-6) {
+          best = score;
+          bi = i;
+        }
+      });
+      slots.push(left.splice(bi, 1)[0]);
+    }
+    sea = { anchor: atoms[0].id, at: { x: atoms[0].x, y: atoms[0].y }, slots, sig: atoms.map((a) => `${a.id}:${2 * a.lp + a.rad}`).join(' ') };
+  }
+  m.set(name, sea);
+  return sea;
+}
+
+/** How the dots of a piece get from their places before a step to their places after it. */
+interface SeaPlan {
+  b: Sea | null;
+  a: Sea | null;
+  /** Dots that stay in the piece (from → to), ones that are gone after (to null), new ones (from null). */
+  stay: { from: Vec | null; to: Vec | null }[];
+  /** Dots that go over to an atom with one of the step's electron moves: where from, and where the electron ends up if that atom becomes part of the piece. */
+  fly: Map<ArrowAnim, { from: Vec; to: Vec | null }>;
+}
+const planCache = new WeakMap<StepAnim, Map<string, SeaPlan | null>>();
+function seaPlan(step: StepAnim, name: string): SeaPlan | null {
+  let m = planCache.get(step);
+  if (!m) planCache.set(step, (m = new Map()));
+  if (m.has(name)) return m.get(name)!;
+  const b = seaOf(step.before, name);
+  const a = seaOf(step.after, name);
+  let plan: SeaPlan | null = null;
+  if ((b || a) && b?.sig !== a?.sig) {
+    const from = [...(b?.slots ?? [])];
+    const to = [...(a?.slots ?? [])];
+    const take = (list: Vec[], near: Vec): Vec | null => {
+      if (!list.length) return null;
+      let bi = 0;
+      list.forEach((p, i) => {
+        if (dist(p, near) < dist(list[bi], near)) bi = i;
+      });
+      return list.splice(bi, 1)[0];
+    };
+    const fly = new Map<ArrowAnim, { from: Vec; to: Vec | null }>();
+    const inB = new Set(step.before.crystals.get(name) ?? []);
+    const inA = new Set(step.after.crystals.get(name) ?? []);
+    for (const ar of step.arrows) {
+      if (!ar.src || !ar.dst || ar.dst.kind !== 'atom' || ar.src.kind === 'bond') continue;
+      const s = step.before.atoms.get(ar.src.a);
+      const d0 = step.before.atoms.get(ar.dst.a);
+      const d1 = step.after.atoms.get(ar.dst.a);
+      if (!s?.lattice || !inB.has(s.id) || !d0) continue;
+      const f = take(from, d0);
+      if (!f) continue;
+      // It goes into the near side of the atom it is given to. Once that atom is part of the
+      // piece, the electron is one of the piece's own again (a dot that comes up among the others).
+      const end = d1?.lattice && inA.has(d1.id) ? add(d1, scale(norm(sub(f, d1)), element(d1.el).r - 3)) : null;
+      fly.set(ar, { from: f, to: end });
+    }
+    // The rest: nearest pairs first.
+    const all: { i: number; j: number; d: number }[] = [];
+    from.forEach((p, i) => to.forEach((q, j) => all.push({ i, j, d: dist(p, q) })));
+    all.sort((p, q) => p.d - q.d);
+    const usedF = new Set<number>();
+    const usedT = new Set<number>();
+    const stay: SeaPlan['stay'] = [];
+    for (const { i, j } of all) {
+      if (usedF.has(i) || usedT.has(j)) continue;
+      usedF.add(i);
+      usedT.add(j);
+      stay.push({ from: from[i], to: to[j] });
+    }
+    from.forEach((p, i) => !usedF.has(i) && stay.push({ from: p, to: null }));
+    to.forEach((q, j) => !usedT.has(j) && stay.push({ from: null, to: q }));
+    plan = { b, a, stay, fly };
+  }
+  m.set(name, plan);
+  return plan;
 }
 
 export function drawPairs(inp: PairsInput): PairsOutput {
@@ -686,7 +845,59 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     o.avoid = keep;
     o.plate = plate;
   };
+  // The loose electrons of pieces of metal (not of electrode plates, which the stage draws).
+  const seaNames = [...new Set([...(step ? step.before.crystals.keys() : []), ...(step ? step.after : topo).crystals.keys()])].filter((n) => !inp.electrodes?.[n]);
+  const shiftOf = (s: Sea | null): Vec | null => {
+    const p = s && pos.get(s.anchor);
+    return p && s ? sub(p, s.at) : null;
+  };
+  /** Where the dot that goes over with this electron move starts and ends, as drawn now. */
+  const flyer = (ar: ArrowAnim): { from: Vec; to: Vec | null } | null => {
+    if (!step) return null;
+    for (const name of seaNames) {
+      const plan = seaPlan(step, name);
+      const f = plan?.fly.get(ar);
+      if (!f || !plan) continue;
+      const sb = shiftOf(plan.b);
+      const sa = shiftOf(plan.a) ?? sb;
+      if (!sb) return null;
+      return { from: add(f.from, sb), to: f.to && sa ? add(f.to, sa) : null };
+    }
+    return null;
+  };
+  const sea = () => {
+    if (inp.simple) return;
+    for (const name of seaNames) {
+      const plan = step ? seaPlan(step, name) : null;
+      if (!plan) {
+        const s = seaOf(step ? step.after : topo, name);
+        const sh = shiftOf(s);
+        if (!s || !sh) continue;
+        const op = opacity(s.anchor);
+        for (const p of s.slots) electron(add(p, sh), '', op);
+        continue;
+      }
+      const sb = shiftOf(plan.b);
+      const sa = shiftOf(plan.a) ?? sb;
+      const op = opacity((plan.a ?? plan.b)!.anchor);
+      const u = win.pre ? 0 : win.post ? 1 : win.prog;
+      for (const d of plan.stay) {
+        const p0 = d.from && sb ? add(d.from, sb) : null;
+        const p1 = d.to && sa ? add(d.to, sa) : null;
+        if (p0 && p1) electron(lerpV(p0, p1, u), '', op);
+        else if (p0) electron(p0, '', op * (1 - u));
+        else if (p1) electron(p1, '', op * u);
+      }
+      // The dots that go over: marked where they wait, and plain again where they end up. On the way they are drawn with the move itself.
+      for (const f of plan.fly.values()) {
+        if (win.pre && sb) electron(add(f.from, sb), ' hot', op);
+        else if (win.post && f.to && sa) electron(add(f.to, sa), ' hot', op * (1 - win.settle));
+      }
+    }
+  };
+
   const finish = (o: PairsOutput): PairsOutput => {
+    sea();
     pulls();
     plateElectrons(o);
     return o;
@@ -842,6 +1053,9 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     const side = end === 'src' ? m.side0 : m.side1;
     const p = pos.get(E.a);
     if (!p || E.kind === 'bond') return null;
+    const fl = flyer(m.ar);
+    if (fl && end === 'src') return fl.from;
+    if (fl?.to && end === 'dst') return fl.to;
     if (!dom) return add(p, fromAngle(Math.atan2(m.ar.p0.y - (B.atoms.get(E.a)?.y ?? 0), m.ar.p0.x - (B.atoms.get(E.a)?.x ?? 0)), R(E.a) + OUT));
     const ang = dom.angle + (end === 'src' ? turnB(E.a) : turnA(E.a));
     const c = add(p, fromAngle(ang, R(E.a) + OUT));
@@ -863,13 +1077,9 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   const left = (m: Move) => (flight.get(m) ?? 0) > 0.02;
   const arrived = (m: Move) => (flight.get(m) ?? 0) >= 0.999;
   const arc = (m: Move): ((u: number) => Vec) | null => {
-    let p0 = site(m, 'src');
+    const p0 = site(m, 'src');
     const p1 = site(m, 'dst');
     if (!p0 || !p1) return null;
-    // From an atom of a piece of metal the electron comes out of the surface on the side of the
-    // ion it goes to (the metal's electrons are not kept in a pouch on one side of the atom).
-    const ps = pos.get(m.ar.src!.a);
-    if (ps && B.atoms.get(m.ar.src!.a)?.lattice) p0 = add(add(ps, scale(norm(sub(p1, ps)), R(m.ar.src!.a) + 1)), scale(perp(norm(sub(p1, ps))), 3.2 * m.side0));
     const bend = add(lerpV(p0, p1, 0.5), scale(perp(norm(sub(p1, p0))), Math.min(26, dist(p0, p1) * 0.22) * m.side0));
     return (u) => lerpV(lerpV(p0, bend, u), lerpV(bend, p1, u), u);
   };

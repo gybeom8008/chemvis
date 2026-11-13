@@ -242,3 +242,34 @@ button {
     width: 200px;
   }
 }
+
+/* A choice between two (which colour means which charge). */
+.seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.seg button {
+  font: inherit;
+  padding: 3px 10px;
+  border: 1px solid var(--line, #d5d3cc);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.seg button:first-of-type {
+  border-radius: 999px 0 0 999px;
+}
+.seg button:last-of-type {
+  border-radius: 0 999px 999px 0;
+  margin-left: -9px;
+}
+.seg button[aria-pressed='true'] {
+  background: var(--ink, #18191b);
+  border-color: var(--ink, #18191b);
+  color: #fff;
+}

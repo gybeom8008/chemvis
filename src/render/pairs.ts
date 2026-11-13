@@ -375,7 +375,19 @@ function drawnCharges(w: World, spread = true): Map<string, number> {
     out.set(A.id, (out.get(A.id) ?? 0) + t);
     out.set(Z.id, (out.get(Z.id) ?? 0) - t);
   }
+  // A piece of metal shares its electrons, so it shares what it is short of: the charge of its
+  // atoms is that of the piece, spread over all of them (not one atom far from where an electron left).
+  if (!spread) poolMetal(w, out);
   return out;
+}
+/** Spread the charge of each piece of metal evenly over its atoms. */
+function poolMetal(w: World, q: Map<string, number>): void {
+  for (const ids of w.crystals.values()) {
+    const metal = ids.filter((id) => w.atoms.get(id)?.lattice && q.has(id));
+    if (metal.length < 2) continue;
+    const mean = metal.reduce((sum, id) => sum + q.get(id)!, 0) / metal.length;
+    for (const id of metal) q.set(id, mean);
+  }
 }
 export function chargeOn(w: World, a: Atom, law: 'spread' | 'count' = 'spread'): number {
   return drawnCharges(w, law === 'spread').get(a.id) ?? 0;
@@ -409,7 +421,7 @@ export function drawSolids(before: World, after: World, pos: Map<string, Vec>, p
       if (!h || !p) return 0;
       return clamp(1.3 - dist(p, h) / reach, 0, 1);
     };
-    const metal = ids.some((id) => atomOf(id).lattice);
+    const metal = ids.some((id) => before.atoms.get(id)?.lattice || after.atoms.get(id)?.lattice);
     if (metal) {
       // Only atoms that are metal (not ions resting against the piece) are inside the surface.
       const whole: { p: Vec; r: number }[] = [];
@@ -482,6 +494,8 @@ interface Sea {
   /** An atom of the piece and where it is in the world: the dots keep their place relative to it. */
   anchor: string;
   at: Vec;
+  /** Where every atom of the piece is in the world (any one that stays put can carry the dots). */
+  ref: Map<string, Vec>;
   slots: Vec[];
   /** Atoms and their electron counts, to tell whether two worlds have the same sea. */
   sig: string;
@@ -492,6 +506,8 @@ function seaOf(w: World, name: string): Sea | null {
   if (!m) seaCache.set(w, (m = new Map()));
   if (m.has(name)) return m.get(name)!;
   const atoms = (w.crystals.get(name) ?? []).map((id) => w.atoms.get(id)).filter((a): a is Atom => !!a && !!a.lattice);
+  // Ions that rest against the piece but are not metal yet: no dot of the piece sits inside one.
+  const guests = (w.crystals.get(name) ?? []).map((id) => w.atoms.get(id)).filter((a): a is Atom => !!a && !a.lattice);
   let sea: Sea | null = null;
   const n = atoms.reduce((s, a) => s + 2 * a.lp + a.rad, 0);
   if (atoms.length && n > 0) {
@@ -499,6 +515,7 @@ function seaOf(w: World, name: string): Sea | null {
     const touch = (a: Atom, b: Atom) => a !== b && dist(a, b) < R(a) + R(b) + 6;
     const cand: Vec[] = [];
     const push = (p: Vec, apart: number) => {
+      if (guests.some((g) => dist(g, p) < element(g.el).r + 4)) return;
       if (!cand.some((q) => dist(p, q) < apart)) cand.push(p);
     };
     const ring = (dense: number) => {
@@ -546,7 +563,7 @@ function seaOf(w: World, name: string): Sea | null {
       });
       slots.push(left.splice(bi, 1)[0]);
     }
-    sea = { anchor: atoms[0].id, at: { x: atoms[0].x, y: atoms[0].y }, slots, sig: atoms.map((a) => `${a.id}:${2 * a.lp + a.rad}`).join(' ') };
+    sea = { anchor: atoms[0].id, at: { x: atoms[0].x, y: atoms[0].y }, ref: new Map(atoms.map((a) => [a.id, { x: a.x, y: a.y }])), slots, sig: atoms.map((a) => `${a.id}:${2 * a.lp + a.rad}`).join(' ') };
   }
   m.set(name, sea);
   return sea;
@@ -558,8 +575,11 @@ interface SeaPlan {
   a: Sea | null;
   /** Dots that stay in the piece (from → to), ones that are gone after (to null), new ones (from null). */
   stay: { from: Vec | null; to: Vec | null }[];
-  /** Dots that go over to an atom with one of the step's electron moves: where from, and where the electron ends up if that atom becomes part of the piece. */
-  fly: Map<ArrowAnim, { from: Vec; to: Vec | null }>;
+  /**
+   * Dots that go over to an atom with one of the step's electron moves: where from; where it goes
+   * into that atom if the atom becomes part of the piece; and its place among the piece's dots after.
+   */
+  fly: Map<ArrowAnim, { from: Vec; to: Vec | null; slot: Vec | null }>;
 }
 const planCache = new WeakMap<StepAnim, Map<string, SeaPlan | null>>();
 function seaPlan(step: StepAnim, name: string): SeaPlan | null {
@@ -580,7 +600,7 @@ function seaPlan(step: StepAnim, name: string): SeaPlan | null {
       });
       return list.splice(bi, 1)[0];
     };
-    const fly = new Map<ArrowAnim, { from: Vec; to: Vec | null }>();
+    const fly = new Map<ArrowAnim, { from: Vec; to: Vec | null; slot: Vec | null }>();
     const inB = new Set(step.before.crystals.get(name) ?? []);
     const inA = new Set(step.after.crystals.get(name) ?? []);
     for (const ar of step.arrows) {
@@ -594,7 +614,8 @@ function seaPlan(step: StepAnim, name: string): SeaPlan | null {
       // It goes into the near side of the atom it is given to. Once that atom is part of the
       // piece, the electron is one of the piece's own again (a dot that comes up among the others).
       const end = d1?.lattice && inA.has(d1.id) ? add(d1, scale(norm(sub(f, d1)), element(d1.el).r - 3)) : null;
-      fly.set(ar, { from: f, to: end });
+      // The same electron then takes a place among the piece's dots: it is not drawn twice.
+      fly.set(ar, { from: f, to: end, slot: end && d1 ? take(to, d1) : null });
     }
     // The rest: nearest pairs first.
     const all: { i: number; j: number; d: number }[] = [];
@@ -617,6 +638,7 @@ function seaPlan(step: StepAnim, name: string): SeaPlan | null {
   return plan;
 }
 
+const bendCache = new WeakMap<StepAnim, Map<string, number[] | null>>();
 export function drawPairs(inp: PairsInput): PairsOutput {
   const { step, win, topo, after, pos, isCrowd, opacity } = inp;
   const under: string[] = [];
@@ -726,8 +748,37 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     if (!b || !z || b.lp !== z.lp || b.rad !== z.rad || b.lp + b.rad === 0) return null;
     const from = stableDomains(step!.before, id, pos);
     const to = stableDomains(step!.after, id, pos);
-    if (from.length !== to.length || from.every((d, i) => angDist(d.angle, to[i].angle) < 0.02)) return null;
-    return blendDomains(from, to, smooth(clamp(inp.t, 0, 1)));
+    if (from.length !== to.length) return null;
+    // Which old direction becomes which new one is decided once, where the step ends (by the
+    // worlds' own coordinates), not anew in every frame: two near-equal pairings would flip.
+    let m = bendCache.get(step!);
+    if (!m) bendCache.set(step!, (m = new Map()));
+    let perm = m.get(id);
+    if (perm === undefined) {
+      const endPos = new Map<string, Vec>();
+      for (const [k, a] of step!.after.atoms) endPos.set(k, { x: a.x, y: a.y });
+      const f0 = stableDomains(step!.before, id, endPos);
+      const t0 = stableDomains(step!.after, id, endPos);
+      perm = null;
+      if (f0.length === t0.length && !f0.every((d, k) => angDist(d.angle, t0[k].angle) < 0.02)) {
+        // Nearest first, each new direction used once.
+        const all: { i: number; j: number; d: number }[] = [];
+        f0.forEach((d, i) => t0.forEach((e, j) => d.single === e.single && all.push({ i, j, d: angDist(d.angle, e.angle) })));
+        all.sort((x, y) => x.d - y.d);
+        const out = new Array<number>(f0.length).fill(-1);
+        const used = new Set<number>();
+        for (const { i, j } of all) {
+          if (out[i] >= 0 || used.has(j)) continue;
+          out[i] = j;
+          used.add(j);
+        }
+        perm = out.every((x) => x >= 0) ? out : null;
+      }
+      m.set(id, perm);
+    }
+    if (!perm) return null;
+    const u = smooth(clamp(inp.t, 0, 1));
+    return from.map((d, k) => ({ angle: angLerp(d.angle, to[perm![k]].angle, u), single: d.single }));
   };
   const still = (w: World, fade: (id: string) => number, hotLone?: Map<string, Dom[]>, hotBond?: Map<string, number>, hotOp = 0, soft?: Set<string>) => {
     for (const b of w.bonds.values()) {
@@ -895,8 +946,14 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   // The loose electrons of pieces of metal (not of electrode plates, which the stage draws).
   const seaNames = [...new Set([...(step ? step.before.crystals.keys() : []), ...(step ? step.after : topo).crystals.keys()])].filter((n) => !inp.electrodes?.[n]);
   const shiftOf = (s: Sea | null): Vec | null => {
-    const p = s && pos.get(s.anchor);
-    return p && s ? sub(p, s.at) : null;
+    if (!s) return null;
+    // Carried by an atom that is in the piece before and after the step (one that leaves would drag the dots along).
+    for (const [id, at] of s.ref) {
+      const p = pos.get(id);
+      if (p && (!step || (step.before.atoms.get(id)?.lattice && step.after.atoms.get(id)?.lattice))) return sub(p, at);
+    }
+    const p = pos.get(s.anchor);
+    return p ? sub(p, s.at) : null;
   };
   /** Where the dot that goes over with this electron move starts and ends, as drawn now. */
   const flyer = (ar: ArrowAnim): { from: Vec; to: Vec | null } | null => {
@@ -938,7 +995,11 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       // The dots that go over: marked where they wait, and plain again where they end up. On the way they are drawn with the move itself.
       for (const f of plan.fly.values()) {
         if (win.pre && sb) electron(add(f.from, sb), ' hot', op);
-        else if (win.post && f.to && sa) electron(add(f.to, sa), ' hot', op * (1 - win.settle));
+        else if (win.post && f.to && sa) {
+          // From where it went in, to its place among the others: one and the same dot.
+          const p = f.slot ? lerpV(add(f.to, sa), add(f.slot, sa), smooth(win.settle)) : add(f.to, sa);
+          electron(p, win.settle < 1 ? ' hot' : '', f.slot ? op : op * (1 - win.settle));
+        }
       }
     }
   };
@@ -1207,6 +1268,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       const lean = lerp(chargeOn(B, b0, 'count') - fb, chargeOn(A, z0, 'count') - fa, g);
       now.set(a.id, fb + (delta.get(a.id) ?? 0) + rest * g + lean);
     }
+    poolMetal(B, now);
     return now;
   };
 

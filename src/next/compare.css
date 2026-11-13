@@ -288,3 +288,9 @@ button {
   white-space: nowrap;
   flex: none;
 }
+
+.key .law {
+  flex-basis: 100%;
+  justify-content: flex-end;
+  color: var(--muted);
+}

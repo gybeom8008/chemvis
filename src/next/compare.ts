@@ -58,7 +58,7 @@ step "조각의 전자가 하나씩 은 이온으로 건너가요. 전자를 받
   hop m4.Zn -> a1.Ag
   hop m4.Zn -> a2.Ag
   join a1 a2 to m
-step "조각은 전자 둘을 잃었어요. 그만큼 아연 원자 하나가 이온(Zn2+)이 되어 물속으로 나와요"
+step "전자 둘을 내준 만큼, 아연 원자 하나가 이온(Zn2+)이 되어 물속으로 나와요"
   leave m4 from m
 `;
 const chapter = (id: string) => CHAPTERS.find((c) => c.id === id)!.script;
@@ -167,7 +167,8 @@ const setPalette = (v: string | null, redraw = true) => {
       <span>${LIGHT(true, false, palette)}${LIGHT(false, false, palette)}조금 +, 조금 −</span>
       <span>${POUCH(false, false)}한 원자가 가진 전자쌍</span>
       <span>${POUCH(false, true)}두 원자가 함께 가진 전자쌍(결합)</span>
-      <span>${POUCH(true, false, `rgba(${neg},.46)`)}지금 움직이는 전자쌍</span>`;
+      <span>${POUCH(true, false, `rgba(${neg},.34)`)}지금 움직이는 전자쌍</span>
+      <span class="law">빛은 전자를 센 결과예요. 전자가 간 곳은 −, 떠난 곳은 +가 돼요.</span>`;
   try {
     localStorage.setItem('chemvis.palette', palette);
   } catch {

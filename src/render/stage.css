@@ -622,11 +622,15 @@ svg[data-style='pairs'][data-crowd='quiet'] .bond.crowd {
  * no separate colour for "changing". What attracts is a band from one colour to the other.
  */
 svg[data-look='glow'][data-cause] {
-  --pouch-hot: color-mix(in srgb, var(--q-neg) 46%, transparent);
+  --pouch-hot: color-mix(in srgb, var(--q-neg) 34%, transparent);
   --electron: var(--q-neg);
 }
+/* Electrons are what is negative, at rest as much as on the move: their dots always have that colour. */
+svg[data-look='glow'][data-cause] .pe {
+  fill: var(--q-neg-ink);
+}
 svg[data-look='glow'][data-cause] .pe.hot {
-  fill: #17233a;
+  fill: var(--q-neg-ink);
   filter: drop-shadow(0 0 2.5px var(--q-neg)) drop-shadow(0 0 5px var(--q-neg));
 }
 svg[data-look='glow'][data-cause] .pe.fly {

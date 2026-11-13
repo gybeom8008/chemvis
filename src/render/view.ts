@@ -520,6 +520,21 @@ export class StageView {
     if (glow) {
       const turn = smooth(clamp((prog - 0.4) / 0.6, 0, 1));
       const lights: string[] = [];
+      // An atom that leaves a piece of metal as an ion takes the piece's charge with it: the piece
+      // loses its light, and the ion gains it, as far as the ion has come away.
+      const parting = new Map<string, number>();
+      if (cause && step) {
+        for (const ids of step.before.crystals.values()) {
+          let away = -1;
+          for (const id of ids) {
+            const b = step.before.atoms.get(id);
+            const p = pos.get(id);
+            if (!b?.lattice || !p || after.atoms.get(id)?.lattice) continue;
+            away = Math.max(away, clamp(dist(p, b) / (element(b.el).r * 2.2), 0, 1));
+          }
+          if (away >= 0) for (const id of ids) parting.set(id, away);
+        }
+      }
       for (const a of atoms) {
         if (a.crowd) continue;
         let q: number;
@@ -532,7 +547,7 @@ export class StageView {
           const qa = chargeOn(after, z0, law);
           const qb = chargeOn(step.before, b0, law);
           // An atom whose electrons leave or arrive one at a time: its light steps with them.
-          q = stepped !== undefined ? qa + (stepped - formalCharge(after, z0)) : qb + (qa - qb) * turn;
+          q = stepped !== undefined ? qa + (stepped - formalCharge(after, z0)) : qb + (qa - qb) * (cause ? (parting.get(a.id) ?? turn) : turn);
         } else {
           // With cause and effect the light never runs ahead of the electrons: before they move it
           // is as it was, after they have moved as it will be.
@@ -586,10 +601,16 @@ export class StageView {
     // charge is. A label keeps its place on the ion; when the charge changes, the old one fades
     // where it was and the new one comes up in its own place.
     if (glow && opt.lens.charge) {
-      const label = (W: World, ion: IonLabel, q: number, op: number) => {
+      const spot = (W: World, ion: IonLabel): Vec | null => {
         const anchor = pos.get(ion.anchor);
-        if (!anchor || q === 0 || op <= 0.02) return;
-        const at = add(anchor, rotate(ion.off, turnOf(W, ion.anchor, pos)));
+        return anchor ? add(anchor, rotate(ion.off, turnOf(W, ion.anchor, pos))) : null;
+      };
+      const label = (W: World, ion: IonLabel, q: number, op: number, from?: { W: World; ion: IonLabel; u: number }) => {
+        let at = spot(W, ion);
+        if (!at || q === 0 || op <= 0.02) return;
+        // The same ion, with what is around it changed: its sign goes over to its new place.
+        const was = from ? spot(from.W, from.ion) : null;
+        if (from && was) at = lerpV(was, at, from.u);
         out.push(
           `<text class="ionq ${q > 0 ? 'pos' : 'neg'}" data-a="${ion.anchor}" x="${f1(at.x)}" y="${f1(at.y)}" dy="0.36em" opacity="${f1(op * Math.min(...ion.ids.map((id) => opacity(id))))}">${Math.abs(q) > 1 ? Math.abs(q) : ''}${q > 0 ? '+' : '−'}</text>`,
         );
@@ -619,13 +640,16 @@ export class StageView {
           } else if (z && z.q === a.q) {
             // The same ion with the same charge: its sign stays. If what is around it changes so
             // much that the sign needs another place, it fades there instead of travelling.
-            if (z.anchor === a.anchor && dist(z.off, a.off) < 3) label(after, z, z.q, 1);
-            else {
-              label(step.before, a, a.q, 1 - prog);
-              label(after, z, z.q, prog);
-            }
+            label(after, z, z.q, 1, { W: step.before, ion: a, u: prog });
             Z.delete(key);
-          } else label(step.before, a, a.q, fit(a) ?? 1 - turn);
+          } else {
+            // The ion goes on as part of a larger one with the same charge (a metal ion taking on ligands): still one sign.
+            const grown = [...Z.values()].find((x) => x.q === a.q && a.ids.every((id) => x.ids.includes(id)));
+            if (grown) {
+              label(after, grown, grown.q, 1, { W: step.before, ion: a, u: prog });
+              Z.delete(grown.key);
+            } else label(step.before, a, a.q, fit(a) ?? 1 - turn);
+          }
         }
         // A new ion's sign comes up once its atoms have settled (below), not while they are still moving.
         for (const z of Z.values()) {
@@ -915,7 +939,7 @@ export class StageView {
       // The water held round the ion is in the way too: the sign goes outside it.
       const shell: Atom[] = [];
       for (const id of ids) for (const sh of w.attached.get(id) ?? []) if (w.atoms.has(sh)) for (const x of component(w, sh)) shell.push(w.atoms.get(x)!);
-      for (let k = 0; k < 48 && !(best && bestClear === Infinity); k++) {
+      for (let k = 0; k < 96 && !(best && bestClear === Infinity); k++) {
         const ang = -Math.PI / 4 + (((k % 16) % 2 ? 1 : -1) * Math.ceil((k % 16) / 2) * Math.PI) / 8;
         const u = fromAngle(ang);
         let reach = 0;

@@ -82,13 +82,19 @@ function violations(tl: Timeline, criterion: Criterion): string[] {
       }
     }
     if (criterion === 'clear') {
+      // 렌더러가 경로 표본 사이를 잇는 동안에도 원자가 겹치지 않는지 검사한다.
+      const clearanceTimes = ts.flatMap((t, i) => i ? [(ts[i - 1] + t) / 2, t] : [t]);
       const ids = [...s.before.atoms.keys()].filter((id) => s.after.atoms.has(id) && !(s.before.atoms.get(id)!.crowd && s.after.atoms.get(id)!.crowd));
       for (let i = 0; i < ids.length; i++) for (const b of ids.slice(i + 1)) {
         const a = ids[i], key = bondKey(a, b);
-        // 바뀌는 결합은 contact에서 별도로 검사한다.
-        if (s.before.bonds.has(key) || s.after.bonds.has(key)) continue;
-        const min = element(s.before.atoms.get(a)!.el).r + element(s.before.atoms.get(b)!.el).r - 4;
-        for (const t of ts) {
+        const radii = element(s.before.atoms.get(a)!.el).r + element(s.before.atoms.get(b)!.el).r;
+        // 같은 원자에 붙은 두 이웃(1–3 관계)만 제외한다. 분자 내부도 검사한다.
+        const exempt = (w: World) => w.bonds.has(key) || neighbors(w, a).some((n) => w.bonds.has(bondKey(n.id, b)));
+        const beforeExempt = exempt(s.before), afterExempt = exempt(s.after);
+        for (const t of clearanceTimes) {
+          // 끝점은 그때 결합 상태를 쓴다. 도중에 바뀌는 결합은 contact에서 검사한다.
+          if (t === 0 ? beforeExempt : t === 1 ? afterExempt : beforeExempt || afterExempt) continue;
+          const min = radii + (t === 0 || t === 1 ? 3 : -1);
           const d = dist(pos(s, a, t), pos(s, b, t));
           if (d < min - 1e-6) { fail(s, `${key} t=${t.toFixed(3)} distance=${d.toFixed(2)} < ${min}`); break; }
         }
@@ -133,6 +139,13 @@ describe('tight motion', () => {
     for (const criterion of ['retained', 'contact', 'handoff', 'gentle', 'clear', 'rotation'] as const) {
       it(criterion, () => expect(violations(tl, criterion)).toEqual([]));
     }
+    it('preserves retained bond lengths at stored endpoints', () => {
+      for (const s of tl.steps) for (const [key, b] of s.before.bonds) {
+        if (s.after.bonds.get(key)?.order !== b.order) continue;
+        expect(dist(s.after.atoms.get(b.a)!, s.after.atoms.get(b.b)!))
+          .toBeCloseTo(dist(s.before.atoms.get(b.a)!, s.before.atoms.get(b.b)!), 6);
+      }
+    });
     it('uses the renderer interpolation and reaches the stored endpoints', () => {
       for (const s of tl.steps) for (const [id, tr] of s.tracks) {
         for (const t of times(s)) expect(trackAt(tr, t)).toEqual(renderedTrackAt(tr, t));

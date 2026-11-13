@@ -1052,7 +1052,7 @@ class Ctx {
         for (let j = 0; j < moving.length; j++) for (const o of obstacles) {
           const tr = this.A.tracks.get(o.id);
           const at = (v: number) => tr ? trackPos(tr, t0 + (t1 - t0) * v) : o;
-          const min = moving[j].r + element(o.el).r - 2;
+          const min = moving[j].r + element(o.el).r - 0.5;
           if (dist(positions[j], at(u)) < min) return false;
           // 실제 렌더러가 직선 보간하는 표본 사이도 확인한다.
           if (previous && dist(lerpV(previous[j], positions[j], 0.5), at((i - 0.5) / count)) < min) return false;
@@ -1639,7 +1639,7 @@ class Ctx {
   }
 
   /** 중심 원자를 축으로 가지 전체를 돌린다. 고리가 축으로 되돌아오면 건드리지 않는다. */
-  turnBranch(root: string, child: string, angle: number, t0: number, t1: number): void {
+  turnBranch(root: string, child: string, angle: number, t0: number, t1: number, clear = false): void {
     const ids = new Set([child]);
     const queue = [child];
     for (const id of queue) for (const n of neighbors(this.w, id)) {
@@ -1647,16 +1647,52 @@ class Ctx {
       if (!ids.has(n.id)) { ids.add(n.id); queue.push(n.id); }
     }
     const pivot = { ...this.w.atoms.get(root)! };
-    const rotation = signedAng(angleOf(sub(this.w.atoms.get(child)!, pivot)), angle);
+    let rotation = signedAng(angleOf(sub(this.w.atoms.get(child)!, pivot)), angle);
+    if (clear) {
+      const penalty = this.posePenalty([...ids]);
+      const pose = (theta: number) => new Map([...ids].map((id) =>
+        [id, add(pivot, rotate(sub(this.w.atoms.get(id)!, pivot), theta))]));
+      const preferred = rotation;
+      let best = penalty(pose(rotation));
+      for (let degrees = 2; degrees <= 90 && best > 0; degrees += 2) for (const sign of [-1, 1]) {
+        const theta = preferred + sign * degrees * Math.PI / 180;
+        const score = penalty(pose(theta));
+        if (score < best) { best = score; rotation = theta; }
+        if (best === 0) break;
+      }
+    }
     this.moveGroup([...ids], pivot, [pivot, pivot], rotation, t0, t1);
+  }
+
+  /** 분자 안팎에서 결합도 공통 이웃도 없는 원자쌍에 필요한 여백을 계산한다. */
+  posePenalty(ids: string[], margin = 3.5, during = false): (pose: Map<string, Vec>) => number {
+    const moved = new Set(ids);
+    const atoms = [...this.w.atoms.values()].filter((a) => !a.gone && (!a.crowd || moved.has(a.id)));
+    const adjacent = new Map(atoms.map((a) => [a.id, new Set(neighbors(this.w, a.id).map((n) => n.id))]));
+    const pairs: { a: Atom; b: Atom; min: number }[] = [];
+    for (let i = 0; i < atoms.length; i++) for (const b of atoms.slice(i + 1)) {
+      const a = atoms[i];
+      if (!moved.has(a.id) && !moved.has(b.id)) continue;
+      if (adjacent.get(a.id)!.has(b.id) || [...adjacent.get(a.id)!].some((id) => adjacent.get(b.id)!.has(id))) continue;
+      if (during && (getBond(this.A.before, a.id, b.id) || neighbors(this.A.before, a.id)
+        .some((n) => !!getBond(this.A.before, n.id, b.id)))) continue;
+      // 보간 오차가 끝점 여백을 깎지 않도록 반 단위를 더 둔다.
+      pairs.push({ a, b, min: element(a.el).r + element(b.el).r + margin });
+    }
+    return (pose) => pairs.reduce((sum, { a, b, min }) =>
+      sum + Math.max(0, min - dist(pose.get(a.id) ?? a, pose.get(b.id) ?? b)) ** 2, 0);
   }
 
   /** C–N 접촉과 O–H 전달을 동시에 준비한다. 각도는 화면 배치를 위한 값이다. */
   condensationApproach(carbon: string, nitrogen: string, oxygen: string, hydrogen: string): void {
     const C = this.w.atoms.get(carbon)!;
     const N = this.w.atoms.get(nitrogen)!;
-    for (const n of neighbors(this.w, carbon)) {
-      this.turnBranch(carbon, n.id, n.id === oxygen ? Math.PI / 2 : n.order === 2 ? 0 : -Math.PI / 3, 0, 0.3);
+    // 반응할 O를 먼저 놓고 나머지 가지를 빈틈으로 돌린다. 가지 내부 결합 길이는 유지한다.
+    const branches = neighbors(this.w, carbon).sort((a, b) =>
+      Number(a.id !== oxygen && a.order === 1) - Number(b.id !== oxygen && b.order === 1));
+    for (const n of branches) {
+      const flexible = n.id !== oxygen && n.order === 1;
+      this.turnBranch(carbon, n.id, n.id === oxygen ? Math.PI / 2 : n.order === 2 ? 0 : -Math.PI / 3, 0, 0.3, flexible);
     }
     const oldH = neighbors(this.w, oxygen).find((n) => n.id !== carbon)!.id;
     this.turnBranch(oxygen, oldH, 14.5 * Math.PI / 180, 0.3, 0.45);
@@ -3143,6 +3179,8 @@ class Ctx {
   waterTurns: { oxygen: string; hydrogen: string; angle: number }[] = [];
   /** Groups of atoms that were moved as one body in this step, and how far each was turned. */
   rigid: { ids: string[]; theta: number }[] = [];
+  /** 새 결합점에 맞춘 조각은 접촉 원자를 중심으로 돌며 내부 길이를 유지한다. */
+  dockTurns: { ids: string[]; pivot: string; angle: number }[] = [];
 
   /**
    * Put the atoms `g` back into the shape they had (`pre`), turned and shifted as one body so as
@@ -3151,14 +3189,53 @@ class Ctx {
    */
   dock(g: string[], pre: Map<string, Vec>, contact?: { inside: string; outside: string }): void {
     if (contact) {
-      // 접촉점은 가중치가 아니라 정확한 제약이다. 준비한 방향과 내부 길이를 유지한다.
+      // 새 결합 길이와 조각 내부 길이는 고정하고, 겹치면 접촉 방향만 조금 바꾼다.
       const a = this.w.atoms.get(contact.inside)!;
       const b = this.w.atoms.get(contact.outside)!;
       const bond = getBond(this.w, a.id, b.id)!;
       const length = bondLength(a.el, b.el, bond.order);
-      const goal = add(b, scale(norm(sub(pre.get(a.id)!, pre.get(b.id)!)), length));
-      const delta = sub(goal, pre.get(a.id)!);
-      for (const id of g) Object.assign(this.w.atoms.get(id)!, add(pre.get(id)!, delta));
+      const direction = norm(sub(pre.get(a.id)!, pre.get(b.id)!));
+      const pose = (angle: number, turn: number) => {
+        const goal = add(b, scale(rotate(direction, angle), length));
+        return new Map(g.map((id) => [id, add(goal, rotate(sub(pre.get(id)!, pre.get(a.id)!), turn))]));
+      };
+      const penalty = this.posePenalty(g);
+      const movingPenalty = this.posePenalty(g, -0.5, true);
+      const scorePose = (candidate: Map<string, Vec>, turn: number) => {
+        let score = penalty(candidate);
+        // 끝점이 비어 있어도 직선 이동 중 다른 가지를 스칠 수 있다.
+        for (let i = 0; i <= 40; i++) {
+          const u = i / 40;
+          const positions = new Map([...this.w.atoms].map(([id, at]) =>
+            [id, lerpV(pre.get(id) ?? at, candidate.get(id) ?? at, u)]));
+          const center = positions.get(a.id)!;
+          for (const id of g) positions.set(id, add(center, rotate(sub(pre.get(id)!, pre.get(a.id)!), turn * u)));
+          score += movingPenalty(positions);
+        }
+        return score;
+      };
+      let best = pose(0, 0), turn = 0, score = scorePose(best, 0);
+      for (let degrees = 2; degrees <= 180 && score > 0; degrees += 2) for (const sign of [-1, 1]) {
+        const candidate = pose(sign * degrees * Math.PI / 180, 0);
+        const next = scorePose(candidate, 0);
+        if (next < score) { best = candidate; score = next; }
+        if (score === 0) break;
+      }
+      // 평행 이동으로 틈을 찾지 못하면 붙는 조각도 돌린다. 큰 쪽 분자는 그대로 둔다.
+      if (g.length > 1 && score > 0) {
+        for (let degrees = 2; degrees <= 90 && score > 0; degrees += 2) for (const sign of [-1, 1]) {
+          const theta = sign * degrees * Math.PI / 180;
+          for (const offset of [0, -2, 2, -4, 4, -8, 8, -16, 16, -32, 32]) {
+            const candidate = pose(offset * Math.PI / 180, theta);
+            const next = scorePose(candidate, theta);
+            if (next < score) { best = candidate; score = next; turn = theta; }
+            if (score === 0) break;
+          }
+          if (score === 0) break;
+        }
+      }
+      for (const [id, p] of best) Object.assign(this.w.atoms.get(id)!, p);
+      if (turn) this.dockTurns.push({ ids: g, pivot: a.id, angle: turn });
       return;
     }
     const inG = new Set(g);
@@ -3752,6 +3829,23 @@ class Ctx {
         A.tracks.set(id, tr);
       }
     }
+    for (const { ids, pivot, angle } of this.dockTurns) {
+      const centerAt = (t: number) => A.tracks.has(pivot) ? trackPos(A.tracks.get(pivot)!, t) : this.w.atoms.get(pivot)!;
+      for (const id of ids) {
+        if (id === pivot) continue;
+        const off = sub(start.get(id)!, start.get(pivot)!);
+        const initial = before.atoms.get(id)!;
+        const tr = prefix.get(id)?.filter((k) => k.t < c0) ?? [{ t: 0, x: initial.x, y: initial.y }];
+        for (let i = 0; i <= 160; i++) {
+          const t = c0 + (c1 - c0) * i / 160;
+          tr.push({ t, ...add(centerAt(t), rotate(off, angle * gentle(i / 160))) });
+        }
+        const end = this.w.atoms.get(id)!;
+        tr.push({ t: 1, x: end.x, y: end.y });
+        A.tracks.set(id, tr);
+      }
+    }
+    this.dockTurns = [];
     // 상대 원자 경로가 완성된 뒤 전달한다. 앞선 경로가 있어도 빠뜨리지 않는다.
     for (const [id, partner] of handed) {
       const old = prefix.get(id);

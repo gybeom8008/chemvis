@@ -34,7 +34,7 @@ import {
 } from '../util/math';
 import { Rng } from '../util/rng';
 import type { ArrowAnim, Keyframe, NoteTarget, StepAnim, Timeline } from './timeline';
-import { tallyBox, trackAt as trackPos } from './timeline';
+import { hopProgress, tallyBox, trackAt as trackPos } from './timeline';
 import {
   sameFormula,
   allComponents,
@@ -47,6 +47,7 @@ import {
   electronCount,
   emptyWorld,
   formulaOf,
+  formalCharge,
   getBond,
   neighbors,
   type Atom,
@@ -337,6 +338,8 @@ function compileSteps(ctx: Ctx, input: StepAst[]): StepAnim[] {
     ctx.anim = anim;
     ctx.mid = null;
     ctx.touched = new Set();
+    ctx.causalMotion.clear();
+    ctx.afterCommands = [];
     ctx.batteryMode = null;
     ctx.upcoming = input[index + 1]?.cmds ?? [];
     let maxDur = 0;
@@ -401,10 +404,14 @@ class Ctx {
   reference: Timeline | null = null;
   get plannedMotion(): boolean { return this.tight && !this.selectionPass; }
   effects: EngineEffect[] = [];
+  /** 접촉 순서를 정한 경로는 단계 끝 배치 보정으로 앞당기지 않는다. */
+  causalMotion = new Set<string>();
+  afterCommands: (() => void)[] = [];
   /** null preserves legacy whole-scene cleanup; a set limits continuation cleanup. */
   layoutMovable: Set<string> | null = null;
 
   canLayout(ids: string[]): boolean {
+    if (ids.some((id) => this.causalMotion.has(id))) return false;
     return this.layoutMovable === null || ids.some((id) => this.layoutMovable!.has(id));
   }
 
@@ -1007,6 +1014,7 @@ class Ctx {
       const tr = this.A.tracks.get(id);
       if (!tr) {
         if (t0 > 0) this.pushKf(id, { t: 0, x: start.x, y: start.y });
+        if (t0 > 0 && this.plannedMotion) this.pushKf(id, { t: t0, x: start.x, y: start.y });
       } else if (tr[tr.length - 1].t < t0) {
         const l = tr[tr.length - 1];
         this.pushKf(id, { t: t0, x: l.x, y: l.y });
@@ -2125,7 +2133,28 @@ class Ctx {
         }
       }
       const start = { x: ion.x, y: ion.y };
-      this.moveGroup(this.group(unit), start, this.wander(start, goal, region, 0.5), 0, 0.45, 1);
+      const path = this.wander(start, goal, region, 0.5);
+      if (this.plannedMotion) {
+        // 물이 모인 쪽으로 빠져나온다. 물이 닿기 전에는 이온을 움직이지 않는다.
+        const held = this.group(unit);
+        const pull = chosen.reduce((s, u) => add(s, u), { x: 0, y: 0 });
+        const direction = Math.hypot(pull.x, pull.y) > 1e-6 ? norm(pull) : out;
+        let reach = Math.max(80, dist(start, goal));
+        // 물까지 화면 안에 남을 수 있는 거리만 같은 방향으로 이동한다.
+        for (const id of held) {
+          const at = this.w.atoms.get(id)!, radius = element(at.el).r;
+          for (const [value, delta, low, high] of [
+            [at.x, direction.x, 14 + radius, this.stage.width - 14 - radius],
+            [at.y, direction.y, Math.max(14, (this.stage.surfaceY ?? 2) + 12) + radius, this.stage.height - 14 - radius],
+          ]) {
+            if (delta > 1e-6) reach = Math.min(reach, Math.max(0, (high - value) / delta));
+            if (delta < -1e-6) reach = Math.min(reach, Math.max(0, (low - value) / delta));
+          }
+        }
+        goal = add(start, scale(direction, reach));
+        this.moveGroup(held, start, [start, goal], 0, 0.45, 1);
+        [...held, ...lattice].forEach((id) => this.causalMotion.add(id));
+      } else this.moveGroup(this.group(unit), start, path, 0, 0.45, 1);
       this.A.trails.push(pick);
       this.focusMol(unit);
     }
@@ -2707,6 +2736,70 @@ class Ctx {
 
   // ------------------------------------------------------------ ops: more phase changes
 
+  /** 빈 이웃 자리 두 곳 중 다가오는 한 쌍에서 가장 가까운 곳을 고른다. */
+  nearestPairSlots(lattice: string[], cat: string[], an: string[], spacing: number): [Vec, Vec] {
+    const pts = this.latticeUnits(lattice).map((u) => ({ p: centerOf(this.w, u), plus: componentCharge(this.w, u) > 0 }));
+    const dirs = [{ x: spacing, y: 0 }, { x: -spacing, y: 0 }, { x: 0, y: spacing }, { x: 0, y: -spacing }];
+    const here = lerpV(centerOf(this.w, cat), centerOf(this.w, an), 0.5);
+    const free = (p: Vec, plus: boolean) => !pts.some((x) => dist(x.p, p) < spacing * 0.5 ||
+      (x.plus === plus && dist(x.p, p) < spacing * 1.1));
+    let best: { pair: [Vec, Vec]; distance: number } | null = null;
+    for (const x of pts) for (const d of dirs) {
+      const p = add(x.p, d);
+      if (!free(p, !x.plus)) continue;
+      for (const d2 of dirs) {
+        const q = add(p, d2);
+        if (!free(q, x.plus)) continue;
+        const distance = dist(here, lerpV(p, q, 0.5));
+        if (!best || distance < best.distance - 1e-6) best = { pair: x.plus ? [q, p] : [p, q], distance };
+      }
+    }
+    if (!best) this.fail('고체에 이온 한 쌍이 들어갈 빈 곳이 없어요.');
+    return best.pair;
+  }
+
+  /** 물을 붙인 채 접근하고, 접촉 직전에 물을 밀어낸 다음 한 쌍으로 자리 잡는다. */
+  precipitatePair(cat: string[], an: string[], goals: [Vec, Vec], lattice: string[]): void {
+    const starts = [centerOf(this.w, cat), centerOf(this.w, an)];
+    const middle = lerpV(starts[0], starts[1], 0.5);
+    const axis = dist(starts[0], starts[1]) > 1e-6 ? norm(sub(starts[1], starts[0])) : { x: 1, y: 0 };
+    const contact = dist(goals[0], goals[1]);
+    const release = Math.min(dist(starts[0], starts[1]), contact + 40);
+    const comps = [cat, an];
+    for (let i = 0; i < 2; i++) {
+      const comp = comps[i], sign = i === 0 ? -1 : 1;
+      const held = this.group(comp);
+      const near = add(middle, scale(axis, sign * release / 2));
+      const touch = add(middle, scale(axis, sign * contact / 2));
+      // 여러 원자로 된 이온은 전하를 띤 바깥 원자가 상대를 향하도록 물과 함께 돌린다.
+      const facing = angleOf(scale(axis, -sign));
+      const charged = comp.map((id) => this.w.atoms.get(id)!).filter((at) =>
+        formalCharge(this.w, at) * componentCharge(this.w, comp) > 0 && dist(at, starts[i]) > 1);
+      charged.sort((a, b) => angDiff(angleOf(sub(a, starts[i])), facing) - angDiff(angleOf(sub(b, starts[i])), facing));
+      const turn = charged.length ? signedAng(angleOf(sub(charged[0], starts[i])), facing) : 0;
+      this.moveGroup(held, starts[i], [starts[i], near], turn, 0, 0.42);
+      const waters = [...new Set(comp.flatMap((id) => this.w.attached.get(id) ?? []))];
+      for (const anchor of waters) {
+        const water = component(this.w, anchor);
+        const p = centerOf(this.w, water);
+        const away = dist(p, middle) > 1e-6 ? norm(sub(p, middle)) : scale(axis, sign);
+        this.moveGroup(water, p, [p, add(p, scale(away, 65))], 0, 0.42, 0.60);
+      }
+      this.detach(comp);
+      this.moveGroup(comp, near, [near, touch], 0, 0.42, 0.64);
+      held.forEach((id) => this.causalMotion.add(id));
+    }
+    // 만난 뒤에는 둘 사이 간격을 유지하며 함께 격자로 간다.
+    const goalMiddle = lerpV(goals[0], goals[1], 0.5);
+    const turn = signedAng(angleOf(axis), angleOf(sub(goals[1], goals[0])));
+    this.moveGroup([...cat, ...an], middle, [middle, goalMiddle], turn, 0.64, 1);
+    lattice.push(...cat, ...an);
+    lattice.forEach((id) => this.causalMotion.add(id));
+    this.focusMol(cat);
+    this.focusMol(an);
+    this.A.pulls = [...(this.A.pulls ?? []), { a: anchorOf(this.w, cat), b: anchorOf(this.w, an) }];
+  }
+
   /** precipitate Ag+ Cl- x3 [onto s] : dissolved ions shed their water and lock into a solid lattice. */
   precipitate(a: string[]): void {
     const mult = a.find((x) => /^x\d+$/.test(x));
@@ -2777,6 +2870,23 @@ class Ctx {
       this.w.crystals.set(name!, []);
     }
     const lattice = this.w.crystals.get(name!)!;
+    if (this.plannedMotion) {
+      const previous = [...lattice];
+      for (let k = 0; k < cats.length; k++) {
+        const goals: [Vec, Vec] = lattice.length
+          ? this.nearestPairSlots(lattice, cats[k], ans[k], s)
+          : [centerOf(this.w, cats[k]), centerOf(this.w, ans[k])];
+        if (!lattice.length) {
+          const middle = lerpV(goals[0], goals[1], 0.5);
+          const sign = goals[0].x <= goals[1].x ? -1 : 1;
+          goals[0] = add(middle, { x: sign * s / 2, y: 0 });
+          goals[1] = add(middle, { x: -sign * s / 2, y: 0 });
+        }
+        this.precipitatePair(cats[k], ans[k], goals, lattice);
+      }
+      lattice.splice(0, lattice.length, ...previous, ...all.flat());
+      return;
+    }
     const take = (parity: number) => {
       const k = slots.findIndex((sl) => sl.parity === parity);
       if (k < 0) this.fail('결정에 이온이 들어갈 빈 곳이 모자라요.');
@@ -2885,6 +2995,11 @@ class Ctx {
       this.w.crystals.set(name, []);
     }
     const lattice = this.w.crystals.get(name)!;
+    if (this.plannedMotion) {
+      const goals: [Vec, Vec] = onto ? this.nearestPairSlots(lattice, cat, an, s) : [goalCat, goalAn];
+      this.precipitatePair(cat, an, goals, lattice);
+      return;
+    }
     const moves: [string[], Vec][] = [
       [cat, goalCat],
       [an, goalAn],
@@ -3056,8 +3171,38 @@ class Ctx {
     const start = { x: at.x, y: at.y };
     const far = add(start, fromAngle(dirAng, 150));
     const goal = { x: clamp(far.x, region.x + 80, region.x + region.w - 80), y: clamp(far.y, region.y + 90, region.y + region.h - 80) };
-    this.moveGroup([at.id], start, [start, lerpV(start, goal, 0.5), goal], 0, 0, 0.6);
-    if (this.freeSolvent().length) this.hydrate([at.id], 0.35, 1);
+    if (this.plannedMotion) {
+      this.afterCommands.push(() => {
+        const hops = this.A.arrows.filter((a) => a.kind === 'single' && a.src?.a === at.id && a.src.kind !== 'bond' &&
+          a.dst?.kind === 'atom' && a.dst.a !== at.id);
+        if (hops.length && this.A.phase) {
+          const phase = this.A.phase;
+          // 첫 전자가 출발하기 전에는 그대로다. 마지막 전자가 도착할 때까지 표면에서 4만큼만 나온다.
+          const tr: Keyframe[] = [];
+          const count = hops.length;
+          let lo = phase.b0, hi = phase.b1;
+          for (let i = 0; i < 50; i++) {
+            const mid = (lo + hi) / 2;
+            if (hopProgress(phase, 0, count, mid) <= 0.02) lo = mid;
+            else hi = mid;
+          }
+          const samples = [...new Set([lo, phase.b0, phase.b1, 0.90, ...Array.from({ length: 401 }, (_, i) => i / 400)])].sort((a, b) => a - b);
+          for (const t of samples) {
+            const gone = hops.reduce((sum, _, j) => sum + clamp((hopProgress(phase, j, count, t) - 0.02) / 0.98, 0, 1), 0) / count;
+            const drift = gentle(clamp((t - phase.b1) / Math.max(1e-9, 0.90 - phase.b1), 0, 1));
+            const fraction = (4 / Math.max(4, dist(start, goal))) * gone;
+            tr.push({ t, ...lerpV(start, goal, fraction + (1 - fraction) * drift) });
+          }
+          this.A.tracks.set(at.id, tr);
+          Object.assign(at, goal);
+        } else this.moveGroup([at.id], start, [start, goal], 0, 0, 0.6);
+        if (this.freeSolvent().length) this.hydrate([at.id], hops.length ? 0.90 : 0.6, 1);
+        [...this.group([at.id]), ...lat].forEach((id) => this.causalMotion.add(id));
+      });
+    } else {
+      this.moveGroup([at.id], start, [start, lerpV(start, goal, 0.5), goal], 0, 0, 0.6);
+      if (this.freeSolvent().length) this.hydrate([at.id], 0.35, 1);
+    }
     this.focus([at.id, ...lat]);
     this.touched.add(at.id);
   }
@@ -3809,6 +3954,7 @@ class Ctx {
     for (const [id, at] of this.w.atoms) {
       const b = before.atoms.get(id);
       if (!b || handed.has(id)) continue;
+      if (this.causalMotion.has(id)) continue;
       const old = prefix.get(id);
       const p = start.get(id)!;
       const end = { x: at.x, y: at.y };
@@ -3877,7 +4023,7 @@ class Ctx {
     this.waterTurns = [];
     if (!A.phase) {
       // 짧은 하위 경로가 있어도 단계 전체 시작과 끝은 완만하다. 모든 원자에 같은 시간을 쓴다.
-      for (const [id, tr] of A.tracks) A.tracks.set(id, Array.from({ length: 201 }, (_, i) => ({
+      for (const [id, tr] of A.tracks) if (!this.causalMotion.has(id)) A.tracks.set(id, Array.from({ length: 201 }, (_, i) => ({
         t: i / 200, ...trackPos(tr, gentle(i / 200)),
       })));
     }
@@ -3902,6 +4048,8 @@ class Ctx {
 
   finishStep(before: World): void {
     const A = this.A;
+    for (const plan of this.afterCommands) plan();
+    this.afterCommands = [];
     const start = new Map([...this.w.atoms].map(([id, a]) => [id, { x: a.x, y: a.y }]));
     // Re-draw molecules whose bonds changed, then check electron counts.
     if (this.touched.size) {
@@ -4297,6 +4445,7 @@ function orientWaters(w: World, waters: string[][], passes: number): void {
 function separateSolutes(ctx: Ctx): void {
   const w = ctx.w;
   const pinned = new Set<string>([...w.crystals.values()].flat());
+  for (const id of ctx.causalMotion) pinned.add(id);
   for (const s of w.sites) if (s.occupant) component(w, s.occupant).forEach((x) => pinned.add(x));
   for (const a of w.atoms.values()) if (a.sei) pinned.add(a.id);
   if (ctx.layoutMovable) for (const c of allComponents(w)) if (!ctx.canLayout(c)) c.forEach((id) => pinned.add(id));
@@ -4394,7 +4543,7 @@ function resolveOverlaps(ctx: Ctx, _focus: Set<string>): void {
   const comps = allComponents(w);
   const inLattice = new Set([...w.crystals.values()].flat());
   const live = comps.filter((c) => !w.atoms.get(c[0])!.gone);
-  const candidates = live.filter((c) => w.atoms.get(c[0])!.crowd && !c.some((x) => attached.has(x) || inLattice.has(x) || w.atoms.get(x)!.sei));
+  const candidates = live.filter((c) => w.atoms.get(c[0])!.crowd && !c.some((x) => attached.has(x) || inLattice.has(x) || w.atoms.get(x)!.sei || ctx.causalMotion.has(x)));
   const active = ctx.layoutMovable ? [...ctx.layoutMovable].map((id) => w.atoms.get(id)).filter((a): a is Atom => !!a) : [];
   const free = ctx.layoutMovable ? candidates.filter((c) => ctx.canLayout(c) || c.some((id) => {
     const a = w.atoms.get(id)!;

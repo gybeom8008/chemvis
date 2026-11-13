@@ -1,7 +1,7 @@
 import type { Diag } from '../dsl/parser';
 import type { StageDef } from '../stage/stages';
 import type { Vec } from '../util/math';
-import { lerp, smooth } from '../util/math';
+import { clamp, lerp, smooth } from '../util/math';
 import type { Lens, World } from './world';
 
 export interface Keyframe {
@@ -31,6 +31,12 @@ export function trackAt(kf: Keyframe[], t: number): Vec {
     }
   }
   return last;
+}
+
+/** pairs 렌더러가 같은 원자에서 출발하는 홑전자를 차례로 보내는 진행률이다. */
+export function hopProgress(phase: { b0: number; b1: number }, index: number, count: number, t: number): number {
+  const fraction = clamp((t - phase.b0) / Math.max(1e-9, phase.b1 - phase.b0), 0, 1);
+  return smooth(clamp((fraction * count - index) / 0.8, 0, 1));
 }
 
 /** Where moving electrons start or end, when that is on atoms (lone pair, unpaired electron, bond, atom). */

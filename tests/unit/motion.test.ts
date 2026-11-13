@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../src/engine/compile';
-import { trackAt, type StepAnim, type Timeline } from '../../src/engine/timeline';
-import { allComponents, bondKey, cloneWorld, neighbors, type World } from '../../src/engine/world';
+import { hopProgress, trackAt, type StepAnim, type Timeline } from '../../src/engine/timeline';
+import { allComponents, bondKey, cloneWorld, component, formalCharge, neighbors, type World } from '../../src/engine/world';
 import { bondLength, element } from '../../src/chem/elements';
 import { CHAPTERS } from '../../src/tutorial/chapters';
 import { trackAt as renderedTrackAt } from '../../src/render/view';
@@ -35,6 +35,215 @@ const signature = (w: World) => ({
 const chemistry = async (tl: Timeline) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([signature(tl.initial), ...tl.steps.map((s) => signature(s.after))]))))].map((b) => b.toString(16).padStart(2, '0')).join('');
 
 type Criterion = 'retained' | 'contact' | 'handoff' | 'gentle' | 'clear' | 'rotation';
+
+describe('causal motion at a solid surface', () => {
+  const dense = Array.from({ length: 501 }, (_, i) => i / 500);
+  const run = (src: string) => {
+    const r = compile(src, { tight: true });
+    expect(r.errors).toEqual([]);
+    return r.timeline!;
+  };
+  const unchangedChemistry = (src: string, tl: Timeline) => {
+    const legacy = compile(src);
+    expect(legacy.errors).toEqual([]);
+    tl.steps.forEach((s, i) => {
+      expect(signature(s.after)).toEqual(signature(legacy.timeline!.steps[i].after));
+      expect([...s.after.crystals]).toEqual([...legacy.timeline!.steps[i].after.crystals]);
+    });
+  };
+  const endpoints = (tl: Timeline) => {
+    for (const s of tl.steps) for (const [id, tr] of s.tracks) {
+      expect(dist(trackAt(tr, 1), s.after.atoms.get(id)!)).toBeLessThan(1e-6);
+      if (s.before.atoms.has(id)) expect(dist(trackAt(tr, 0), s.before.atoms.get(id)!)).toBeLessThan(1e-6);
+      for (const t of dense) expect(trackAt(tr, t)).toEqual(renderedTrackAt(tr, t));
+    }
+  };
+  for (const solvent of ['', 'crowd H2O in water 26\n']) it(`waits for every water, then carries the shell toward the water (${solvent ? 'existing' : 'new'} water)`, () => {
+    const src = `stage solution\n${solvent}crystal s = NaCl at bottom 4x3\nstep "물에 녹아요"\n dissolve s1 s2 from s`;
+    const tl = run(src), s = tl.steps[0];
+    for (const ion of ['s1.Na', 's2.Cl']) {
+      const atom = s.after.atoms.get(ion)!;
+      const plus = formalCharge(s.after, atom) > 0;
+      const waters = s.after.attached.get(ion)!.map((id) => component(s.after, id));
+      expect(waters.length).toBeGreaterThan(0);
+      const contacts = waters.map((water) => water.filter((id) => s.after.atoms.get(id)!.el === (plus ? 'O' : 'H'))
+        .sort((a, b) => dist(pos(s, a, 0.42), pos(s, ion, 0.42)) - dist(pos(s, b, 0.42), pos(s, ion, 0.42)))[0]);
+      const contact = element(atom.el).r + element(plus ? 'O' : 'H').r + (plus ? 7 : 12);
+      for (const t of dense) {
+        if (contacts.some((id) => dist(pos(s, id, t), pos(s, ion, t)) > contact + 0.1)) {
+          expect(dist(pos(s, ion, t), pos(s, ion, 0))).toBeLessThan(2);
+        }
+        if (t <= 0.45) expect(dist(pos(s, ion, t), pos(s, ion, 0))).toBeLessThan(1e-6);
+        if (t >= 0.42) for (const id of contacts) expect(dist(pos(s, id, t), pos(s, ion, t)), `${ion} ${id} at ${t}`).toBeLessThanOrEqual(contact + 0.01);
+        if (t >= 0.45) for (const id of waters.flat()) {
+          expect(dist(sub(pos(s, id, t), pos(s, ion, t)), sub(pos(s, id, 0.45), pos(s, ion, 0.45)))).toBeLessThan(1e-6);
+        }
+      }
+      const towardWater = centroid(contacts.map((id) => sub(pos(s, id, 0.45), pos(s, ion, 0.45))));
+      const displacement = sub(pos(s, ion, 1), pos(s, ion, 0));
+      expect(displacement.x * towardWater.x + displacement.y * towardWater.y).toBeGreaterThan(0);
+      for (const water of waters) {
+        const O = water.find((id) => s.after.atoms.get(id)!.el === 'O')!;
+        const Hs = water.filter((id) => s.after.atoms.get(id)!.el === 'H');
+        for (const h of Hs) for (const t of dense) expect(Math.abs(dist(pos(s, O, t), pos(s, h, t)) - bondLength('O', 'H'))).toBeLessThan(0.05);
+        if (plus) for (const h of Hs) expect(dist(pos(s, h, 0.42), pos(s, ion, 0.42))).toBeGreaterThan(dist(pos(s, O, 0.42), pos(s, ion, 0.42)));
+        else expect(Math.min(...Hs.map((h) => dist(pos(s, h, 0.42), pos(s, ion, 0.42))))).toBeLessThan(dist(pos(s, O, 0.42), pos(s, ion, 0.42)));
+      }
+    }
+    unchangedChemistry(src, tl);
+    endpoints(tl);
+  });
+
+  const ions = `stage solution
+crowd H2O in water 26
+mol a1 = Ag+ at 300,220
+mol b1 = Cl- at 470,250
+mol a2 = Ag+ at 690,200
+mol b2 = Cl- at 640,400
+step "물 분자가 둘러싸요"
+ solvate all
+`;
+  for (const chapter of ['dissolving', 'precipitation']) it(`preserves chemistry across the complete ${chapter} scene`, () => {
+    const src = CHAPTERS.find((c) => c.id === chapter)!.script;
+    const tl = run(src);
+    unchangedChemistry(src, tl);
+    endpoints(tl);
+  });
+  it('keeps polyatomic ions intact when dissolving and returning to the crystal', () => {
+    const src = `stage solution
+crowd H2O in water 20
+crystal s = CaCO3 at water 4x2
+step "물에 녹아요"
+ dissolve s1 s2 from s
+step "다시 붙어요"
+ precipitate Ca2+ CO32- onto s`;
+    const tl = run(src);
+    unchangedChemistry(src, tl);
+    endpoints(tl);
+    for (const s of tl.steps) for (const b of s.before.bonds.values()) for (const t of dense) {
+      expect(Math.abs(dist(pos(s, b.a, t), pos(s, b.b, t)) - dist(pos(s, b.a, 0), pos(s, b.b, 0)))).toBeLessThan(0.05);
+    }
+    const s = tl.steps[1];
+    const carbonate = component(s.before, 's2.C');
+    const center = centroid(carbonate.map((id) => pos(s, id, 0.42)));
+    const toward = sub(pos(s, 's1.Ca', 0.42), center);
+    expect(carbonate.filter((id) => formalCharge(s.before, s.before.atoms.get(id)!) < 0).some((id) => {
+      const offset = sub(pos(s, id, 0.42), center);
+      return (offset.x * toward.x + offset.y * toward.y) / (Math.hypot(offset.x, offset.y) * Math.hypot(toward.x, toward.y)) > 0.999;
+    })).toBe(true);
+  });
+  for (const named of [true, false]) it(`approaches before releasing water and settles as a pair (${named ? 'using' : 'formula'}, then onto)`, () => {
+    const src = ions + (named
+      ? 'step "만나요"\n precipitate using a1 b1 as s\nstep "붙어요"\n precipitate using a2 b2 onto s'
+      : 'step "만나요"\n precipitate Ag+ Cl-\nstep "붙어요"\n precipitate Ag+ Cl- onto ppt#1');
+    const tl = run(src);
+    for (let i = 1; i <= 2; i++) {
+      const s = tl.steps[i], cat = `a${i}.Ag`, an = `b${i}.Cl`;
+      const contact = element('Ag').r + element('Cl').r + 7;
+      const axis = sub(pos(s, an, 0), pos(s, cat, 0));
+      let previous = dist(pos(s, cat, 0), pos(s, an, 0));
+      for (const t of dense) {
+        const gap = dist(pos(s, cat, t), pos(s, an, t));
+        if (t <= 0.64) {
+          expect(gap).toBeLessThanOrEqual(previous + 1e-6);
+          for (const id of [cat, an]) {
+            const d = sub(pos(s, id, t), pos(s, id, 0));
+            expect(Math.abs(d.x * axis.y - d.y * axis.x)).toBeLessThan(1e-5);
+          }
+        } else expect(Math.abs(gap - contact)).toBeLessThan(0.02);
+        previous = gap;
+        if (gap >= contact + 40 - 1e-6) for (const id of [cat, an]) for (const w of s.before.attached.get(id)!) {
+          for (const atom of component(s.before, w)) expect(dist(sub(pos(s, atom, t), pos(s, id, t)), sub(pos(s, atom, 0), pos(s, id, 0)))).toBeLessThan(1e-5);
+        }
+      }
+      const middle = centroid([pos(s, cat, 0.42), pos(s, an, 0.42)]);
+      for (const id of [cat, an]) {
+        expect(s.after.attached.has(id)).toBe(false);
+        for (const w of s.before.attached.get(id)!) {
+          expect(dist(pos(s, w, 0.60), middle) - dist(pos(s, w, 0.42), middle)).toBeGreaterThan(50);
+          expect(dist(pos(s, w, 0.60), pos(s, id, 0.60))).toBeGreaterThan(dist(pos(s, w, 0.42), pos(s, id, 0.42)) + 30);
+        }
+      }
+      if (i === 2) {
+        const old = [...s.before.crystals.values()].flat();
+        for (const id of old) expect(dist(pos(s, id, 0), pos(s, id, 1))).toBeLessThan(1e-6);
+        const all = [...old, cat, an];
+        for (const id of [cat, an]) for (const other of all.filter((x) => x !== id)) {
+          const gap = dist(pos(s, id, 1), pos(s, other, 1));
+          expect(gap).toBeGreaterThanOrEqual(contact - 1e-6);
+          if (gap < contact * 1.1) expect(formalCharge(s.after, s.after.atoms.get(id)!) * formalCharge(s.after, s.after.atoms.get(other)!)).toBeLessThan(0);
+        }
+        // 두 자리 모두 빈 이웃 자리인 모든 후보와 중점 거리를 비교한다.
+        const here = centroid([pos(s, cat, 0), pos(s, an, 0)]);
+        const finalDistance = dist(here, centroid([pos(s, cat, 1), pos(s, an, 1)]));
+        const dirs = [{ x: contact, y: 0 }, { x: -contact, y: 0 }, { x: 0, y: contact }, { x: 0, y: -contact }];
+        for (const id of old) for (const d of dirs) for (const e of dirs) {
+          const base = pos(s, id, 0), p = { x: base.x + d.x, y: base.y + d.y }, q = { x: p.x + e.x, y: p.y + e.y };
+          const sign = formalCharge(s.before, s.before.atoms.get(id)!);
+          const valid = (point: Vec, charge: number) => old.every((x) => dist(point, pos(s, x, 0)) >= contact * 0.5 &&
+            (formalCharge(s.before, s.before.atoms.get(x)!) * charge < 0 || dist(point, pos(s, x, 0)) >= contact * 1.1));
+          if (valid(p, -sign) && valid(q, sign)) expect(finalDistance).toBeLessThanOrEqual(dist(here, centroid([p, q])) + 1e-6);
+        }
+      }
+    }
+    unchangedChemistry(src, tl);
+    endpoints(tl);
+  });
+
+  const metal = `stage solution
+crowd H2O in water 26
+metal m = Zn at 420,330 3x2
+mol a1 = Ag+ at 640,200
+mol a2 = Ag+ at 700,330
+step "표면에 닿아요"
+ land a1 a2 on m3
+step "전자가 건너가요"
+ hop m4.Zn -> a1.Ag
+ hop m4.Zn -> a2.Ag
+ join a1 a2 to m
+`;
+  for (const separate of [false, true]) it(`leaves with its electrons (${separate ? 'separate step' : 'same step'})`, () => {
+    const src = metal + (separate ? 'step "물속으로 나와요"\n' : '') + ' leave m4 from m';
+    const tl = run(src), s = tl.steps.at(-1)!;
+    const zn = 'm4.Zn';
+    expect(formalCharge(s.after, s.after.atoms.get(zn)!)).toBe(2);
+    expect(s.after.crystals.get('m')).not.toContain(zn);
+    for (const id of ['a1.Ag', 'a2.Ag']) {
+      expect(s.after.atoms.get(id)!.lattice).toBe(true);
+      expect(formalCharge(s.after, s.after.atoms.get(id)!)).toBe(0);
+    }
+    if (!separate) {
+      for (const t of dense) {
+        const displacement = dist(pos(s, zn, t), pos(s, zn, 0));
+        const first = hopProgress(s.phase!, 0, 2, t), last = hopProgress(s.phase!, 1, 2, t);
+        if (first <= 0.02) expect(displacement).toBeLessThan(1e-6);
+        if (last < 0.999) {
+          expect(displacement).toBeLessThanOrEqual(4.001);
+          const gap = Math.min(...s.after.crystals.get('m')!.map((id) => dist(pos(s, zn, t), pos(s, id, t)) -
+            element('Zn').r - element(s.after.atoms.get(id)!.el).r));
+          expect(gap).toBeLessThan(10);
+        }
+      }
+      expect(dist(pos(s, zn, 0.30), pos(s, zn, 0))).toBeGreaterThan(1);
+      expect(dist(pos(s, zn, 0.55), pos(s, zn, 0))).toBeCloseTo(4, 5);
+    }
+    expect(dist(pos(s, zn, 1), pos(s, zn, 0))).toBeGreaterThan(80);
+    for (const id of s.after.crystals.get('m')!) expect(dist(pos(s, zn, 1), pos(s, id, 1))).toBeGreaterThan(50);
+    unchangedChemistry(src, tl);
+    endpoints(tl);
+  });
+  it('uses the existing renderer flight windows, including the pause between electrons', () => {
+    const phase = { b0: 0.12, b1: 0.55 };
+    const at = (fraction: number) => phase.b0 + fraction * (phase.b1 - phase.b0);
+    expect(hopProgress(phase, 0, 2, at(0))).toBe(0);
+    expect(hopProgress(phase, 0, 2, at(0.2))).toBeCloseTo(0.5, 10);
+    expect(hopProgress(phase, 0, 2, at(0.45))).toBe(1);
+    expect(hopProgress(phase, 1, 2, at(0.45))).toBe(0);
+    expect(hopProgress(phase, 1, 2, at(0.7))).toBeCloseTo(0.5, 10);
+    expect(hopProgress(phase, 1, 2, at(0.9))).toBeCloseTo(1, 10);
+  });
+});
+
 function violations(tl: Timeline, criterion: Criterion): string[] {
   const failures: string[] = [];
   const fail = (s: StepAnim, message: string) => { if (failures.length < 12) failures.push(`step ${s.index}: ${message}`); };

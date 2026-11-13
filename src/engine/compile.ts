@@ -34,7 +34,7 @@ import {
 } from '../util/math';
 import { Rng } from '../util/rng';
 import type { ArrowAnim, Keyframe, NoteTarget, StepAnim, Timeline } from './timeline';
-import { tallyBox } from './timeline';
+import { tallyBox, trackAt as trackPos } from './timeline';
 import {
   sameFormula,
   allComponents,
@@ -242,9 +242,19 @@ export interface CompileOptions {
 }
 
 export function compile(src: string, opts: CompileOptions = {}): CompileResult {
+  // 거리로 선택하던 H와 물의 ID는 동선을 바꿔도 그대로여야 한다.
+  // 해당 명령이 있을 때만 기존 배치로 선택 결과를 먼저 얻는다. 외부 상태는 바꾸지 않는다.
+  const needsSelection = opts.tight && parse(src).steps.some((s) => s.cmds.some((c) => c.op === 'condensation' || c.op === 'hydrolysis'));
+  const reference = needsSelection ? compileScene(src, opts, true).timeline : null;
+  return compileScene(src, opts, false, reference);
+}
+
+function compileScene(src: string, opts: CompileOptions, selectionPass: boolean, reference: Timeline | null = null): CompileResult {
   const ast = parse(src);
   const ctx = new Ctx();
   ctx.tight = !!opts.tight;
+  ctx.selectionPass = selectionPass;
+  ctx.reference = reference;
   ctx.errors.push(...ast.errors);
   if (ast.errors.length) return { timeline: null, errors: ctx.errors, warnings: ctx.warnings };
 
@@ -387,6 +397,9 @@ class Ctx {
   continuation = false;
   /** See CompileOptions.tight. */
   tight = false;
+  selectionPass = false;
+  reference: Timeline | null = null;
+  get plannedMotion(): boolean { return this.tight && !this.selectionPass; }
   effects: EngineEffect[] = [];
   /** null preserves legacy whole-scene cleanup; a set limits continuation cleanup. */
   layoutMovable: Set<string> | null = null;
@@ -985,7 +998,7 @@ class Ctx {
     };
     // Moves start and stop gently: the same stretch of time covers little ground at both ends
     // and most in the middle. The turn is finished after `turnBy` of the way.
-    const N = Math.max(18, pts.length);
+    const N = Math.max(this.plannedMotion ? 120 : 18, pts.length);
     const offsets = ids.map((id) => {
       const at = this.w.atoms.get(id)!;
       return { id, off: sub(at, pivot), start: { x: at.x, y: at.y } };
@@ -1001,7 +1014,7 @@ class Ctx {
       if (this.tight) {
         for (let i = 0; i <= N; i++) {
           const u = i / N;
-          const f = smooth(u);
+          const f = this.plannedMotion ? gentle(u) : smooth(u);
           const q = add(along(f), rotate(off, rotation * smooth(clamp(f / Math.max(turnBy, 1e-6), 0, 1))));
           if (i === 0 && this.A.tracks.get(id)?.length) continue;
           this.pushKf(id, { t: t0 + (t1 - t0) * u, x: q.x, y: q.y });
@@ -1020,6 +1033,49 @@ class Ctx {
       at.x = fin.x;
       at.y = fin.y;
     }
+  }
+
+  /** 회전하는 분자 전체를 원자 반지름으로 검사한 뒤 우회 경로를 고른다. */
+  clearRoute(ids: string[], pivot: Vec, goal: Vec, rotation: number, t0: number, t1: number,
+    original: { path: Vec[]; turnBy: number }): { path: Vec[]; turnBy: number } {
+    const moving = ids.map((id) => ({ off: sub(this.w.atoms.get(id)!, pivot), r: element(this.w.atoms.get(id)!.el).r }));
+    const obstacles = [...this.w.atoms.values()].filter((a) => !ids.includes(a.id) && !a.crowd && !a.gone);
+    const clear = (path: Vec[], turnBy: number): boolean => {
+      const pts = resample(path, 14);
+      const count = Math.max(120, pts.length);
+      let previous: Vec[] | null = null;
+      for (let i = 0; i <= count; i++) {
+        const u = i / count, f = gentle(u);
+        const center = polyAt(pts, f);
+        const angle = rotation * smooth(clamp(f / turnBy, 0, 1));
+        const positions = moving.map((a) => add(center, rotate(a.off, angle)));
+        for (let j = 0; j < moving.length; j++) for (const o of obstacles) {
+          const tr = this.A.tracks.get(o.id);
+          const at = (v: number) => tr ? trackPos(tr, t0 + (t1 - t0) * v) : o;
+          const min = moving[j].r + element(o.el).r - 2;
+          if (dist(positions[j], at(u)) < min) return false;
+          // 실제 렌더러가 직선 보간하는 표본 사이도 확인한다.
+          if (previous && dist(lerpV(previous[j], positions[j], 0.5), at((i - 0.5) / count)) < min) return false;
+        }
+        previous = positions;
+      }
+      return true;
+    };
+    if (clear(original.path, original.turnBy)) return original;
+    const candidates: { path: Vec[]; turnBy: number; length: number }[] = [];
+    for (const radius of [60, 110, 180]) for (let i = 0; i < 16; i++) {
+      const offset = fromAngle(i * Math.PI / 8, radius);
+      for (const points of [[pivot, add(lerpV(pivot, goal, 0.5), offset), goal],
+        [pivot, add(pivot, offset), add(goal, offset), goal]]) {
+        const path = rounded(points, 3);
+        const length = polyLength(path);
+        for (const turnBy of [0.2, 0.5, 0.8, 1]) candidates.push({ path, turnBy, length });
+      }
+    }
+    candidates.sort((a, b) => a.length - b.length);
+    for (const candidate of candidates) if (clear(candidate.path, candidate.turnBy)) return candidate;
+    // 정해진 후보만 비교하므로 모든 입력에서 충돌 없는 경로를 보장하지는 않는다.
+    return original;
   }
 
   /** Random-looking walk from p0 to p1 (for diffusion), kept inside a region. */
@@ -1526,6 +1582,40 @@ class Ctx {
         }
       }
     }
+    if (this.plannedMotion && oh) {
+      const ps = pose(dir);
+      const selected = this.reference?.steps[this.A.index + 1]?.shifts?.find((s) => s.src.kind === 'lp' && s.src.a === oh.id && s.dst.kind === 'bond')?.dst.b;
+      const h = mn.find((x) => x.id === selected) ?? mn.filter((x) => x.el === 'H').sort((a, b) =>
+        dist(add(ps.goal, rotate(sub(a, pivot), ps.rot)), oh) - dist(add(ps.goal, rotate(sub(b, pivot), ps.rot)), oh))[0];
+      if (h) {
+        this.condensationApproach(target, mover, oh.id, h.id);
+        this.focusMol(comp);
+        this.focusMol(component(this.w, target));
+        (this.A.pulls ??= []).push({ a: mover, b: target });
+        return;
+      }
+    }
+    // 치환에서는 떠날 원자 반대쪽을 먼저 비운다. 새 결합 뒤 큰 회전은 하지 않는다.
+    let prepared = false;
+    if (this.plannedMotion) for (const cmd of this.upcoming) {
+      if (cmd.op !== 'arrow' || !cmd.args[0]?.includes('~')) continue;
+      const src = this.arrowEnd(cmd.args[0]);
+      const dst = cmd.args[2] ? this.arrowEnd(cmd.args[2]) : null;
+      if (src.kind !== 'bond' || !dst || dst.kind !== 'atom') continue;
+      const leaving = src.a === target ? src.b : src.b === target ? src.a : undefined;
+      if (!leaving || dst.a !== leaving || !['F', 'Cl', 'Br', 'I'].includes(this.w.atoms.get(leaving)!.el)) continue;
+      dir = norm(sub(T, this.w.atoms.get(leaving)!));
+      const axis = angleOf(dir);
+      const hs = tn.filter((x) => x.el === 'H');
+      const slots = [axis - 2 * Math.PI / 3, axis - Math.PI / 3, axis + Math.PI / 2];
+      // 현재 순서에서 가까운 빈 자리를 고르며 H ID를 그대로 유지한다.
+      for (const h of hs) {
+        slots.sort((a, b) => angDiff(a, angleOf(sub(h, T))) - angDiff(b, angleOf(sub(h, T))));
+        this.turnBranch(target, h.id, slots.shift() ?? axis + Math.PI, 0, 0.3);
+      }
+      prepared = true;
+      break;
+    }
     const { goal, rot, want } = pose(dir);
     // A lone atom: just turn its electrons; the first unpaired electron (or first pair) faces the target.
     if (!mn.length) M.face = want;
@@ -1537,12 +1627,54 @@ class Ctx {
       const around = centroid(tc);
       const clear = Math.max(...tc.map((x) => dist(x, around) + element(x.el).r)) + Math.max(...mc.map((x) => dist(x, M) + element(x.el).r)) + 14;
       const { path, turnBy } = routeIn(pivot, goal, dir, around, clear);
-      this.moveGroup(ids, pivot, path, mn.length ? rot : 0, 0, 1, turnBy);
+      const t0 = prepared ? 0.3 : 0;
+      const rotation = mn.length ? rot : 0;
+      const route = this.plannedMotion ? this.clearRoute(ids, pivot, goal, rotation, t0, 1, { path, turnBy }) : { path, turnBy };
+      this.moveGroup(ids, pivot, route.path, rotation, t0, 1, route.turnBy);
     } else this.moveGroup(ids, pivot, [pivot, goal], mn.length ? rot : 0, 0, 1);
     this.focusMol(comp);
     // The molecule it comes up to is part of the scene too.
     this.focusMol(component(this.w, target));
     (this.A.pulls ??= []).push({ a: mover, b: target });
+  }
+
+  /** 중심 원자를 축으로 가지 전체를 돌린다. 고리가 축으로 되돌아오면 건드리지 않는다. */
+  turnBranch(root: string, child: string, angle: number, t0: number, t1: number): void {
+    const ids = new Set([child]);
+    const queue = [child];
+    for (const id of queue) for (const n of neighbors(this.w, id)) {
+      if (n.id === root) { if (id !== child) return; continue; }
+      if (!ids.has(n.id)) { ids.add(n.id); queue.push(n.id); }
+    }
+    const pivot = { ...this.w.atoms.get(root)! };
+    const rotation = signedAng(angleOf(sub(this.w.atoms.get(child)!, pivot)), angle);
+    this.moveGroup([...ids], pivot, [pivot, pivot], rotation, t0, t1);
+  }
+
+  /** C–N 접촉과 O–H 전달을 동시에 준비한다. 각도는 화면 배치를 위한 값이다. */
+  condensationApproach(carbon: string, nitrogen: string, oxygen: string, hydrogen: string): void {
+    const C = this.w.atoms.get(carbon)!;
+    const N = this.w.atoms.get(nitrogen)!;
+    for (const n of neighbors(this.w, carbon)) {
+      this.turnBranch(carbon, n.id, n.id === oxygen ? Math.PI / 2 : n.order === 2 ? 0 : -Math.PI / 3, 0, 0.3);
+    }
+    const oldH = neighbors(this.w, oxygen).find((n) => n.id !== carbon)!.id;
+    this.turnBranch(oxygen, oldH, 14.5 * Math.PI / 180, 0.3, 0.45);
+    for (const n of neighbors(this.w, nitrogen)) {
+      this.turnBranch(nitrogen, n.id, n.id === hydrogen ? Math.PI / 2 : this.w.atoms.get(n.id)!.el === 'H' ? -Math.PI / 2 : Math.PI, 0, 0.3);
+    }
+    const from = { x: N.x, y: N.y };
+    const goal = add(C, { x: -bondLength(C.el, N.el, 1), y: 0 });
+    const target = component(this.w, carbon).map((id) => this.w.atoms.get(id)!);
+    const moving = component(this.w, nitrogen);
+    const clearance = Math.max(...target.map((a) => dist(a, C) + element(a.el).r)) +
+      Math.max(...moving.map((id) => dist(this.w.atoms.get(id)!, N) + element(this.w.atoms.get(id)!.el).r)) + 20;
+    // 아래쪽 외곽으로 들어간다. 마지막 구간에서는 회전하지 않는다.
+    const low = Math.max(C.y, from.y) + clearance;
+    const path = rounded([from, { x: from.x, y: low }, { x: goal.x - clearance, y: low }, { x: goal.x - clearance, y: goal.y }, goal], 3);
+    const ids = this.group(moving);
+    const route = this.clearRoute(ids, from, goal, 0, 0.45, 1, { path, turnBy: 1 });
+    this.moveGroup(ids, from, route.path, 0, 0.45, 1);
   }
 
   /** The O of the -OH that `a` gives up, if the next step condenses `a` with `b`. */
@@ -3007,6 +3139,8 @@ class Ctx {
 
   /** Molecules that should slide apart a little more at the end of the step (e.g. released water). */
   drift: { ids: string[]; from: Vec }[] = [];
+  /** 완성될 물에서 원래 붙어 있던 H가 돌아갈 자리다. */
+  waterTurns: { oxygen: string; hydrogen: string; angle: number }[] = [];
   /** Groups of atoms that were moved as one body in this step, and how far each was turned. */
   rigid: { ids: string[]; theta: number }[] = [];
 
@@ -3015,7 +3149,18 @@ class Ctx {
    * to match where they have just been laid out as closely as a rigid move can. The atoms that
    * bond to the rest of the molecule count most, so the new bond comes out right.
    */
-  dock(g: string[], pre: Map<string, Vec>): void {
+  dock(g: string[], pre: Map<string, Vec>, contact?: { inside: string; outside: string }): void {
+    if (contact) {
+      // 접촉점은 가중치가 아니라 정확한 제약이다. 준비한 방향과 내부 길이를 유지한다.
+      const a = this.w.atoms.get(contact.inside)!;
+      const b = this.w.atoms.get(contact.outside)!;
+      const bond = getBond(this.w, a.id, b.id)!;
+      const length = bondLength(a.el, b.el, bond.order);
+      const goal = add(b, scale(norm(sub(pre.get(a.id)!, pre.get(b.id)!)), length));
+      const delta = sub(goal, pre.get(a.id)!);
+      for (const id of g) Object.assign(this.w.atoms.get(id)!, add(pre.get(id)!, delta));
+      return;
+    }
     const inG = new Set(g);
     const wt = (id: string) => (neighbors(this.w, id).some((n) => !inG.has(n.id)) ? 8 : 1);
     let sw = 0;
@@ -3070,7 +3215,8 @@ class Ctx {
       .find((o) => o.el === 'O' && neighbors(this.w, o.id).length === 2 && neighbors(this.w, o.id).some((x) => this.w.atoms.get(x.id)!.el === 'H'));
     if (!oh) this.fail(`${ra}에 결합한 -OH가 없어요. 축합은 -OH와 결합한 원자를 먼저 적어요.`);
     // Of B's hydrogens, the one nearest the -OH leaves with it.
-    const hb = neighbors(this.w, B)
+    const selectedH = this.reference?.steps[this.A.index]?.shifts?.find((s) => s.src.kind === 'lp' && s.src.a === oh.id && s.dst.kind === 'bond')?.dst.b;
+    const hb = (selectedH && this.w.atoms.get(selectedH)) || neighbors(this.w, B)
       .map((n) => this.w.atoms.get(n.id)!)
       .filter((h) => h.el === 'H')
       .sort((p, q) => dist(p, oh!) - dist(q, oh!))[0];
@@ -3109,7 +3255,10 @@ class Ctx {
     if (!getBond(this.w, A, B)) this.fail(`${ref}는 결합해 있지 않아요.`);
     const withI = a.indexOf('with');
     let water: string[];
+    const referenceShifts = this.reference?.steps[this.A.index]?.shifts;
+    const selectedO = referenceShifts?.find((s) => s.dst.kind === 'bond' && s.dst.b === A && s.src.kind === 'lp')?.src.a;
     if (withI >= 0 && a[withI + 1]) water = this.mol(a[withI + 1]);
+    else if (selectedO && this.w.atoms.has(selectedO)) water = component(this.w, selectedO);
     else {
       // The nearest free water molecule: one released earlier counts as much as background water.
       const mid = lerpV(this.w.atoms.get(A)!, this.w.atoms.get(B)!, 0.5);
@@ -3126,7 +3275,8 @@ class Ctx {
     // The H nearer to B goes to B.
     const Bpos = this.w.atoms.get(B)!;
     Hs.sort((p, q) => dist(p, Bpos) - dist(q, Bpos));
-    const hToB = Hs[0];
+    const selectedH = referenceShifts?.find((s) => s.src.kind === 'lp' && s.src.a === B && s.dst.kind === 'bond')?.dst.b;
+    const hToB = Hs.find((h) => h.id === selectedH) ?? Hs[0];
     if (this.tight) {
       // The water comes right up first: its O beside A, in the opening next to B, with the H that
       // B will take turned towards B. Then its pairs only have a bond's length to reach.
@@ -3153,7 +3303,8 @@ class Ctx {
       const around = centroid(mol);
       const clear = Math.max(...mol.map((x) => dist(x, around) + element(x.el).r)) + 34;
       const { path, turnBy } = routeIn(from, spot, norm(sub(spot, Aat)), around, clear);
-      this.moveGroup(water, from, path, rot, 0, 0.36, turnBy);
+      const route = this.plannedMotion ? this.clearRoute(water, from, spot, rot, 0, 0.36, { path, turnBy }) : { path, turnBy };
+      this.moveGroup(water, from, route.path, rot, 0, 0.36, route.turnBy);
     }
     // Where each electron pair ends up: a lone pair of the water's O joins A, the A–B pair stays
     // on B, a lone pair of B takes the H, and the O–H pair stays on O.
@@ -3514,12 +3665,155 @@ class Ctx {
 
   // ------------------------------------------------------------ end of step
 
+  /** 남아 있는 결합으로 연결된 조각을 보존하고 새 결합점만 맞춘다. */
+  tightLayout(before: World): void {
+    const retained = cloneWorld(this.w);
+    for (const key of retained.bonds.keys()) if (!before.bonds.has(key)) retained.bonds.delete(key);
+    const groups = allComponents(retained);
+    const groupOf = new Map(groups.flatMap((g) => g.map((id) => [id, g] as const)));
+    const heavy = (g: string[]) => g.filter((id) => this.w.atoms.get(id)!.el !== 'H').length;
+    const pre = new Map([...this.w.atoms].map(([id, a]) => [id, { x: a.x, y: a.y }]));
+    for (const comp of allComponents(this.w)) {
+      if (!comp.some((id) => this.touched.has(id))) continue;
+      const pieces = [...new Set(comp.map((id) => groupOf.get(id)!))];
+      pieces.sort((a, b) => heavy(b) - heavy(a) || b.length - a.length);
+      const placed = new Set(pieces[0]);
+      while (placed.size < comp.length) {
+        const join = [...this.w.bonds.values()].find((b) => comp.includes(b.a) && placed.has(b.a) !== placed.has(b.b));
+        if (!join) break;
+        const outside = placed.has(join.a) ? join.a : join.b;
+        const inside = outside === join.a ? join.b : join.a;
+        const g = groupOf.get(inside)!;
+        this.dock(g, pre, { inside, outside });
+        g.forEach((id) => placed.add(id));
+      }
+    }
+    // 완전히 떨어진 조각만 반응면 바깥으로 보낸다. 결합이 남은 분자는 돌리지 않는다.
+    for (const g of groups) {
+      if (!g.some((id) => this.touched.has(id)) || g.some((id) => this.drift.some((d) => d.ids.includes(id)))) continue;
+      if (g.some((id) => neighbors(this.w, id).some((n) => !g.includes(n.id)))) continue;
+      const broken = [...before.bonds.values()].find((b) => g.includes(b.a) !== g.includes(b.b) && !this.w.bonds.has(bondKey(b.a, b.b)));
+      if (!broken || g.length > 2) continue;
+      const inside = g.includes(broken.a) ? broken.a : broken.b;
+      const outside = inside === broken.a ? broken.b : broken.a;
+      const delta = scale(norm(sub(pre.get(inside)!, pre.get(outside)!)), 60);
+      for (const id of g) shift(this.w.atoms.get(id)!, delta);
+    }
+    for (const d of this.drift) {
+      const oxygen = d.ids.find((id) => this.w.atoms.get(id)!.el === 'O');
+      if (!oxygen) continue;
+      const original = neighbors(before, oxygen).find((n) => d.ids.includes(n.id));
+      const received = neighbors(this.w, oxygen).find((n) => n.id !== original?.id);
+      if (!original || !received) continue;
+      const O = this.w.atoms.get(oxygen)!;
+      const angle = angleOf(sub(this.w.atoms.get(received.id)!, O));
+      const targetAngle = angle - 104.5 * Math.PI / 180;
+      const H = this.w.atoms.get(original.id)!;
+      this.waterTurns.push({ oxygen, hydrogen: H.id, angle: signedAng(angleOf(sub(H, O)), targetAngle) });
+      Object.assign(H, add(O, fromAngle(targetAngle, dist(H, O))));
+    }
+  }
+
+  /** 접근 경로 뒤에 반응을 잇는다. H 전달과 완성된 물 이동은 서로 다른 구간이다. */
+  tightMotion(before: World, start: Map<string, Vec>): void {
+    const A = this.A;
+    if (A.phase) {
+      A.phase.c0 = Math.max(A.phase.c0, A.phase.b1);
+      if (this.drift.length) A.phase.c1 = Math.max(A.phase.c0 + 0.12, 0.70);
+    }
+    const c0 = A.phase?.c0 ?? 0, c1 = A.phase?.c1 ?? 1;
+    const handed = new Map<string, string>();
+    if (A.phase) for (const id of before.atoms.keys()) {
+      const was = neighbors(before, id).map((n) => n.id);
+      const now = neighbors(this.w, id).map((n) => n.id);
+      if (was.length && now.length && !now.some((n) => was.includes(n))) handed.set(id, now[0]);
+    }
+    const prefix = new Map([...A.tracks].map(([id, tr]) => [id, tr.map((k) => ({ ...k }))]));
+    for (const [id, at] of this.w.atoms) {
+      const b = before.atoms.get(id);
+      if (!b || handed.has(id)) continue;
+      const old = prefix.get(id);
+      const p = start.get(id)!;
+      const end = { x: at.x, y: at.y };
+      if (!old && dist(b, end) < 1e-9) continue;
+      if (old && old.at(-1)!.t > c0 + 1e-6) {
+        // 전체 단계 경로를 유지하면서 끝점 보정도 같은 완만한 시간 곡선으로 더한다.
+        const correction = sub(end, old.at(-1)!);
+        const tr = old.map((k) => ({ ...k, ...add(k, scale(correction, gentle(k.t / old.at(-1)!.t))) }));
+        if (tr.at(-1)!.t < 1) tr.push({ t: 1, ...end });
+        A.tracks.set(id, tr);
+      } else {
+        const tr = old ? old.filter((k) => k.t < c0) : [{ t: 0, x: b.x, y: b.y }];
+        for (let i = 0; i <= 80; i++) {
+          const q = lerpV(p, end, gentle(i / 80));
+          tr.push({ t: c0 + (c1 - c0) * i / 80, ...q });
+        }
+        if (c1 < 1) tr.push({ t: 1, ...end });
+        A.tracks.set(id, tr);
+      }
+    }
+    // 상대 원자 경로가 완성된 뒤 전달한다. 앞선 경로가 있어도 빠뜨리지 않는다.
+    for (const [id, partner] of handed) {
+      const old = prefix.get(id);
+      const p = start.get(id)!;
+      const partnerEnd = this.w.atoms.get(partner)!;
+      const at = this.w.atoms.get(id)!;
+      const partnerAt = (t: number) => A.tracks.has(partner) ? trackPos(A.tracks.get(partner)!, t) : partnerEnd;
+      const off0 = sub(p, partnerAt(c0)), off1 = sub(at, partnerEnd);
+      const tr = old ? old.filter((k) => k.t < c0) : [{ t: 0, ...before.atoms.get(id)! }];
+      for (let i = 0; i <= 100; i++) {
+        const t = c0 + (c1 - c0) * i / 100;
+        const u = clamp((t - c0) / ((c1 - c0) * 0.5), 0, 1);
+        tr.push({ t, ...add(partnerAt(t), lerpV(off0, off1, 1 - (1 - u) ** 3)) });
+      }
+      tr.push({ t: 1, x: at.x, y: at.y });
+      A.tracks.set(id, tr);
+    }
+    for (const { oxygen, hydrogen, angle } of this.waterTurns) {
+      const O = start.get(oxygen)!;
+      const off = sub(start.get(hydrogen)!, O);
+      const tr: Keyframe[] = [{ t: 0, ...start.get(hydrogen)! }];
+      for (let i = 0; i <= 80; i++) {
+        const t = c0 + (c1 - c0) * i / 80;
+        const center = A.tracks.has(oxygen) ? trackPos(A.tracks.get(oxygen)!, t) : this.w.atoms.get(oxygen)!;
+        tr.push({ t, ...add(center, rotate(off, angle * gentle(i / 80))) });
+      }
+      A.tracks.set(hydrogen, tr);
+    }
+    this.waterTurns = [];
+    if (!A.phase) {
+      // 짧은 하위 경로가 있어도 단계 전체 시작과 끝은 완만하다. 모든 원자에 같은 시간을 쓴다.
+      for (const [id, tr] of A.tracks) A.tracks.set(id, Array.from({ length: 201 }, (_, i) => ({
+        t: i / 200, ...trackPos(tr, gentle(i / 200)),
+      })));
+    }
+    for (const d of this.drift) {
+      const c = centerOf(this.w, d.ids);
+      const delta = scale(norm(sub(c, d.from)), 60);
+      const t0 = Math.max(c1, A.phase?.b1 ?? 0);
+      for (const id of d.ids) {
+        const at = this.w.atoms.get(id)!;
+        const formed = { x: at.x, y: at.y };
+        const tr = (A.tracks.get(id) ?? [{ t: 0, ...formed }]).filter((k) => k.t < t0);
+        for (let i = 0; i <= 80; i++) tr.push({ t: t0 + (1 - t0) * i / 80, ...add(formed, scale(delta, gentle(i / 80))) });
+        shift(at, delta);
+        A.tracks.set(id, tr);
+      }
+    }
+    this.drift = [];
+    this.rigid = [];
+    A.after = cloneWorld(this.w);
+    if (!this.mid) A.mid = A.before;
+  }
+
   finishStep(before: World): void {
     const A = this.A;
+    const start = new Map([...this.w.atoms].map(([id, a]) => [id, { x: a.x, y: a.y }]));
     // Re-draw molecules whose bonds changed, then check electron counts.
     if (this.touched.size) {
+      if (this.plannedMotion) this.tightLayout(before);
       const done = new Set<string>();
-      for (const id of this.touched) {
+      for (const id of this.plannedMotion ? [] : this.touched) {
         if (done.has(id) || !this.w.atoms.has(id)) continue;
         const comp = component(this.w, id);
         comp.forEach((x) => done.add(x));
@@ -3557,10 +3851,10 @@ class Ctx {
         }
       }
       // Molecules that just split apart drift a little away from each other.
-      separateComponents(this, [...this.touched]);
+      if (!this.plannedMotion) separateComponents(this, [...this.touched]);
     }
     // Released small molecules (water from a condensation) move clearly away from where they formed.
-    for (const d of this.drift) {
+    for (const d of this.plannedMotion ? [] : this.drift) {
       const ids = d.ids.filter((id) => this.w.atoms.has(id));
       if (!ids.length) continue;
       const c = centerOf(this.w, ids);
@@ -3568,7 +3862,7 @@ class Ctx {
       if (Math.hypot(c.x - d.from.x, c.y - d.from.y) < 1) u = { x: 0, y: -1 };
       for (const id of ids) shift(this.w.atoms.get(id)!, scale(u, 85));
     }
-    this.drift = [];
+    if (!this.plannedMotion) this.drift = [];
     // A bond is two electrons: one left alone means a hop was forgotten.
     for (const [k, b] of [...this.w.bonds]) {
       if (Math.abs(b.order - Math.round(b.order)) > 1e-6) {
@@ -3582,7 +3876,7 @@ class Ctx {
     }
     this.hopCount.clear();
     this.lastHopLine = 0;
-    separateSolutes(this);
+    if (!this.plannedMotion || (!A.pulls?.length && !A.phase)) separateSolutes(this);
     resolveOverlaps(this, new Set(A.focus));
     keepInside(this);
 
@@ -3598,6 +3892,10 @@ class Ctx {
         const at = (x: number) => hit + (x - b0) * k;
         A.phase = { b0: hit, b1: at(b1), c0: Math.max(hit, at(c0)), c1: at(c1) };
       }
+    }
+    if (this.plannedMotion) {
+      this.tightMotion(before, start);
+      return;
     }
     // Atoms that moved without an explicit path glide inside the change window, together with the
     // electrons and bonds that make them move.
@@ -4053,23 +4351,10 @@ function resolveOverlaps(ctx: Ctx, _focus: Set<string>): void {
   }
 }
 
-/** Where a track is at time t (as the renderer reads it). */
-function trackPos(kf: Keyframe[], t: number): Vec {
-  if (t <= kf[0].t) return kf[0];
-  const last = kf[kf.length - 1];
-  if (t >= last.t) return last;
-  for (let i = 1; i < kf.length; i++) {
-    if (t <= kf[i].t) {
-      const a = kf[i - 1];
-      const b = kf[i];
-      const span = b.t - a.t;
-      let u = span < 1e-9 ? 1 : (t - a.t) / span;
-      if (b.ease === 'snap') u = 1 - Math.pow(1 - u, 3);
-      else if (b.ease) u = smooth(u);
-      return { x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u) };
-    }
-  }
-  return last;
+/** 이동 전체에서 출발·도착 속도와 가속도를 0으로 만드는 진행률이다. */
+function gentle(t: number): number {
+  const u = clamp(t, 0, 1);
+  return u * u * u * (10 + u * (-15 + 6 * u));
 }
 
 /** Round the corners of a path (Chaikin), keeping its ends. */

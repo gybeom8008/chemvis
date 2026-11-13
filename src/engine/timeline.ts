@@ -1,6 +1,7 @@
 import type { Diag } from '../dsl/parser';
 import type { StageDef } from '../stage/stages';
 import type { Vec } from '../util/math';
+import { lerp, smooth } from '../util/math';
 import type { Lens, World } from './world';
 
 export interface Keyframe {
@@ -12,6 +13,24 @@ export interface Keyframe {
    * 'snap': leaves at once and lands softly (an atom passed from one molecule to another).
    */
   ease?: boolean | 'snap';
+}
+
+/** 렌더러와 같은 보간이다. 표본 사이도 실제 재생 좌표로 검사한다. */
+export function trackAt(kf: Keyframe[], t: number): Vec {
+  if (t <= kf[0].t) return kf[0];
+  const last = kf[kf.length - 1];
+  if (t >= last.t) return last;
+  for (let i = 1; i < kf.length; i++) {
+    if (t <= kf[i].t) {
+      const a = kf[i - 1], b = kf[i];
+      const span = b.t - a.t;
+      let u = span < 1e-9 ? 1 : (t - a.t) / span;
+      if (b.ease === 'snap') u = 1 - Math.pow(1 - u, 3);
+      else if (b.ease) u = smooth(u);
+      return { x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u) };
+    }
+  }
+  return last;
 }
 
 /** Where moving electrons start or end, when that is on atoms (lone pair, unpaired electron, bond, atom). */

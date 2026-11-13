@@ -704,6 +704,15 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     if (fb === fz || b.lp !== z.lp || b.rad !== z.rad || (adjacency(step.after).get(id) ?? []).length || (adjacency(step.before).get(id) ?? []).length) return null;
     return -angDelta(fb, fz) * (1 - smooth(clamp(inp.t, 0, 1)));
   };
+  const bend = (id: string): { angle: number; single: boolean }[] | null => {
+    const b = step!.before.atoms.get(id);
+    const z = step!.after.atoms.get(id);
+    if (!b || !z || b.lp !== z.lp || b.rad !== z.rad || b.lp + b.rad === 0) return null;
+    const from = stableDomains(step!.before, id, pos);
+    const to = stableDomains(step!.after, id, pos);
+    if (from.length !== to.length || from.every((d, i) => angDist(d.angle, to[i].angle) < 0.02)) return null;
+    return blendDomains(from, to, smooth(clamp(inp.t, 0, 1)));
+  };
   const still = (w: World, fade: (id: string) => number, hotLone?: Map<string, Dom[]>, hotBond?: Map<string, number>, hotOp = 0, soft?: Set<string>) => {
     for (const b of w.bonds.values()) {
       if (b.order <= 0 || !byId.has(b.a) || !byId.has(b.b)) continue;
@@ -734,6 +743,14 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       if (!wa) continue;
       const op = opacity(a.id) * fade(a.id);
       const spin = hotLone ? null : facing(a.id);
+      // In a step without electron moves a molecule may still be bent into a new shape (made ready
+      // for what comes next). Its lone pairs then turn from their old directions to their new
+      // ones through the step, instead of snapping over when the step's end is reached.
+      const bent = !hotLone && spin === null && step && !step.arrows.length && !step.shifts?.length ? bend(a.id) : null;
+      if (bent) {
+        for (const d of bent) lone(a.id, d.angle, d.single ? 1 : 2, '', op);
+        continue;
+      }
       const turn = spin ?? turnOf(w, a.id, pos);
       for (const d of domainsOf(spin !== null ? step!.after : w, a.id)) lone(a.id, d.angle + turn, d.n, '', op);
       for (const h of hotLone?.get(a.id) ?? []) lone(a.id, h.angle + turn, h.n, ' hot', op * hotOp);

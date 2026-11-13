@@ -12,6 +12,7 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "flicker": "node tools/flicker.cjs",
+    "cross": "node tools/cross.cjs",
     "shot": "node tools/shot.cjs"
   },
   "devDependencies": {

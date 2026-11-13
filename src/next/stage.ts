@@ -62,7 +62,8 @@ export class Stage {
 
   /** Compile and show a script. Keeps the previous scene if the new one has errors. */
   load(src: string): CompileResult {
-    const res = compile(src);
+    // The 'pairs' drawing gets the motion laid out for it (molecules come right up to each other).
+    const res = compile(src, { tight: this.style === 'pairs' });
     if (res.timeline) {
       this.src = src;
       this.tl = res.timeline;

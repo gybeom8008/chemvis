@@ -221,6 +221,7 @@ document.addEventListener('keydown', (e) => {
 (window as unknown as { cmp: unknown }).cmp = {
   load,
   seek: (k: number, t: number) => both.forEach((s) => s.still(k, t)),
+  steps: () => newStage.tl?.steps.length ?? 0,
   // Any script, not only the scenes on the buttons.
   script: (src: string) => both.forEach((s) => s.load(src)),
 };

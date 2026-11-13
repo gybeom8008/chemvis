@@ -7,8 +7,11 @@ export interface Keyframe {
   t: number;
   x: number;
   y: number;
-  /** Ease the segment that ends at this keyframe. */
-  ease?: boolean;
+  /**
+   * How the segment that ends at this keyframe is travelled. true: starts and stops gently.
+   * 'snap': leaves at once and lands softly (an atom passed from one molecule to another).
+   */
+  ease?: boolean | 'snap';
 }
 
 /** Where moving electrons start or end, when that is on atoms (lone pair, unpaired electron, bond, atom). */

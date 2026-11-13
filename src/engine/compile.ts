@@ -231,9 +231,20 @@ const OP_DURATION: Record<string, number> = {
   lens: 1.2,
 };
 
-export function compile(src: string): CompileResult {
+export interface CompileOptions {
+  /**
+   * Lay the motion out for the 'pairs' drawing, where an electron pair is a body that must not be
+   * stretched or dragged across things: molecules come right up to each other (so a pair only has
+   * to reach across a bond's length), they come in around the other molecule rather than through
+   * it, and an atom that passes from one molecule to another does so quickly.
+   */
+  tight?: boolean;
+}
+
+export function compile(src: string, opts: CompileOptions = {}): CompileResult {
   const ast = parse(src);
   const ctx = new Ctx();
+  ctx.tight = !!opts.tight;
   ctx.errors.push(...ast.errors);
   if (ast.errors.length) return { timeline: null, errors: ctx.errors, warnings: ctx.warnings };
 
@@ -374,6 +385,8 @@ class Ctx {
   upcoming: Cmd[] = [];
   autoCount = new Map<string, number>();
   continuation = false;
+  /** See CompileOptions.tight. */
+  tight = false;
   effects: EngineEffect[] = [];
   /** null preserves legacy whole-scene cleanup; a set limits continuation cleanup. */
   layoutMovable: Set<string> | null = null;
@@ -955,11 +968,24 @@ class Ctx {
    * Move a set of atoms rigidly along a path of the pivot, optionally turning
    * by `rotation` radians, between step times t0 and t1.
    */
-  moveGroup(ids: string[], pivot: Vec, path: Vec[], rotation: number, t0: number, t1: number): void {
+  moveGroup(ids: string[], pivot: Vec, path: Vec[], rotation: number, t0: number, t1: number, turnBy = 1): void {
     const pts = resample(path, 14);
     const total = polyLength(pts) || 1;
     const fr: number[] = [0];
     for (let i = 1; i < pts.length; i++) fr.push(fr[i - 1] + dist(pts[i - 1], pts[i]) / total);
+    // Where the pivot is after the fraction f of the way.
+    const along = (f: number): Vec => {
+      for (let i = 1; i < pts.length; i++) {
+        if (f <= fr[i] || i === pts.length - 1) {
+          const span = fr[i] - fr[i - 1];
+          return lerpV(pts[i - 1], pts[i], span > 1e-9 ? clamp((f - fr[i - 1]) / span, 0, 1) : 1);
+        }
+      }
+      return pts[pts.length - 1];
+    };
+    // Moves start and stop gently: the same stretch of time covers little ground at both ends
+    // and most in the middle. The turn is finished after `turnBy` of the way.
+    const N = Math.max(18, pts.length);
     const offsets = ids.map((id) => {
       const at = this.w.atoms.get(id)!;
       return { id, off: sub(at, pivot), start: { x: at.x, y: at.y } };
@@ -972,13 +998,23 @@ class Ctx {
         const l = tr[tr.length - 1];
         this.pushKf(id, { t: t0, x: l.x, y: l.y });
       }
-      pts.forEach((p, i) => {
-        const f = fr[i];
-        const t = t0 + (t1 - t0) * smooth(f);
-        const q = add(p, rotate(off, rotation * f));
-        if (i === 0 && this.A.tracks.get(id)?.length) return;
-        this.pushKf(id, { t, x: q.x, y: q.y });
-      });
+      if (this.tight) {
+        for (let i = 0; i <= N; i++) {
+          const u = i / N;
+          const f = smooth(u);
+          const q = add(along(f), rotate(off, rotation * smooth(clamp(f / Math.max(turnBy, 1e-6), 0, 1))));
+          if (i === 0 && this.A.tracks.get(id)?.length) continue;
+          this.pushKf(id, { t: t0 + (t1 - t0) * u, x: q.x, y: q.y });
+        }
+      } else {
+        pts.forEach((p, i) => {
+          const f = fr[i];
+          const t = t0 + (t1 - t0) * smooth(f);
+          const q = add(p, rotate(off, rotation * f));
+          if (i === 0 && this.A.tracks.get(id)?.length) return;
+          this.pushKf(id, { t, x: q.x, y: q.y });
+        });
+      }
       const fin = add(pts[pts.length - 1], rotate(off, rotation));
       const at = this.w.atoms.get(id)!;
       at.x = fin.x;
@@ -1439,7 +1475,8 @@ class Ctx {
       });
       dir = fromAngle(best);
     } else dir = norm(sub(M, T));
-    const gap = element(T.el).r + element(M.el).r + 58;
+    // Tight: so close that the pair which reaches across has only a bond's length to go.
+    const gap = element(T.el).r + element(M.el).r + (this.tight ? 15 : 58);
     const mn = neighbors(this.w, mover).map((n) => this.w.atoms.get(n.id)!);
     const pivot = { x: M.x, y: M.y };
     // Where the mover ends up when it comes in from `d`, and how far it turns: its unpaired
@@ -1470,7 +1507,19 @@ class Ctx {
         if (g.width < widest - 0.5 || !hs.length) continue;
         const d = fromAngle(g.mid);
         const ps = pose(d);
-        const near = Math.min(...hs.map((h) => dist(add(ps.goal, rotate(sub(h, pivot), ps.rot)), oh)));
+        let near = Math.min(...hs.map((h) => dist(add(ps.goal, rotate(sub(h, pivot), ps.rot)), oh)));
+        // Not a way in that leaves the two molecules lying over each other.
+        if (this.tight) {
+          const others = component(this.w, target).map((id) => this.w.atoms.get(id)!);
+          for (const id of comp) {
+            const at = this.w.atoms.get(id)!;
+            const p = add(ps.goal, rotate(sub(at, pivot), ps.rot));
+            for (const o of others) {
+              if (id === mover && o.id === target) continue;
+              if (dist(p, o) < element(at.el).r + element(o.el).r + 9) near += 200;
+            }
+          }
+        }
         if (near < bestD - 1e-6) {
           bestD = near;
           dir = d;
@@ -1480,7 +1529,16 @@ class Ctx {
     const { goal, rot, want } = pose(dir);
     // A lone atom: just turn its electrons; the first unpaired electron (or first pair) faces the target.
     if (!mn.length) M.face = want;
-    this.moveGroup(ids, pivot, [pivot, goal], mn.length ? rot : 0, 0, 1);
+    if (this.tight) {
+      // Come in along the line of approach, going round the other molecule if it is in the way,
+      // and be turned the right way before the last stretch.
+      const tc = component(this.w, target).map((id) => this.w.atoms.get(id)!);
+      const mc = comp.map((id) => this.w.atoms.get(id)!);
+      const around = centroid(tc);
+      const clear = Math.max(...tc.map((x) => dist(x, around) + element(x.el).r)) + Math.max(...mc.map((x) => dist(x, M) + element(x.el).r)) + 14;
+      const { path, turnBy } = routeIn(pivot, goal, dir, around, clear);
+      this.moveGroup(ids, pivot, path, mn.length ? rot : 0, 0, 1, turnBy);
+    } else this.moveGroup(ids, pivot, [pivot, goal], mn.length ? rot : 0, 0, 1);
     this.focusMol(comp);
     // The molecule it comes up to is part of the scene too.
     this.focusMol(component(this.w, target));
@@ -2949,6 +3007,53 @@ class Ctx {
 
   /** Molecules that should slide apart a little more at the end of the step (e.g. released water). */
   drift: { ids: string[]; from: Vec }[] = [];
+  /** Groups of atoms that were moved as one body in this step, and how far each was turned. */
+  rigid: { ids: string[]; theta: number }[] = [];
+
+  /**
+   * Put the atoms `g` back into the shape they had (`pre`), turned and shifted as one body so as
+   * to match where they have just been laid out as closely as a rigid move can. The atoms that
+   * bond to the rest of the molecule count most, so the new bond comes out right.
+   */
+  dock(g: string[], pre: Map<string, Vec>): void {
+    const inG = new Set(g);
+    const wt = (id: string) => (neighbors(this.w, id).some((n) => !inG.has(n.id)) ? 8 : 1);
+    let sw = 0;
+    const cp = { x: 0, y: 0 };
+    const cq = { x: 0, y: 0 };
+    for (const id of g) {
+      const p = pre.get(id);
+      const q = this.w.atoms.get(id);
+      if (!p || !q) return;
+      const k = wt(id);
+      sw += k;
+      cp.x += p.x * k;
+      cp.y += p.y * k;
+      cq.x += q.x * k;
+      cq.y += q.y * k;
+    }
+    cp.x /= sw;
+    cp.y /= sw;
+    cq.x /= sw;
+    cq.y /= sw;
+    let sin = 0;
+    let cos = 0;
+    for (const id of g) {
+      const p = sub(pre.get(id)!, cp);
+      const q = sub(this.w.atoms.get(id)!, cq);
+      const k = wt(id);
+      sin += k * (p.x * q.y - p.y * q.x);
+      cos += k * (p.x * q.x + p.y * q.y);
+    }
+    const theta = Math.atan2(sin, cos);
+    for (const id of g) {
+      const at = this.w.atoms.get(id)!;
+      const p = add(cq, rotate(sub(pre.get(id)!, cp), theta));
+      at.x = p.x;
+      at.y = p.y;
+    }
+    this.rigid.push({ ids: g, theta });
+  }
 
   /**
    * condensation g1.C2 g2.N : A loses its OH, B loses an H, A–B bond forms and the OH + H
@@ -3022,6 +3127,34 @@ class Ctx {
     const Bpos = this.w.atoms.get(B)!;
     Hs.sort((p, q) => dist(p, Bpos) - dist(q, Bpos));
     const hToB = Hs[0];
+    if (this.tight) {
+      // The water comes right up first: its O beside A, in the opening next to B, with the H that
+      // B will take turned towards B. Then its pairs only have a bond's length to reach.
+      const Aat = this.w.atoms.get(A)!;
+      const mol = component(this.w, A).map((id) => this.w.atoms.get(id)!);
+      const angs = neighbors(this.w, A)
+        .map((n) => angleOf(sub(this.w.atoms.get(n.id)!, Aat)))
+        .sort((p, q) => p - q);
+      const reach = element(Aat.el).r + element('O').r + 15;
+      let spot: Vec = add(Aat, scale(norm(sub(Aat, centroid(mol))), reach));
+      let bestScore = -Infinity;
+      angs.forEach((a0, i) => {
+        const a1 = i + 1 < angs.length ? angs[i + 1] : angs[0] + 2 * Math.PI;
+        const p = add(Aat, fromAngle((a0 + a1) / 2, reach));
+        const room = Math.min(...mol.filter((o) => o.id !== A).map((o) => dist(o, p) - element(o.el).r));
+        const score = Math.min(room, 34) - dist(p, Bpos) * 0.5;
+        if (score > bestScore) {
+          bestScore = score;
+          spot = p;
+        }
+      });
+      const from = { x: O.x, y: O.y };
+      const rot = signedAng(angleOf(sub(hToB, O)), angleOf(sub(Bpos, spot)));
+      const around = centroid(mol);
+      const clear = Math.max(...mol.map((x) => dist(x, around) + element(x.el).r)) + 34;
+      const { path, turnBy } = routeIn(from, spot, norm(sub(spot, Aat)), around, clear);
+      this.moveGroup(water, from, path, rot, 0, 0.36, turnBy);
+    }
     // Where each electron pair ends up: a lone pair of the water's O joins A, the A–B pair stays
     // on B, a lone pair of B takes the H, and the O–H pair stays on O.
     if (O.lp > 0 && this.w.atoms.get(B)!.lp > 0) {
@@ -3045,7 +3178,7 @@ class Ctx {
     }
     for (const id of [A, B, O.id, hToB.id]) this.touched.add(id);
     this.focus([A, B, O.id, ...Hs.map((h) => h.id)]);
-    this.A.phase = { ...CHANGE };
+    this.A.phase = this.tight ? { b0: 0.42, b1: 0.76, c0: 0.72, c1: 0.96 } : { ...CHANGE };
   }
 
   // ------------------------------------------------------------ ops: membrane
@@ -3399,7 +3532,13 @@ class Ctx {
         }
         const heavy = (g: string[]) => g.filter((x) => this.w.atoms.get(x)!.el !== 'H').length;
         const anchor = [...groups.values()].sort((p, q) => heavy(q) - heavy(p) || q.length - p.length)[0];
+        const pre = new Map(comp.map((x) => [x, { x: this.w.atoms.get(x)!.x, y: this.w.atoms.get(x)!.y }]));
         relayout(this.w, comp, anchor.length >= 2 ? anchor : comp);
+        // A molecule that joins another keeps its own shape: it is turned and moved as one body to
+        // where the new bond wants it, not redrawn atom by atom (which would fold it on the way).
+        if (this.tight && anchor.length >= 2) {
+          for (const g of groups.values()) if (g !== anchor && g.length >= 2) this.dock(g, pre);
+        }
       }
       for (const id of this.touched) {
         const at = this.w.atoms.get(id);
@@ -3464,6 +3603,50 @@ class Ctx {
     // electrons and bonds that make them move.
     const c0 = A.phase ? A.phase.c0 : 0;
     const c1 = A.phase?.c1 ?? 1;
+    // Bodies that were turned as a whole travel as a whole: round the atom they hang on, so that
+    // no bond in them shortens on the way (a straight line between two positions of a turn would).
+    const rigidDone = new Set<string>();
+    for (const rec of this.rigid) {
+      if (Math.abs(rec.theta) < 0.03 || rec.ids.some((id) => A.tracks.has(id) || !before.atoms.has(id) || !this.w.atoms.has(id))) continue;
+      const inG = new Set(rec.ids);
+      const cb = centroid(rec.ids.map((id) => before.atoms.get(id)!));
+      const cf = centroid(rec.ids.map((id) => this.w.atoms.get(id)!));
+      let pivot: Vec = cb;
+      for (const id of rec.ids) {
+        const out = neighbors(this.w, id).find((n) => !inG.has(n.id) && before.atoms.has(n.id) && !A.tracks.has(n.id));
+        if (out) {
+          const o = before.atoms.get(out.id)!;
+          pivot = { x: o.x, y: o.y };
+          break;
+        }
+      }
+      const shiftBy = sub(sub(cf, pivot), rotate(sub(cb, pivot), rec.theta));
+      const n = 14;
+      for (const id of rec.ids) {
+        const b = before.atoms.get(id)!;
+        const at = this.w.atoms.get(id)!;
+        const kfs: Keyframe[] = [];
+        for (let i = 0; i <= n; i++) {
+          const s = smooth(i / n);
+          const p = add(add(pivot, rotate(sub(b, pivot), rec.theta * s)), scale(shiftBy, s));
+          kfs.push({ t: c0 + ((c1 - c0) * i) / n, x: p.x, y: p.y });
+        }
+        kfs.push({ t: 1, x: at.x, y: at.y });
+        A.tracks.set(id, kfs);
+        rigidDone.add(id);
+      }
+    }
+    // Atoms handed from one molecule to another (none of its old neighbours is a new one).
+    const handed = new Map<string, string>();
+    if (this.tight) {
+      for (const [id, at] of this.w.atoms) {
+        const b = before.atoms.get(id);
+        if (!b || A.tracks.has(id) || (Math.abs(b.x - at.x) <= 0.5 && Math.abs(b.y - at.y) <= 0.5)) continue;
+        const was = new Set(neighbors(before, id).map((n) => n.id));
+        const now = neighbors(this.w, id).map((n) => n.id);
+        if (was.size > 0 && now.length > 0 && !now.some((n) => was.has(n))) handed.set(id, now[0]);
+      }
+    }
     for (const [id, at] of this.w.atoms) {
       const b = before.atoms.get(id);
       const tr = A.tracks.get(id);
@@ -3482,10 +3665,16 @@ class Ctx {
               kf.x += dx * u;
               kf.y += dy * u;
             }
-          } else tr.push({ t: 1, x: at.x, y: at.y, ease: true });
+          } else {
+            // A path that ended before the change began: wait there until it begins.
+            if (this.tight && last.t < c0 - 1e-6) tr.push({ t: c0, x: last.x, y: last.y });
+            if (this.tight && last.t < c1 - 1e-6) tr.push({ t: c1, x: at.x, y: at.y, ease: true });
+            tr.push({ t: 1, x: at.x, y: at.y, ease: !this.tight });
+          }
         } else if (last.t < 1) tr.push({ t: 1, x: at.x, y: at.y });
         continue;
       }
+      if (rigidDone.has(id) || handed.has(id)) continue;
       if (!b) continue;
       if (Math.abs(b.x - at.x) > 0.5 || Math.abs(b.y - at.y) > 0.5) {
         A.tracks.set(id, [
@@ -3495,6 +3684,29 @@ class Ctx {
         ]);
       }
     }
+    // The atoms handed over: quickly across to the new partner, then with it wherever it goes.
+    for (const [id, partner] of handed) {
+      const b = before.atoms.get(id)!;
+      const at = this.w.atoms.get(id)!;
+      const P1 = this.w.atoms.get(partner)!;
+      const P0 = before.atoms.get(partner) ?? P1;
+      const ptr = A.tracks.get(partner);
+      const pAt = (t: number): Vec => (ptr ? trackPos(ptr, t) : t < c0 ? P0 : P1);
+      const off0 = sub(b, pAt(c0));
+      const off1 = sub(at, P1);
+      const quick = Math.min(c1 - c0, 0.17);
+      const kfs: Keyframe[] = [{ t: c0, x: b.x, y: b.y }];
+      const n = 14;
+      for (let i = 1; i <= n; i++) {
+        const t = c0 + ((c1 - c0) * i) / n;
+        const u = clamp((t - c0) / quick, 0, 1);
+        const p = add(pAt(t), lerpV(off0, off1, 1 - Math.pow(1 - u, 3)));
+        kfs.push({ t, x: p.x, y: p.y });
+      }
+      kfs.push({ t: 1, x: at.x, y: at.y });
+      A.tracks.set(id, kfs);
+    }
+    this.rigid = [];
     A.after = cloneWorld(this.w);
     if (!this.mid) A.mid = A.before;
   }
@@ -3839,6 +4051,69 @@ function resolveOverlaps(ctx: Ctx, _focus: Set<string>): void {
     }
     if (!moved) break;
   }
+}
+
+/** Where a track is at time t (as the renderer reads it). */
+function trackPos(kf: Keyframe[], t: number): Vec {
+  if (t <= kf[0].t) return kf[0];
+  const last = kf[kf.length - 1];
+  if (t >= last.t) return last;
+  for (let i = 1; i < kf.length; i++) {
+    if (t <= kf[i].t) {
+      const a = kf[i - 1];
+      const b = kf[i];
+      const span = b.t - a.t;
+      let u = span < 1e-9 ? 1 : (t - a.t) / span;
+      if (b.ease === 'snap') u = 1 - Math.pow(1 - u, 3);
+      else if (b.ease) u = smooth(u);
+      return { x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u) };
+    }
+  }
+  return last;
+}
+
+/** Round the corners of a path (Chaikin), keeping its ends. */
+function rounded(path: Vec[], passes: number): Vec[] {
+  let out = path;
+  for (let pass = 0; pass < passes; pass++) {
+    if (out.length < 3) break;
+    const next: Vec[] = [out[0]];
+    for (let i = 0; i + 1 < out.length; i++) next.push(lerpV(out[i], out[i + 1], 0.25), lerpV(out[i], out[i + 1], 0.75));
+    next.push(out[out.length - 1]);
+    out = next;
+  }
+  return out;
+}
+
+/**
+ * A way from `start` to `goal` that arrives along `dir` (the direction from the place approached
+ * out to the goal) and keeps `clear` away from the point `around` on the way, going round it the
+ * short way. `turnBy`: the fraction of the way after which only the straight run in is left.
+ */
+function routeIn(start: Vec, goal: Vec, dir: Vec, around: Vec, clear: number): { path: Vec[]; turnBy: number } {
+  const lead = Math.min(70, Math.max(0, dist(start, goal) - 8));
+  const far = add(goal, scale(dir, lead));
+  const pts: Vec[] = [start];
+  const segDist = (p: Vec, a: Vec, b: Vec) => {
+    const d = sub(b, a);
+    const l2 = d.x * d.x + d.y * d.y;
+    const u = l2 ? clamp(((p.x - a.x) * d.x + (p.y - a.y) * d.y) / l2, 0, 1) : 0;
+    return dist(p, add(a, scale(d, u)));
+  };
+  if (dist(start, around) > 1 && dist(far, around) > 1 && segDist(around, start, far) < clear) {
+    const a0 = angleOf(sub(start, around));
+    const turn = signedAng(a0, angleOf(sub(far, around)));
+    const n = Math.max(2, Math.ceil(Math.abs(turn) / (Math.PI / 5)));
+    for (let i = 1; i < n; i++) {
+      const r = Math.max(clear * 1.08, lerp(dist(start, around), dist(far, around), i / n));
+      pts.push(add(around, fromAngle(a0 + (turn * i) / n, r)));
+    }
+  }
+  if (lead > 4) pts.push(far);
+  pts.push(goal);
+  const path = pts.length > 3 ? [...rounded(pts.slice(0, -1), 2), goal] : pts;
+  const total = polyLength(path) || 1;
+  return { path, turnBy: clamp(1 - lead / total, 0.15, 1) };
 }
 
 function resample(path: Vec[], minPts: number): Vec[] {

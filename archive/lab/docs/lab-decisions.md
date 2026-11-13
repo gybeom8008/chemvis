@@ -1,8 +1,8 @@
 # 실험실: Astra와 정한 것
 
-상태: 합의 · 2026-11-11 · 기준 커밋 `56ea710` · [기획안 개요](README.md)
+상태: 합의 · 2026-11-11 · 기준 커밋 `56ea710` · [기획안 개요](../../../docs/plan/README.md)
 
-[인계서](handover.md) 8.3의 여섯 가지를 Astra(설계)와 Claude(표현·엔진·구현)가 두 차례 주고받아 정했다. Astra의 설계서 원문은 [lab-astra.md](lab-astra.md), 단계 1의 자료 행은 [lab-rows-stage1.md](lab-rows-stage1.md)다. 이 문서가 설계서와 다르면 이 문서를 따른다. [lab-review.md](lab-review.md) 4절 이후의 의견은 이 문서로 대체한다.
+[인계서](../../../docs/plan/handover.md) 8.3의 여섯 가지를 Astra(설계)와 Claude(표현·엔진·구현)가 두 차례 주고받아 정했다. Astra의 설계서 원문은 [lab-astra.md](lab-astra.md), 단계 1의 자료 행은 [lab-rows-stage1.md](lab-rows-stage1.md)다. 이 문서가 설계서와 다르면 이 문서를 따른다. [lab-review.md](lab-review.md) 4절 이후의 의견은 이 문서로 대체한다.
 
 실험실 구현은 아직 보류다. 윤범님이 반응 표현을 확정한 뒤에 시작한다. 이 문서는 그때 바로 시작할 수 있게 정해 둔 것이다.
 

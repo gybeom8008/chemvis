@@ -16,7 +16,7 @@
 - 앱의 기본 방식은 아직 지금 방식(`lines`: 결합은 선, 전자의 이동은 굽은 화살표)이다.
 - 새 방식(`pairs`: 전자쌍 주머니)은 비교 화면의 12개 장면에서 완성도를 높이는 중이다.
 - 새 방식에 대한 윤범님의 평가: "전자의 이동과 결합의 이동이 직관적으로 보여." 다만 **확정한다는 말은 아직 없었다.** 다른 반응 표현도 더 고친 뒤에 확정한다.
-- 탭 셋(배우기 / 실험실 / AI 장면), 수업, 실험실 구현은 모두 보류다. 기획서만 있다.
+- 탭 셋(배우기 / 실험실 / AI 장면)과 수업은 보류다. 기획서만 있다. **실험실은 2026-11-14에 무기한 중단했다**([archive/lab](../../archive/lab/README.md)).
 
 ## 2. 이 프로젝트에서 가장 중요한 것
 
@@ -90,12 +90,12 @@ npx playwright install chromium firefox
 | [curriculum.md](curriculum.md) | 8단원 51수업 |
 | [ui.md](ui.md) | 화면 규칙 R1–R18 |
 | [handoff.md](handoff.md) | Opus에게 맡겨도 결과가 일정하게 나오게 하는 장치 |
-| [lab-decisions.md](lab-decisions.md) | **Astra와 정한 것.** 설계서와 다르면 이 문서를 따른다 |
-| [lab-rows-stage1.md](lab-rows-stage1.md) | Astra가 쓴 단계 1의 자료 행과 조합 120개의 판정(대조 중) |
-| [lab-astra.md](lab-astra.md) | Astra가 쓴 실험실 설계서 원문 |
-| [lab-review.md](lab-review.md) | 그 설계서를 클라우드 세션이 확인한 내용과 의견(4절 이후는 lab-decisions.md로 대체) |
-| [lab-brief.md](lab-brief.md) | Astra에게 준 의뢰서 |
-| [lab.md](lab.md) | 실험실의 처음 초안(대체됨) |
+| [lab-decisions.md](../../archive/lab/docs/lab-decisions.md) | **Astra와 정한 것.** 설계서와 다르면 이 문서를 따른다 |
+| [lab-rows-stage1.md](../../archive/lab/docs/lab-rows-stage1.md) | Astra가 쓴 단계 1의 자료 행과 조합 120개의 판정(대조 중) |
+| [lab-astra.md](../../archive/lab/docs/lab-astra.md) | Astra가 쓴 실험실 설계서 원문 |
+| [lab-review.md](../../archive/lab/docs/lab-review.md) | 그 설계서를 클라우드 세션이 확인한 내용과 의견(4절 이후는 lab-decisions.md로 대체) |
+| [lab-brief.md](../../archive/lab/docs/lab-brief.md) | Astra에게 준 의뢰서 |
+| [lab.md](../../archive/lab/docs/lab.md) | 실험실의 처음 초안(대체됨) |
 
 ## 6. 새 방식에서 지켜야 할 것
 
@@ -144,15 +144,25 @@ npx playwright install chromium firefox
 
 ## 8. Astra와 함께 일하기
 
+> **실험실은 2026-11-14에 무기한 중단했다.** 아래 8.1–8.3은 그때까지의 기록이다. 만든 것은 모두 [archive/lab](../../archive/lab/README.md)에 있다. Astra에게는 실험실 말고 다른 일(반응 표현의 검토, 엔진 동선, 자료 표)을 맡긴다.
+
+**Astra를 부르는 방법.** 이 컴퓨터의 Codex 데스크톱 앱에 든 실행 파일을 `%USERPROFILE%\.local\bin\codex.cmd`가 불러 준다(기본 모델이 Astra). Claude Code의 codex 플러그인은 이 경로를 찾지 못하므로 직접 부른다.
+
+```bash
+~/.local/bin/codex.cmd exec -s read-only -o answer.md - < prompt.md
+```
+
+파일을 쓰게 하려면 `-s workspace-write`. 한 번에 10–20분 걸리므로 뒤에서 돌린다. 보통은 아래의 대기열에 지시문을 넣는다.
+
 ### 8.1 지금까지
 
-- 클라우드 세션은 윤범님의 ChatGPT 계정을 쓸 수 없어서 의뢰서([lab-brief.md](lab-brief.md))만 썼고, 윤범님이 Astra에게 전달했다.
-- Astra의 결과가 [lab-astra.md](lab-astra.md)다. 기준 커밋은 `c814963`이다.
+- 클라우드 세션은 윤범님의 ChatGPT 계정을 쓸 수 없어서 의뢰서([lab-brief.md](../../archive/lab/docs/lab-brief.md))만 썼고, 윤범님이 Astra에게 전달했다.
+- Astra의 결과가 [lab-astra.md](../../archive/lab/docs/lab-astra.md)다. 기준 커밋은 `c814963`이다.
 - 클라우드 세션이 그 문서에서 확인한 사실은 다음과 같다.
   - 대본 예시 일곱 개(A01, A03, A04, P01, D01, R01, R02)는 지금 엔진에서 오류 없이 컴파일되고, 끝 상태가 문서의 생성물과 같다.
   - logK, Q/Ksp, E°cell, E 범위를 다시 계산했고 전부 일치했다.
   - 엔진에 대한 주장 세 가지(컴파일은 늘 새 장면에서 시작한다, `precipitate`는 화학식이 같은 이온 가운데 앞의 것부터 고른다, 아세트산의 OH는 O2와 H4다)는 맞다.
-- [lab-review.md](lab-review.md)의 4절 이후는 클라우드 세션의 **의견**이다. 윤범님이 정한 것이 아니고, 윤범님은 이 검토를 더 하지 말라고 했다. 로컬에서 Astra와 직접 이야기해서 정한다.
+- [lab-review.md](../../archive/lab/docs/lab-review.md)의 4절 이후는 클라우드 세션의 **의견**이다. 윤범님이 정한 것이 아니고, 윤범님은 이 검토를 더 하지 말라고 했다. 로컬에서 Astra와 직접 이야기해서 정한다.
 
 ### 8.2 Astra가 본 뒤로 바뀐 것
 
@@ -170,9 +180,9 @@ Astra는 `c814963`을 읽었다. 그 뒤에 바뀐 것을 Astra에게 알려야 
 
 ### 8.3 Astra와 정한 것
 
-2026-11-11에 로컬 세션이 Astra와 두 차례 주고받아 여섯 가지를 모두 정했다. 내용은 [lab-decisions.md](lab-decisions.md)에 있다. Astra가 쓴 단계 1의 자료 행(재료 15종, 반응 8개, 두 재료 조합 120개의 판정)은 [lab-rows-stage1.md](lab-rows-stage1.md)에 있고, 수치와 유도값은 Claude가 출처 원문과 대조했다. 자료 행은 아직 `draft`다(2판에서 바뀐 행의 대조가 남았다). 엔진의 E1(`compileFrom`, `addSpecies`)과 E2(`precipitate using`)는 들어갔다. 윤범님이 Astra를 틈틈이 쓰라고 했으므로(ChatGPT 사용량은 남는다) 내 일을 시작할 때 Astra에게도 일을 하나씩 맡겨 뒤에서 돌린다.
+2026-11-11에 로컬 세션이 Astra와 두 차례 주고받아 여섯 가지를 모두 정했다. 내용은 [lab-decisions.md](../../archive/lab/docs/lab-decisions.md)에 있다. Astra가 쓴 단계 1의 자료 행(재료 15종, 반응 8개, 두 재료 조합 120개의 판정)은 [lab-rows-stage1.md](../../archive/lab/docs/lab-rows-stage1.md)에 있고, 수치와 유도값은 Claude가 출처 원문과 대조했다. 자료 행은 아직 `draft`다(2판에서 바뀐 행의 대조가 남았다). 엔진의 E1(`compileFrom`, `addSpecies`)과 E2(`precipitate using`)는 들어갔다. 윤범님이 Astra를 틈틈이 쓰라고 했으므로(ChatGPT 사용량은 남는다) 내 일을 시작할 때 Astra에게도 일을 하나씩 맡겨 뒤에서 돌린다.
 
-Astra가 그 뒤에 한 일(2026-11-12–13, 모두 Claude가 검사를 돌려 보고 커밋): 실험실 판정기와 단계 1 자료(`src/lab/`, [lab-judge.md](lab-judge.md)), 분자 조립 자료와 대본([lab-assembly.md](lab-assembly.md)), 단계 2 자료 행 초안([lab-rows-stage2.md](lab-rows-stage2.md)), 실험실 화면 명세([lab-ui.md](lab-ui.md)), 51수업의 장면 대본([lessons/](lessons/README.md)), 튜토리얼 화학 검토, 새 방식의 동선 엔진(`tests/unit/motion.test.ts`). 실험실 쪽은 어느 것도 화면에 연결하지 않았다.
+Astra가 그 뒤에 한 일(2026-11-12–13, 모두 Claude가 검사를 돌려 보고 커밋): 실험실 판정기와 단계 1 자료(`src/lab/`, [lab-judge.md](../../archive/lab/docs/lab-judge.md)), 분자 조립 자료와 대본([lab-assembly.md](../../archive/lab/docs/lab-assembly.md)), 단계 2 자료 행 초안([lab-rows-stage2.md](../../archive/lab/docs/lab-rows-stage2.md)), 실험실 화면 명세([lab-ui.md](../../archive/lab/docs/lab-ui.md)), 51수업의 장면 대본([lessons/](lessons/README.md)), 튜토리얼 화학 검토, 새 방식의 동선 엔진(`tests/unit/motion.test.ts`). 실험실 쪽은 어느 것도 화면에 연결하지 않았다.
 
 Astra에게 일을 맡기는 대기열: `%USERPROFILE%\astra-jobs\`의 `runner.py`가 `queue\`의 지시문을 이름순으로 하나씩 돌리고(`preamble.md`가 공통 규칙), 답과 기록을 `out\`에 남긴다. ChatGPT 한도에 걸리면 풀릴 때까지 기다렸다 이어서 한다(`wake.txt`를 만들면 바로 다시 시도). 윤범님은 Astra를 쉬게 두지 말라고 했다. 대기열이 비면 새 일을 넣는다. 두 사람이 같은 파일을 동시에 고치지 않도록 지시문마다 고쳐도 되는 파일을 적는다.
 
@@ -183,7 +193,7 @@ Astra에게 일을 맡기는 대기열: `%USERPROFILE%\astra-jobs\`의 `runner.p
 | Astra | 실험실의 설계, 자료 행(물질·수치·규칙)과 출처, 인수 시험의 기대 결과 |
 | Claude | 반응 표현, 엔진(E1–E6), 실험실 구현, 자료 행의 원문 대조, 검사와 배포 |
 
-Astra를 부르는 방법은 [lab-decisions.md](lab-decisions.md) 10절에 있다. 일을 줄 때는 지금 커밋, 바뀐 것, 답을 원하는 질문을 함께 준다. Astra는 저장소를 직접 읽고 대본을 컴파일해 볼 수 있다.
+일을 줄 때는 지금 커밋, 바뀐 것, 답을 원하는 질문을 함께 준다. Astra는 저장소를 직접 읽고 대본을 컴파일해 볼 수 있다.
 
 ## 9. 윤범님과 일하는 방식
 

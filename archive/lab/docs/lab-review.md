@@ -1,6 +1,6 @@
 # 실험실 설계서 검토
 
-상태: 검토 끝 · 2026-11-10 · 대상: [lab-astra.md](lab-astra.md) · [기획안 개요](README.md)
+상태: 검토 끝 · 2026-11-10 · 대상: [lab-astra.md](lab-astra.md) · [기획안 개요](../../../docs/plan/README.md)
 
 ## 1. 결론
 

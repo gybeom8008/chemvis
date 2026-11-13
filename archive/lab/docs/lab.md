@@ -1,6 +1,6 @@
 # 실험실
 
-상태: 처음 초안. 판정과 범위는 [lab-astra.md](lab-astra.md)와 [lab-review.md](lab-review.md)를 따른다 · 2026-11-10 · [기획안 개요](README.md)
+상태: 처음 초안. 판정과 범위는 [lab-astra.md](lab-astra.md)와 [lab-review.md](lab-review.md)를 따른다 · 2026-11-10 · [기획안 개요](../../../docs/plan/README.md)
 
 ## 1. 한 줄로
 
@@ -74,4 +74,4 @@
 - 금속 하나 추가: 반응성 순서에 한 줄.
 - 규칙 하나 추가: 본보기 규칙을 복사해서 고친다.
 
-표의 값은 출처를 같이 적고, 줄을 더할 때마다 그 줄을 쓰는 검사 하나를 같이 더한다. 절차는 [handoff.md](handoff.md)에 있다.
+표의 값은 출처를 같이 적고, 줄을 더할 때마다 그 줄을 쓰는 검사 하나를 같이 더한다. 절차는 [handoff.md](../../../docs/plan/handoff.md)에 있다.

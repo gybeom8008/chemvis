@@ -8,8 +8,8 @@
 
 - [lab-decisions.md](lab-decisions.md)를 우선한다. [lab-astra.md 3절](lab-astra.md#3-화면과-끌기-동작)의 끌기 계약은 유지하되, 조건 선택과 단계 2 재료는 제외한다.
 - 화학 판정과 결과 문구는 [lab-rows-stage1.md](lab-rows-stage1.md) 3판을 따른다. 단계 1은 재료 15종, 사건 A01·A02·A05·P01·D01·R01·R02·R03이다. 원래 설계서의 아세트산·K⁺·Br⁻ 반응까지 늘리지 않는다.
-- 화면은 [ui.md](ui.md)의 R1–R18과 [handover.md 9절](handover.md#9-윤범님과-일하는-방식)을 따른다. 버튼은 `실행 취소`, `접기`, 재생 위치 조절 이름은 `직접 움직여 보기`다.
-- [depiction.md](depiction.md) 2·2.1절의 전자쌍과 고체 표현을 사용한다. 2.2절의 원소 색 없는 원자와 전하 빛은 검토 중이다. 이 문서로 `look: 'glow'`를 확정하거나 앱 기본값을 바꾸지 않는다.
+- 화면은 [ui.md](../../../docs/plan/ui.md)의 R1–R18과 [handover.md 9절](../../../docs/plan/handover.md#9-윤범님과-일하는-방식)을 따른다. 버튼은 `실행 취소`, `접기`, 재생 위치 조절 이름은 `직접 움직여 보기`다.
+- [depiction.md](../../../docs/plan/depiction.md) 2·2.1절의 전자쌍과 고체 표현을 사용한다. 2.2절의 원소 색 없는 원자와 전하 빛은 검토 중이다. 이 문서로 `look: 'glow'`를 확정하거나 앱 기본값을 바꾸지 않는다.
 - 로컬 코드에서 E1 `compileFrom`, `addSpecies`, E2 `precipitate using`, 금속 명령, `src/lab/`의 자료·판정·조립 함수가 있는 것을 읽어 확인했다. `src/next/main.ts`에는 실험실 화면 연결이 없고 `Stage.load`는 전체 대본을 새로 컴파일한다.
 - `REVIEW.status`는 `draft`이고 `EventPlan.canExecute`는 항상 `false`다. 판정 계획이 생겼다는 사실은 실행 승인이나 사전 검사 완료가 아니다. 이 상태를 UI에서 임의로 바꾸지 않는다.
 - 함수와 반환값은 [lab-judge.md](lab-judge.md), `src/lab/judge.ts`, `stage1-data.ts`, `assembly-data.ts`, `assembly-script.ts`의 현재 코드와 대조했다. 아래의 새 화면 파일·어댑터 이름은 구현 제안이며 현재 제공되는 함수가 아니다.

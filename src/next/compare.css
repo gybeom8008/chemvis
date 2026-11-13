@@ -273,3 +273,18 @@ button {
   border-color: var(--ink, #18191b);
   color: #fff;
 }
+/* The caption of a pane stays on one line; its small print gives way first. */
+.two figcaption {
+  white-space: nowrap;
+  min-width: 0;
+}
+.two figcaption small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.seg,
+.seg button {
+  white-space: nowrap;
+  flex: none;
+}

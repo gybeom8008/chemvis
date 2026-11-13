@@ -42,7 +42,7 @@ export class Stage {
   /** How electrons are drawn: as pairs in pouches, or the earlier way (lines and curved arrows). */
   style: 'lines' | 'pairs' = 'pairs';
   /** How atoms and charge look: element colours and badges, or plain atoms with charge as light. */
-  look: 'color' | 'glow' = 'color';
+  look: 'color' | 'glow' | 'cause' = 'color';
   /** Which colour means which charge (glow look). */
   palette: 'red-positive' | 'red-negative' = 'red-positive';
   /** Runs after each drawn frame. */

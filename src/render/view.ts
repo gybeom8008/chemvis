@@ -69,7 +69,7 @@ export interface DrawOptions {
    * 'glow': atoms without colour (symbol and size tell them apart), and charge as light around
    * the atom: red where electrons are short, blue where there are more of them.
    */
-  look?: 'color' | 'glow';
+  look?: 'color' | 'glow' | 'cause';
   /**
    * Which colour means which charge in the 'glow' look. 'red-positive': red where electrons are
    * short, blue where there are more. 'red-negative': the other way round, as electrostatic
@@ -368,7 +368,7 @@ export class StageView {
         const c = centroid(ids.map((i) => pos.get(i)!));
         const temp = this.tempAt(c, step, t);
         const h = hashString(root);
-        const amp = 1.3 * temp;
+        const amp = 1.3 * temp + (opt.look === 'cause' ? this.kick(c, step, t, w1, basePos) : 0);
         const fq = 0.8 * Math.sqrt(temp);
         const ph1 = (h % 1000) / 159;
         const ph2 = ((h >> 10) % 1000) / 159;
@@ -499,14 +499,21 @@ export class StageView {
     const frac = !step ? 1 : w1 > w0 ? clamp((t - w0) / (w1 - w0), 0, 1) : t >= w0 ? 1 : 0;
     const win = { pre, during, post, settle, prog, cue, frac };
     if (this.svg.dataset.style !== (opt.style ?? 'lines')) this.svg.dataset.style = opt.style ?? 'lines';
-    const glow = opt.look === 'glow';
-    if (this.svg.dataset.look !== (opt.look ?? 'color')) this.svg.dataset.look = opt.look ?? 'color';
+    // 'cause' is the glow look with one more rule: what changes is drawn as the effect of what moves.
+    const cause = opt.look === 'cause';
+    const glow = cause || opt.look === 'glow';
+    const law = cause ? 'count' : 'spread';
+    if (this.svg.dataset.look !== (glow ? 'glow' : 'color')) this.svg.dataset.look = glow ? 'glow' : 'color';
+    if ((this.svg.dataset.cause ?? '') !== (cause ? '1' : '')) {
+      if (cause) this.svg.dataset.cause = '1';
+      else delete this.svg.dataset.cause;
+    }
     if (this.svg.dataset.palette !== (opt.palette ?? 'red-positive')) this.svg.dataset.palette = opt.palette ?? 'red-positive';
     // Where electrons are the subject (a scene with reactions), the solvent steps back to one quiet
     // colour. Where the solvent itself is the subject (evaporation, ice), it keeps its colours.
     const quiet = tl.steps.some((s) => s.arrows.length > 0 || !!s.shifts?.length) ? 'quiet' : 'plain';
     if (this.svg.dataset.crowd !== quiet) this.svg.dataset.crowd = quiet;
-    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes, simple: this.collective, aside: bystanders(tl) }) : null;
+    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes, simple: this.collective, aside: bystanders(tl), cause, uid: this.uid }) : null;
     if (pairs) out.push(...drawSolids(step?.before ?? topo, step ? after : topo, pos, !step ? 1 : pre ? 0 : during ? prog : 1, (n) => !!tl.stage.electrodes?.[n]));
     // Charge as light: under the atoms and their electrons, so that it reads as something the
     // place has rather than a thing of its own. While charges change, the light changes with them.
@@ -518,15 +525,20 @@ export class StageView {
         let q: number;
         const b0 = step?.before.atoms.get(a.id);
         const z0 = after.atoms.get(a.id);
-        if (during && step && b0 && z0) {
+        const followed = cause ? pairs?.now?.get(a.id) : undefined;
+        if (followed !== undefined) q = followed;
+        else if (during && step && b0 && z0) {
           const stepped = pairs?.charges?.get(a.id);
-          const qa = chargeOn(after, z0);
-          const qb = chargeOn(step.before, b0);
+          const qa = chargeOn(after, z0, law);
+          const qb = chargeOn(step.before, b0, law);
           // An atom whose electrons leave or arrive one at a time: its light steps with them.
           q = stepped !== undefined ? qa + (stepped - formalCharge(after, z0)) : qb + (qa - qb) * turn;
         } else {
-          const w = chargeWorld.atoms.has(a.id) ? chargeWorld : after;
-          q = chargeOn(w, w.atoms.get(a.id)!);
+          // With cause and effect the light never runs ahead of the electrons: before they move it
+          // is as it was, after they have moved as it will be.
+          const w0 = cause && step ? (pre ? step.before : after) : chargeWorld;
+          const w = w0.atoms.has(a.id) ? w0 : after;
+          q = chargeOn(w, w.atoms.get(a.id)!, law);
         }
         // The light comes up from nothing as the charge grows: no threshold at which it pops in.
         const mag = Math.max(Math.abs(q) - 0.04, 0);
@@ -582,6 +594,17 @@ export class StageView {
           `<text class="ionq ${q > 0 ? 'pos' : 'neg'}" data-a="${ion.anchor}" x="${f1(at.x)}" y="${f1(at.y)}" dy="0.36em" opacity="${f1(op * Math.min(...ion.ids.map((id) => opacity(id))))}">${Math.abs(q) > 1 ? Math.abs(q) : ''}${q > 0 ? '+' : '−'}</text>`,
         );
       };
+      // With cause and effect a sign is there as far as the electrons make the ion's charge what the sign says.
+      const fit = (ion: IonLabel): number | null => {
+        if (!cause || !pairs?.now) return null;
+        let sum = 0;
+        for (const id of ion.ids) {
+          const v = pairs.now.get(id);
+          if (v === undefined) return null;
+          sum += v;
+        }
+        return clamp(1 - 2.5 * Math.abs(sum - ion.q), 0, 1);
+      };
       if (during && step) {
         const turn = smooth(clamp((prog - 0.4) / 0.6, 0, 1));
         const A = new Map(this.ionLabels(step.before).map((x) => [x.key, x]));
@@ -602,16 +625,17 @@ export class StageView {
               label(after, z, z.q, prog);
             }
             Z.delete(key);
-          } else label(step.before, a, a.q, 1 - turn);
+          } else label(step.before, a, a.q, fit(a) ?? 1 - turn);
         }
         // A new ion's sign comes up once its atoms have settled (below), not while they are still moving.
         for (const z of Z.values()) {
           const stepped = z.ids.length === 1 ? pairs?.charges?.get(z.ids[0]) : undefined;
           if (stepped !== undefined) label(after, z, stepped, 1);
+          else if (cause) label(after, z, z.q, fit(z) ?? 0);
         }
       } else if (post && step) {
         const A = new Map(this.ionLabels(step.before).map((x) => [x.key, x.q]));
-        for (const ion of this.ionLabels(after)) label(after, ion, ion.q, A.get(ion.key) === ion.q ? 1 : settle);
+        for (const ion of this.ionLabels(after)) label(after, ion, ion.q, cause || A.get(ion.key) === ion.q ? 1 : settle);
       } else {
         const W = !step ? tl.initial : pre ? step.before : after;
         for (const ion of this.ionLabels(W)) label(W, ion, ion.q, 1);
@@ -1278,6 +1302,28 @@ export class StageView {
       }
     }
     return { under, over: out };
+  }
+
+  /**
+   * Energy a reaction gives out goes into the motion of what is around it: once the new bonds are
+   * made (after w1), the molecules round the place where it happened shake harder, nearest first,
+   * the shaking spreading outward and dying down. Extra amplitude at point p.
+   */
+  private kick(p: Vec, step: StepAnim | undefined, t: number, w1: number, pos: Map<string, Vec>): number {
+    const en = step?.energy;
+    if (!step || !en || en.to >= en.from || t <= w1) return 0;
+    const ends: Vec[] = [];
+    for (const ar of step.arrows) for (const id of [ar.src?.a, ar.dst?.a]) if (id && pos.has(id)) ends.push(pos.get(id)!);
+    for (const sh of step.shifts ?? []) for (const id of [sh.src.a, sh.dst.a]) if (pos.has(id)) ends.push(pos.get(id)!);
+    if (!ends.length) return 0;
+    const site = centroid(ends);
+    const u = (t - w1) / Math.max(1e-6, 1 - w1);
+    const front = 40 + 520 * u;
+    const d = dist(p, site);
+    if (d > front) return 0;
+    // Strongest just behind the front, fading with distance from the site and with time.
+    const strength = clamp(Math.abs(en.from - en.to) / 60, 0.6, 2.2);
+    return 4.2 * strength * Math.exp(-d / 260) * (1 - 0.75 * u) * clamp((front - d) / 60, 0, 1);
   }
 
   private tempAt(p: Vec, step: StepAnim | undefined, t: number): number {

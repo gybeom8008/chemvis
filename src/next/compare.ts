@@ -1,7 +1,6 @@
 /**
- * The same reaction drawn two ways, side by side and in step. Right: the look under review (atoms
- * without colour, charge as light). Left: what it is compared with, chosen from the menu above it
- * (electron pairs with element colours, or the earlier lines and curved arrows).
+ * The same reaction drawn two ways, side by side and in step. Right: what has just been changed
+ * and is under review. Left: the state just before that change (older ways are in the menu).
  */
 import '../render/stage.css';
 import './compare.css';
@@ -80,9 +79,9 @@ const SCENES: { id: string; name: string; src: string }[] = [
   { id: 'metal', name: '금속 조각', src: METAL },
 ];
 
-const POUCH = (hot: boolean, shared: boolean) => {
-  const c = hot ? 'rgba(240,140,0,.62)' : 'rgba(70,78,96,.2)';
-  const e = hot ? '#e8890c' : '#17233a';
+const POUCH = (hot: boolean, shared: boolean, tint = '') => {
+  const c = hot ? tint || 'rgba(240,140,0,.62)' : 'rgba(70,78,96,.2)';
+  const e = hot && !tint ? '#e8890c' : '#17233a';
   const w = shared ? 74 : 48;
   return `<svg width="${w}" height="30" viewBox="0 0 ${w} 30" aria-hidden="true">
     <line x1="20" y1="15" x2="${shared ? 56 : 33}" y2="15" stroke="${c}" stroke-width="15" stroke-linecap="round"/>
@@ -110,13 +109,14 @@ app.innerHTML = `
     <div class="two">
       <figure>
         <figcaption>견줄 방식 <select id="left" aria-label="왼쪽에 놓을 방식">
+          <option value="prev">직전 상태</option>
           <option value="pairs">전자쌍, 원소마다 색</option>
           <option value="lines">선과 굽은 화살표</option>
         </select></figcaption>
         <div id="old"></div>
       </figure>
       <figure>
-        <figcaption>검토할 방식 <small>원자에는 색이 없고, 전하가 빛으로 보임</small>
+        <figcaption>검토할 방식 <small>전하가 전자를 따라 바뀜</small>
           <span class="seg" role="group" aria-label="전하 색">전하 색
             <button data-palette="red-positive" aria-pressed="true">빨강이 +</button><button data-palette="red-negative" aria-pressed="false">빨강이 −</button>
           </span></figcaption>
@@ -140,19 +140,25 @@ const $ = <T extends HTMLElement = HTMLElement>(s: string) => app.querySelector(
 const oldStage = new Stage($('#old'));
 const newStage = new Stage($('#new'));
 const leftSel = $<HTMLSelectElement>('#left');
+// Left: the state just before the change under review (the glow look as it was), or an older way.
 const setLeft = (v: string) => {
-  oldStage.style = v === 'lines' ? 'lines' : 'pairs';
-  leftSel.value = oldStage.style;
+  const which = v === 'lines' || v === 'pairs' ? v : 'prev';
+  oldStage.style = which === 'lines' ? 'lines' : 'pairs';
+  oldStage.look = which === 'prev' ? 'glow' : 'color';
+  leftSel.value = which;
 };
-setLeft(new URLSearchParams(location.search).get('left') ?? 'pairs');
+setLeft(new URLSearchParams(location.search).get('left') ?? 'prev');
+// Right: under review. Cause and effect: the charge follows the electrons.
 newStage.style = 'pairs';
-newStage.look = 'glow';
+newStage.look = 'cause';
 
 // Which colour means which charge. The choice is kept for the next visit.
 const keyBox = $('.key');
 const setPalette = (v: string | null, redraw = true) => {
   const palette: Palette = v === 'red-negative' ? 'red-negative' : 'red-positive';
   newStage.palette = palette;
+  oldStage.palette = palette;
+  const neg = palette === 'red-positive' ? '47,125,246' : '255,75,62';
   app.querySelectorAll<HTMLElement>('[data-palette]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.palette === palette)));
   keyBox.innerHTML = `
       <b>오른쪽 화면의 표시</b>
@@ -161,13 +167,13 @@ const setPalette = (v: string | null, redraw = true) => {
       <span>${LIGHT(true, false, palette)}${LIGHT(false, false, palette)}조금 +, 조금 −</span>
       <span>${POUCH(false, false)}한 원자가 가진 전자쌍</span>
       <span>${POUCH(false, true)}두 원자가 함께 가진 전자쌍(결합)</span>
-      <span>${POUCH(true, false)}지금 바뀌는 전자쌍</span>`;
+      <span>${POUCH(true, false, `rgba(${neg},.46)`)}지금 움직이는 전자쌍</span>`;
   try {
     localStorage.setItem('chemvis.palette', palette);
   } catch {
     /* private window: the choice just is not kept */
   }
-  if (redraw && newStage.tl) newStage.still(newStage.player.k, newStage.player.t);
+  if (redraw && newStage.tl) for (const s of both) s.still(s.player.k, s.player.t);
 };
 let savedPalette: string | null = null;
 try {
@@ -228,8 +234,11 @@ scrub.addEventListener('input', () => {
 });
 scrub.addEventListener('change', () => (scrubbing = false));
 leftSel.addEventListener('change', () => {
+  // The way of drawing decides how the motion is laid out, so the scene is compiled again.
+  const k = newStage.player.k;
   setLeft(leftSel.value);
-  oldStage.still(oldStage.player.k, oldStage.player.t);
+  load(location.hash.slice(1));
+  for (const s of both) s.player.go(k);
 });
 slow.addEventListener('change', () => {
   for (const s of both) s.speed = slow.checked ? 0.35 : 1;

@@ -12,7 +12,7 @@
  */
 import { ELECTRONEGATIVITY, METALS as METAL_ELS, element } from '../chem/elements';
 import { electronDomains } from '../chem/geometry';
-import { plateSlot, type ArrowAnim, type StepAnim, type Timeline } from '../engine/timeline';
+import { plateSlot, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
 import { component, formalCharge, type Atom, type World } from '../engine/world';
 import { add, clamp, dist, fromAngle, lerp, lerpV, norm, perp, scale, smooth, sub, type Vec } from '../util/math';
 
@@ -47,6 +47,13 @@ export interface PairsInput {
   simple?: boolean;
   /** Atoms of molecules and ions that take no part in the scene's reactions: drawn without their electrons. */
   aside?: Set<string>;
+  /**
+   * Cause and effect: the charge of every atom is worked out, moment by moment, from where the
+   * electrons are in their moves (returned as `now`), and what attracts is drawn as a pull.
+   */
+  cause?: boolean;
+  /** Names this drawing's gradients apart from another drawing's on the same page. */
+  uid?: string;
 }
 
 const f1 = (n: number) => n.toFixed(1);
@@ -255,6 +262,8 @@ export interface PairsOutput {
   avoid?: Map<string, number[]>;
   /** Electrodes: how many more (or fewer) electrons a plate keeps at this moment than before the step. */
   plate?: Map<string, number>;
+  /** The charge to draw on each atom at this moment, following the electrons (only with `cause`, while they move). */
+  now?: Map<string, number>;
 }
 
 /**
@@ -313,11 +322,18 @@ export function bystanders(tl: Timeline): Set<string> {
  * The sum over a molecule is always its charge.
  */
 const drawnCache = new WeakMap<World, Map<string, number>>();
-function drawnCharges(w: World): Map<string, number> {
-  let out = drawnCache.get(w);
+const countCacheQ = new WeakMap<World, Map<string, number>>();
+/**
+ * `spread` (the earlier look): the + of H3O+ or NH4+ is drawn on its H atoms. Without it the one
+ * law is electron bookkeeping: an atom is as positive as the electrons it has given into bonds,
+ * plus the lean. That is what lets the light follow the electrons as they move.
+ */
+function drawnCharges(w: World, spread = true): Map<string, number> {
+  const cache = spread ? drawnCache : countCacheQ;
+  let out = cache.get(w);
   if (out) return out;
   out = new Map<string, number>();
-  drawnCache.set(w, out);
+  cache.set(w, out);
   const adj = adjacency(w);
   const f = new Map<string, number>();
   const order = new Map<string, number>();
@@ -342,7 +358,7 @@ function drawnCharges(w: World): Map<string, number> {
   // A positive centre with H atoms on it: the charge is drawn on the H atoms.
   for (const x of w.atoms.values()) {
     const fx = f.get(x.id) ?? 0;
-    if (x.crowd || fx <= 0 || METAL_ELS.has(x.el)) continue;
+    if (!spread || x.crowd || fx <= 0 || METAL_ELS.has(x.el)) continue;
     const hs = (adj.get(x.id) ?? []).filter((o) => w.atoms.get(o)?.el === 'H');
     if (!hs.length) continue;
     for (const h of hs) f.set(h, (f.get(h) ?? 0) + fx / hs.length);
@@ -361,8 +377,8 @@ function drawnCharges(w: World): Map<string, number> {
   }
   return out;
 }
-export function chargeOn(w: World, a: Atom): number {
-  return drawnCharges(w).get(a.id) ?? 0;
+export function chargeOn(w: World, a: Atom, law: 'spread' | 'count' = 'spread'): number {
+  return drawnCharges(w, law === 'spread').get(a.id) ?? 0;
 }
 
 /**
@@ -762,6 +778,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
    * and the other a little positive (its electrons are held by a greedier neighbour), they attract.
    * Marked with a small − and + and a dotted line between the two places.
    */
+  let pullCount = 0;
   const pulls = () => {
     if (!step?.pulls?.length) return;
     const adj = adjacency(topo);
@@ -797,7 +814,20 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       const from = useTip ? add(pa, fromAngle(facing!.angle + turnOf(Z, a, pos), R(a) + OUT + 7)) : add(pa, scale(u, R(a) + 2));
       const to = sub(pb, scale(u, R(b) + 2));
       const op = show * Math.min(opacity(a), opacity(b));
-      if (dist(from, to) > 6 && op > 0.01) over.push(`<line class="pull" x1="${f1(from.x)}" y1="${f1(from.y)}" x2="${f1(to.x)}" y2="${f1(to.y)}" opacity="${f1(op)}"/>`);
+      if (dist(from, to) > 6 && op > 0.01) {
+        if (inp.cause) {
+          // The place with electrons to spare and the place short of them draw each other: a band
+          // from one colour to the other, stronger the nearer they are.
+          const near = clamp(1 - (dist(from, to) - 14) / 220, 0, 1);
+          const id = `${inp.uid ?? 'p'}-pull${pullCount++}`;
+          const neg = la.sign < 0 ? 'neg' : 'pos';
+          const posi = la.sign < 0 ? 'pos' : 'neg';
+          under.push(
+            `<defs><linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${f1(from.x)}" y1="${f1(from.y)}" x2="${f1(to.x)}" y2="${f1(to.y)}"><stop offset="0" class="q-${neg}"/><stop offset="1" class="q-${posi}"/></linearGradient></defs>` +
+              `<line class="pull band" style="stroke:url(#${id})" x1="${f1(from.x)}" y1="${f1(from.y)}" x2="${f1(to.x)}" y2="${f1(to.y)}" stroke-width="${f1(3 + 7 * near * near)}" opacity="${f1(op * (0.25 + 0.55 * near))}"/>`,
+          );
+        } else over.push(`<line class="pull" x1="${f1(from.x)}" y1="${f1(from.y)}" x2="${f1(to.x)}" y2="${f1(to.y)}" opacity="${f1(op)}"/>`);
+      }
       // The marks sit beside the two places, on the side of the line that is up where the step ends.
       const endUp = perp(norm(sub(zb, za))).y < 0 ? 1 : -1;
       const up = scale(perp(u), endUp);
@@ -1121,6 +1151,65 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     if (m.to) (avoid.get(m.ar.dst!.a) ?? avoid.set(m.ar.dst!.a, []).get(m.ar.dst!.a)!).push(m.to.angle + turnA(m.ar.dst!.a));
   }
 
+  // ---- the charge of each atom at this moment, from where the electrons are in their moves.
+  // An electron counts for the atom that holds it; a shared one counts half for each of the two.
+  // So an atom turns positive exactly as far as its pair has gone out to another atom, and
+  // negative as far as a shared pair has drawn back onto it.
+  const chargeNow = (): Map<string, number> | undefined => {
+    if (!inp.cause || !win.during) return undefined;
+    const share = (E: ElectronEnd, id: string) => (E.kind === 'bond' ? (E.a === id || E.b === id ? 0.5 : 0) : E.a === id ? 1 : 0);
+    const prog = (m: Move): { leave: number; arrive: number } => {
+      if (isJump(m)) {
+        const u = flight.get(m) ?? 0;
+        return { leave: clamp(u * 5, 0, 1), arrive: clamp((u - 0.8) * 5, 0, 1) };
+      }
+      const S = m.ar.src!;
+      const D = m.ar.dst!;
+      const [f0, f1] = span.get(m.ar) ?? [0, 1];
+      const lf = clamp((win.frac - f0) / (f1 - f0), 0, 1);
+      const g = S.kind === 'bond' && D.kind === 'atom' ? smooth(clamp((lf - 0.38) / 0.62, 0, 1)) : D.kind === 'bond' ? smooth(clamp(lf / 0.62, 0, 1)) : smooth(lf);
+      return { leave: g, arrive: g };
+    };
+    const delta = new Map<string, number>();
+    const total = new Map<string, number>();
+    const gSum = new Map<string, number>();
+    const gN = new Map<string, number>();
+    for (const m of moves) {
+      const S = m.ar.src!;
+      const D = m.ar.dst!;
+      const n = m.pair ? 2 : 1;
+      const g = prog(m);
+      for (const id of new Set([S.a, S.b, D.a, D.b].filter(Boolean) as string[])) {
+        const lose = n * share(S, id);
+        const gain = n * share(D, id);
+        delta.set(id, (delta.get(id) ?? 0) + lose * g.leave - gain * g.arrive);
+        total.set(id, (total.get(id) ?? 0) + lose - gain);
+        gSum.set(id, (gSum.get(id) ?? 0) + (g.leave + g.arrive) / 2);
+        gN.set(id, (gN.get(id) ?? 0) + 1);
+      }
+    }
+    const meanG = (id: string): number => {
+      if (gN.has(id)) return gSum.get(id)! / gN.get(id)!;
+      // An atom the moves do not touch follows the ones that touch the atoms it is bonded to.
+      const nb = [...(adjacency(B).get(id) ?? []), ...(adjacency(A).get(id) ?? [])].filter((o) => gN.has(o));
+      return nb.length ? nb.reduce((sum, o) => sum + gSum.get(o)! / gN.get(o)!, 0) / nb.length : e;
+    };
+    const now = new Map<string, number>();
+    for (const a of inp.atoms) {
+      const b0 = B.atoms.get(a.id);
+      const z0 = A.atoms.get(a.id);
+      if (!b0 || !z0 || a.crowd) continue;
+      const fb = formalCharge(B, b0);
+      const fa = formalCharge(A, z0);
+      const g = meanG(a.id);
+      // What the bookkeeping of the moves does not account for (the lean of bonds, a net change) goes along with them.
+      const rest = fa - fb - (total.get(a.id) ?? 0);
+      const lean = lerp(chargeOn(B, b0, 'count') - fb, chargeOn(A, z0, 'count') - fa, g);
+      now.set(a.id, fb + (delta.get(a.id) ?? 0) + rest * g + lean);
+    }
+    return now;
+  };
+
   // ---- before the change: everything as it was, the pouches about to change tinted
   if (win.pre) {
     const hotLone = new Map<string, Dom[]>();
@@ -1411,5 +1500,5 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     electron(at(u), flying ? ' hot fly' : ' hot', 1, flying ? FLY * inp.eScale : DOT);
   }
 
-  return finish({ under, over, charges, avoid });
+  return finish({ under, over, charges, avoid, now: chargeNow() });
 }

@@ -615,3 +615,31 @@ svg[data-style='pairs'][data-crowd='quiet'] .bond.crowd {
 .pq.neg {
   fill: #1c7ed6;
 }
+
+/*
+ * Cause and effect (data-cause). Colour means charge and nothing else: the pair that is moving is
+ * tinted with the colour of negative charge, because it is negative charge on its way; there is
+ * no separate colour for "changing". What attracts is a band from one colour to the other.
+ */
+svg[data-look='glow'][data-cause] {
+  --pouch-hot: color-mix(in srgb, var(--q-neg) 46%, transparent);
+  --electron: var(--q-neg);
+}
+svg[data-look='glow'][data-cause] .pe.hot {
+  fill: #17233a;
+  filter: drop-shadow(0 0 2.5px var(--q-neg)) drop-shadow(0 0 5px var(--q-neg));
+}
+svg[data-look='glow'][data-cause] .pe.fly {
+  stroke: none;
+  filter: drop-shadow(0 0 3px var(--q-neg)) drop-shadow(0 0 8px var(--q-neg));
+}
+.pull.band {
+  stroke-dasharray: none;
+  stroke-linecap: round;
+}
+stop.q-neg {
+  stop-color: var(--q-neg);
+}
+stop.q-pos {
+  stop-color: var(--q-pos);
+}

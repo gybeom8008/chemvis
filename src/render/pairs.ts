@@ -939,8 +939,9 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     const o = step!.before.atoms.get(other);
     const p0 = o ? { x: o.x, y: o.y } : { x: 0, y: 0 };
     const ar: ArrowAnim = { kind: 'pair', p0, c: p0, p1: p0, line: 0, src: sh.src, dst: sh.dst };
-    // A net reaction is told two pairs at a time: first one bond is exchanged, then the other.
-    if (nShift === 4) span.set(ar, i < 2 ? [0, 0.52] : [0.48, 1]);
+    // A net reaction's four pairs change as one movement: the second exchange begins while the
+    // first is still letting go, so that no piece (an OH, say) is seen cut loose and waiting.
+    if (nShift === 4) span.set(ar, i < 2 ? [0, 0.62] : [0.3, 1]);
     bound.push(ar);
   }
   if (!step || !bound.length || step.events.length) {

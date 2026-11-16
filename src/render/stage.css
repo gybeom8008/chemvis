@@ -647,3 +647,23 @@ stop.q-neg {
 stop.q-pos {
   stop-color: var(--q-pos);
 }
+
+/*
+ * Heat at the moment of a reaction ('tangible'). Given off: the molecules go white and a thin ring
+ * spreads from them. Taken in: they go a cold blue and the ring closes in. The blue is not the
+ * blue of charge: lighter and greener, and it lies over the whole molecule for an instant only.
+ */
+.heat .flash {
+  fill: #fff;
+  filter: blur(3px);
+}
+.heat.endo .flash {
+  fill: #5ecbf5;
+}
+.heat .ring {
+  fill: none;
+  stroke: #2b3140;
+}
+.heat.endo .ring {
+  stroke: #2a9fd6;
+}

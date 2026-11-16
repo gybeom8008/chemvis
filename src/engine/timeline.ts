@@ -39,6 +39,41 @@ export function hopProgress(phase: { b0: number; b1: number }, index: number, co
   return smooth(clamp((fraction * count - index) / 0.8, 0, 1));
 }
 
+/**
+ * An atom snatched from one molecule by another, as fractions of the electrons' window: the pair
+ * that held it has drawn back by `free`; the taker's pair reaches for it from `grab`; it lands at
+ * `hit`. Between `free` and `grab` no pair touches the atom. The engine moves the atom by
+ * `snatchAt`, the drawing times the two pairs by `snatchPairs`: one clock for both.
+ */
+export const SNATCH = { free: 0.42, slide: 0.5, grab: 0.6, hit: 0.7 };
+
+/**
+ * How far a snatched atom has come from its old place (0) to its new one (1): it slides a little
+ * way off as it is let go, is then pulled across faster and faster, lands, presses in a little
+ * and springs back (values just over 1).
+ */
+export function snatchAt(f: number): number {
+  const u = clamp(f, 0, 1);
+  const loose = 0.16;
+  if (u <= SNATCH.slide) return loose * Math.pow(u / SNATCH.slide, 1.6);
+  if (u <= SNATCH.hit) {
+    const x = (u - SNATCH.slide) / (SNATCH.hit - SNATCH.slide);
+    // Leaves the slide at the speed it had, then accelerates all the way in.
+    const v = (loose * 1.6 / SNATCH.slide) * (SNATCH.hit - SNATCH.slide);
+    return loose + v * x + (1 - loose - v) * x * x * x;
+  }
+  const x = (u - SNATCH.hit) / (1 - SNATCH.hit);
+  return 1 + 0.2 * Math.exp(-5 * x) * Math.sin(9 * x) * (1 - x);
+}
+
+/** Progress of the pair that lets a snatched atom go, and of the pair that takes it. */
+export function snatchPairs(f: number): { let: number; take: number } {
+  return {
+    let: smooth(clamp(f / SNATCH.free, 0, 1)),
+    take: smooth(clamp((f - SNATCH.grab) / (SNATCH.hit - SNATCH.grab), 0, 1)),
+  };
+}
+
 /** Where moving electrons start or end, when that is on atoms (lone pair, unpaired electron, bond, atom). */
 export interface ElectronEnd {
   kind: 'lp' | 'e' | 'atom' | 'bond';
@@ -143,6 +178,15 @@ export interface StepAnim {
   pulls?: { a: string; b: string }[];
   /** Energy before and after the step (energy diagram); barrier = height of the hump above `from`. */
   energy?: { from: number; to: number; barrier?: number; unit: string };
+  /**
+   * Atoms snatched from one molecule by another in this step (see SNATCH): the pair that held the
+   * atom lets go first, the atom crosses bare, and the taker's pair closes on it as it lands.
+   */
+  handed?: { id: string; from: string; to: string }[];
+  /** The moment (step time) at which the reaction happens: the new bond closes, the two ions touch. */
+  strike?: number;
+  /** Heat given off (negative) or taken in (positive) at `strike`, in kJ per mole of this reaction. */
+  heat?: number;
 }
 
 /**

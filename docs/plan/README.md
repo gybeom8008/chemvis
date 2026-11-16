@@ -10,6 +10,7 @@
 | [depiction.md](depiction.md) | 반응을 그리는 방식: 전자쌍 표현 (가장 먼저) |
 | 이 문서 | 세 탭, 탭끼리 이어지는 곳, 이름, AI 장면 탭, 일정, 정하신 것 |
 | [curriculum.md](curriculum.md) | 교육 과정: 가르치는 원칙, 수업 한 편의 구조, 8단원 51수업 |
+| [enthalpy.md](enthalpy.md) | 표준 생성 엔탈피로 단계마다 반응열을 구하는 방법과 약속, 장면별 계산 결과(Astra). 반응하는 순간의 열 효과가 이 값을 쓴다 |
 | [archive/lab](../../archive/lab/README.md) | **실험실은 2026-11-14에 무기한 중단했다.** 그동안 만든 문서·코드·검사를 모아 둔 곳. 아래 실험실 문서들도 거기에 있다 |
 | [lab-decisions.md](../../archive/lab/docs/lab-decisions.md) | 실험실에서 Astra와 정한 것(2026-11-11). 아래 문서들과 다르면 이 문서를 따른다 |
 | [lab-rows-stage1.md](../../archive/lab/docs/lab-rows-stage1.md) | 실험실 단계 1의 자료 행과 두 재료 조합 120개의 판정(Astra가 씀, 대조 중) |

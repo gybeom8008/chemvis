@@ -102,6 +102,17 @@ const LIGHT = (pos: boolean, strong: boolean, palette: Palette) => {
   </svg>`;
 };
 
+// Heat at the moment of a reaction: a ring that spreads (given off) or closes in (taken in).
+const HEAT = (out: boolean) => {
+  const c = out ? '#2b3140' : '#2a9fd6';
+  const tip = (x: number, d: number) => `<path d="M${x} 20 l${-4 * d} -3.5 v7 z" fill="${c}"/>`;
+  return `<svg width="46" height="40" viewBox="0 0 46 40" aria-hidden="true">
+    <circle cx="23" cy="20" r="15" fill="none" stroke="${c}" stroke-width="1.6" opacity="0.8"/>
+    <circle cx="23" cy="20" r="8" fill="${out ? '#fff' : '#5ecbf5'}" stroke="#2b3140" stroke-width="1.2" stroke-opacity="${out ? 0.25 : 0.6}"/>
+    ${out ? tip(45, 1) + tip(1, -1) : tip(33, -1) + tip(13, 1)}
+  </svg>`;
+};
+
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <main class="cmp">
@@ -116,7 +127,7 @@ app.innerHTML = `
         <div id="old"></div>
       </figure>
       <figure>
-        <figcaption>검토할 방식 <small>전하가 전자를 따라 바뀜</small>
+        <figcaption>검토할 방식 <small>끌려가고 낚아채는 움직임, 반응하는 순간의 열</small>
           <span class="seg" role="group" aria-label="전하 색">전하 색
             <button data-palette="red-positive" aria-pressed="true">빨강이 +</button><button data-palette="red-negative" aria-pressed="false">빨강이 −</button>
           </span></figcaption>
@@ -140,17 +151,17 @@ const $ = <T extends HTMLElement = HTMLElement>(s: string) => app.querySelector(
 const oldStage = new Stage($('#old'));
 const newStage = new Stage($('#new'));
 const leftSel = $<HTMLSelectElement>('#left');
-// Left: the state just before the change under review (the glow look as it was), or an older way.
+// Left: the state just before the change under review (cause and effect, as it was), or an older way.
 const setLeft = (v: string) => {
   const which = v === 'lines' || v === 'pairs' ? v : 'prev';
   oldStage.style = which === 'lines' ? 'lines' : 'pairs';
-  oldStage.look = which === 'prev' ? 'glow' : 'color';
+  oldStage.look = which === 'prev' ? 'cause' : 'color';
   leftSel.value = which;
 };
 setLeft(new URLSearchParams(location.search).get('left') ?? 'prev');
-// Right: under review. Cause and effect: the charge follows the electrons.
+// Right: under review. Motion as of bodies moved by forces, and the heat of a reaction at its moment.
 newStage.style = 'pairs';
-newStage.look = 'cause';
+newStage.look = 'tangible';
 
 // Which colour means which charge. The choice is kept for the next visit.
 const keyBox = $('.key');
@@ -168,7 +179,9 @@ const setPalette = (v: string | null, redraw = true) => {
       <span>${POUCH(false, false)}한 원자가 가진 전자쌍</span>
       <span>${POUCH(false, true)}두 원자가 함께 가진 전자쌍(결합)</span>
       <span>${POUCH(true, false, `rgba(${neg},.34)`)}지금 움직이는 전자쌍</span>
-      <span class="law">빛은 전자를 센 결과예요. 전자가 간 곳은 −, 떠난 곳은 +가 돼요.</span>`;
+      <span>${HEAT(true)}열이 나올 때: 하얗게 번쩍이고 고리가 퍼져요</span>
+      <span>${HEAT(false)}열을 흡수할 때: 파랗게 되고 고리가 줄어들어요</span>
+      <span class="law">빛은 전자를 센 결과예요. 전자가 간 곳은 −, 떠난 곳은 +가 돼요. 번쩍임과 고리는 열이 클수록 뚜렷해요.</span>`;
   try {
     localStorage.setItem('chemvis.palette', palette);
   } catch {

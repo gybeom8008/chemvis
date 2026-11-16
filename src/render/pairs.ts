@@ -12,7 +12,7 @@
  */
 import { ELECTRONEGATIVITY, METALS as METAL_ELS, element } from '../chem/elements';
 import { electronDomains } from '../chem/geometry';
-import { plateSlot, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
+import { plateSlot, snatchPairs, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
 import { component, formalCharge, type Atom, type World } from '../engine/world';
 import { add, clamp, dist, fromAngle, lerp, lerpV, norm, perp, scale, smooth, sub, type Vec } from '../util/math';
 
@@ -52,6 +52,8 @@ export interface PairsInput {
    * electrons are in their moves (returned as `now`), and what attracts is drawn as a pull.
    */
   cause?: boolean;
+  /** The law the charges follow under `cause` (see chargeOn): 'count', or 'firm'. */
+  law?: ChargeLaw;
   /** Names this drawing's gradients apart from another drawing's on the same page. */
   uid?: string;
 }
@@ -323,13 +325,23 @@ export function bystanders(tl: Timeline): Set<string> {
  */
 const drawnCache = new WeakMap<World, Map<string, number>>();
 const countCacheQ = new WeakMap<World, Map<string, number>>();
+const firmCacheQ = new WeakMap<World, Map<string, number>>();
+/**
+ * The lean of a carbon–halogen bond, at least. Electronegativity alone underrates these bonds:
+ * by their measured dipoles C–Cl and C–Br are about as polar as C–F (1.4–1.5 D), which over the
+ * bond's length is 0.15–0.2 of an electron. Without this the C of CH3Br, which the text calls a
+ * little positive (and which is why anything attacks it), would show no charge at all.
+ */
+const HALOGEN_LEAN = 0.2;
+const HALOGENS = new Set(['F', 'Cl', 'Br', 'I']);
 /**
  * `spread` (the earlier look): the + of H3O+ or NH4+ is drawn on its H atoms. Without it the one
  * law is electron bookkeeping: an atom is as positive as the electrons it has given into bonds,
  * plus the lean. That is what lets the light follow the electrons as they move.
+ * `firm` (with the bookkeeping law): carbon–halogen bonds lean at least HALOGEN_LEAN.
  */
-function drawnCharges(w: World, spread = true): Map<string, number> {
-  const cache = spread ? drawnCache : countCacheQ;
+function drawnCharges(w: World, spread = true, firm = false): Map<string, number> {
+  const cache = spread ? drawnCache : firm ? firmCacheQ : countCacheQ;
   let out = cache.get(w);
   if (out) return out;
   out = new Map<string, number>();
@@ -369,7 +381,11 @@ function drawnCharges(w: World, spread = true): Map<string, number> {
     const A = w.atoms.get(b.a);
     const Z = w.atoms.get(b.b);
     if (!A || !Z || A.crowd || Z.crowd || b.dative || !real(A.el) || !real(Z.el)) continue;
-    const unit = 0.25 * clamp(((ELECTRONEGATIVITY[Z.el] ?? 2.2) - (ELECTRONEGATIVITY[A.el] ?? 2.2)) / 1.5, -1, 1);
+    let unit = 0.25 * clamp(((ELECTRONEGATIVITY[Z.el] ?? 2.2) - (ELECTRONEGATIVITY[A.el] ?? 2.2)) / 1.5, -1, 1);
+    if (firm && !spread) {
+      if (A.el === 'C' && HALOGENS.has(Z.el)) unit = Math.max(unit, HALOGEN_LEAN);
+      else if (Z.el === 'C' && HALOGENS.has(A.el)) unit = Math.min(unit, -HALOGEN_LEAN);
+    }
     if (Math.abs(unit) < 0.07) continue;
     const t = unit * (order.get(k) ?? b.order);
     out.set(A.id, (out.get(A.id) ?? 0) + t);
@@ -389,8 +405,9 @@ function poolMetal(w: World, q: Map<string, number>): void {
     for (const id of metal) q.set(id, mean);
   }
 }
-export function chargeOn(w: World, a: Atom, law: 'spread' | 'count' = 'spread'): number {
-  return drawnCharges(w, law === 'spread').get(a.id) ?? 0;
+export type ChargeLaw = 'spread' | 'count' | 'firm';
+export function chargeOn(w: World, a: Atom, law: ChargeLaw = 'spread'): number {
+  return drawnCharges(w, law === 'spread', law === 'firm').get(a.id) ?? 0;
 }
 
 /**
@@ -1132,8 +1149,19 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   }
 
   const e = win.during ? win.prog : win.post ? 1 : 0;
-  // (Within a move's part of the window, a pouch that takes hold of a new atom goes first and one
-  // that lets go of an atom follows, so that in between the atom is held from both sides.)
+  // Within a move's part of the window, a pouch that takes hold of a new atom goes first and one
+  // that lets go of an atom follows, so that in between the atom is held from both sides. An atom
+  // that is snatched from one molecule by another (step.handed) is the other way round: it is let
+  // go first, crosses bare, and is taken as it lands (the engine moves it by the same clock).
+  const snatched = new Set((step.handed ?? []).map((h) => h.id));
+  const timing = (ar: ArrowAnim, lf: number): { take: number; let: number } => {
+    const S = ar.src!;
+    const D = ar.dst!;
+    const other = S.kind !== 'bond' && D.kind === 'bond' ? (D.a === S.a ? D.b : D.a)
+      : S.kind === 'bond' && D.kind === 'atom' ? (S.a === D.a ? S.b : S.a) : undefined;
+    if (other && snatched.has(other)) return snatchPairs(lf);
+    return { take: smooth(clamp(lf / 0.62, 0, 1)), let: smooth(clamp((lf - 0.38) / 0.62, 0, 1)) };
+  };
 
   /**
    * An electron that goes from one atom to another atom flies there. Everything else stays with
@@ -1228,7 +1256,8 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       const D = m.ar.dst!;
       const [f0, f1] = span.get(m.ar) ?? [0, 1];
       const lf = clamp((win.frac - f0) / (f1 - f0), 0, 1);
-      const g = S.kind === 'bond' && D.kind === 'atom' ? smooth(clamp((lf - 0.38) / 0.62, 0, 1)) : D.kind === 'bond' ? smooth(clamp(lf / 0.62, 0, 1)) : smooth(lf);
+      const tm = timing(m.ar, lf);
+      const g = S.kind === 'bond' && D.kind === 'atom' ? tm.let : D.kind === 'bond' ? tm.take : smooth(lf);
       return { leave: g, arrive: g };
     };
     const delta = new Map<string, number>();
@@ -1256,6 +1285,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       return nb.length ? nb.reduce((sum, o) => sum + gSum.get(o)! / gN.get(o)!, 0) / nb.length : e;
     };
     const now = new Map<string, number>();
+    const leans = new Map<string, { v: number; w: number }>();
     for (const a of inp.atoms) {
       const b0 = B.atoms.get(a.id);
       const z0 = A.atoms.get(a.id);
@@ -1265,8 +1295,33 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       const g = meanG(a.id);
       // What the bookkeeping of the moves does not account for (the lean of bonds, a net change) goes along with them.
       const rest = fa - fb - (total.get(a.id) ?? 0);
-      const lean = lerp(chargeOn(B, b0, 'count') - fb, chargeOn(A, z0, 'count') - fa, g);
-      now.set(a.id, fb + (delta.get(a.id) ?? 0) + rest * g + lean);
+      const l0 = chargeOn(B, b0, inp.law ?? 'count') - fb;
+      const l1 = chargeOn(A, z0, inp.law ?? 'count') - fa;
+      leans.set(a.id, { v: lerp(l0, l1, g), w: Math.abs(l1 - l0) });
+      now.set(a.id, fb + (delta.get(a.id) ?? 0) + rest * g);
+    }
+    // The lean only moves charge about within a molecule: before and after it adds up to nothing.
+    // Each atom's lean turns over at its own pace, so half-way the sum would not: what is over is
+    // taken back from the atoms whose lean is changing, and no charge appears from nowhere.
+    const adjB = adjacency(B);
+    const adjA = adjacency(A);
+    const seen = new Set<string>();
+    for (const id of leans.keys()) {
+      if (seen.has(id)) continue;
+      const group = [id];
+      seen.add(id);
+      for (const x of group) for (const o of [...(adjB.get(x) ?? []), ...(adjA.get(x) ?? [])]) {
+        if (leans.has(o) && !seen.has(o)) {
+          seen.add(o);
+          group.push(o);
+        }
+      }
+      const over = group.reduce((sum, x) => sum + leans.get(x)!.v, 0);
+      const weight = group.reduce((sum, x) => sum + leans.get(x)!.w, 0);
+      for (const x of group) {
+        const l = leans.get(x)!;
+        now.set(x, now.get(x)! + l.v - (weight > 1e-9 ? (over * l.w) / weight : 0));
+      }
     }
     poolMetal(B, now);
     return now;
@@ -1433,8 +1488,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     let hold: string;
     const [f0, f1] = span.get(m.ar) ?? [0, 1];
     const lf = clamp((win.frac - f0) / (f1 - f0), 0, 1);
-    const eTake = smooth(clamp(lf / 0.62, 0, 1));
-    const eLet = smooth(clamp((lf - 0.38) / 0.62, 0, 1));
+    const { take: eTake, let: eLet } = timing(m.ar, lf);
     let g = smooth(lf);
     let tip0: Vec;
     let tip1: Vec;

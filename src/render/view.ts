@@ -28,7 +28,7 @@ import {
   type Vec,
 } from '../util/math';
 import { hashString } from '../util/rng';
-import { blendDomains, bystanders, chargeOn, drawPairs, drawSolids, stableDomains, stableFreeAngle, turnOf } from './pairs';
+import { blendDomains, bystanders, chargeOn, drawPairs, drawSolids, stableDomains, stableFreeAngle, turnOf, type ChargeLaw } from './pairs';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const f1 = (n: number) => n.toFixed(1);
@@ -68,8 +68,11 @@ export interface DrawOptions {
    * How atoms and charge look. 'color': each element its own colour, charges as small badges.
    * 'glow': atoms without colour (symbol and size tell them apart), and charge as light around
    * the atom: red where electrons are short, blue where there are more of them.
+   * 'cause': the glow look, with every change drawn as the effect of what moves (charge follows
+   * the electrons). 'tangible': 'cause', with the heat of a reaction shown at the moment it
+   * happens, on the molecules themselves (for a timeline compiled with `tangible`).
    */
-  look?: 'color' | 'glow' | 'cause';
+  look?: 'color' | 'glow' | 'cause' | 'tangible';
   /**
    * Which colour means which charge in the 'glow' look. 'red-positive': red where electrons are
    * short, blue where there are more. 'red-negative': the other way round, as electrostatic
@@ -368,7 +371,9 @@ export class StageView {
         const c = centroid(ids.map((i) => pos.get(i)!));
         const temp = this.tempAt(c, step, t);
         const h = hashString(root);
-        const amp = 1.3 * temp + (opt.look === 'cause' ? this.kick(c, step, t, w1, basePos) : 0);
+        const warm = opt.look === 'tangible' && step ? heatOf(step) : null;
+        const amp = warm ? 1.3 * temp * stillness(warm, c, step!, t) + shaking(warm, c, step!, t)
+          : 1.3 * temp + (opt.look === 'cause' ? this.kick(c, step, t, w1, basePos) : 0);
         const fq = 0.8 * Math.sqrt(temp);
         const ph1 = (h % 1000) / 159;
         const ph2 = ((h >> 10) % 1000) / 159;
@@ -500,9 +505,10 @@ export class StageView {
     const win = { pre, during, post, settle, prog, cue, frac };
     if (this.svg.dataset.style !== (opt.style ?? 'lines')) this.svg.dataset.style = opt.style ?? 'lines';
     // 'cause' is the glow look with one more rule: what changes is drawn as the effect of what moves.
-    const cause = opt.look === 'cause';
+    const tangible = opt.look === 'tangible';
+    const cause = tangible || opt.look === 'cause';
     const glow = cause || opt.look === 'glow';
-    const law = cause ? 'count' : 'spread';
+    const law: ChargeLaw = tangible ? 'firm' : cause ? 'count' : 'spread';
     if (this.svg.dataset.look !== (glow ? 'glow' : 'color')) this.svg.dataset.look = glow ? 'glow' : 'color';
     if ((this.svg.dataset.cause ?? '') !== (cause ? '1' : '')) {
       if (cause) this.svg.dataset.cause = '1';
@@ -513,7 +519,7 @@ export class StageView {
     // colour. Where the solvent itself is the subject (evaporation, ice), it keeps its colours.
     const quiet = tl.steps.some((s) => s.arrows.length > 0 || !!s.shifts?.length) ? 'quiet' : 'plain';
     if (this.svg.dataset.crowd !== quiet) this.svg.dataset.crowd = quiet;
-    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes, simple: this.collective, aside: bystanders(tl), cause, uid: this.uid }) : null;
+    const pairs = opt.style === 'pairs' ? drawPairs({ step, win, topo, after, atoms, pos, isCrowd, opacity, eScale, t, electrodes: tl.stage.electrodes, simple: this.collective, aside: bystanders(tl), cause, law: tangible ? 'firm' : 'count', uid: this.uid }) : null;
     if (pairs) out.push(...drawSolids(step?.before ?? topo, step ? after : topo, pos, !step ? 1 : pre ? 0 : during ? prog : 1, (n) => !!tl.stage.electrodes?.[n]));
     // Charge as light: under the atoms and their electrons, so that it reads as something the
     // place has rather than a thing of its own. While charges change, the light changes with them.
@@ -787,6 +793,8 @@ export class StageView {
     // The electrons themselves, over the atoms.
     out.push(...moving.over);
     if (pairs) out.push(...pairs.over);
+    // Heat, at the moment of the reaction and on the molecules that react.
+    if (tangible && step) out.push(drawHeat(step, t, pos, cam.w / 1000));
 
     // Electrode stage: electrons waiting in each plate, and electrons running through the wire.
     if (tl.stage.electrodes) {
@@ -901,7 +909,7 @@ export class StageView {
     // Molecule counts over the step (collective mode), in the stage's top-right corner.
     if (step && step.tally.length) out.push(tallyChart(step.tally, t, tl.stage.width));
     // Energy diagram (scenes that use `energy`), under the count chart when both are shown.
-    if (step && tl.steps.some((x) => x.energy)) out.push(energyChart(tl.steps, k, t, tl.stage.width, step.tally.length > 0, cam));
+    if (step && tl.steps.some((x) => x.energy)) out.push(energyChart(tl.steps, k, t, tl.stage.width, step.tally.length > 0, cam, tangible));
 
     this.dyn.innerHTML = out.join('');
   }
@@ -1641,7 +1649,115 @@ function batteryCount(tl: Timeline, w: World): string {
 }
 
 /** Energy over the whole scene: one stretch per step, drawn up to the current moment. */
-function energyChart(steps: StepAnim[], k: number, t: number, stageWidth: number, below: boolean, cam: Box): string {
+/** When the reaction of a step happens (step time), if it has one. */
+function reactionMoment(st: StepAnim): number | null {
+  return st.strike ?? (st.phase ? st.phase.b1 : null);
+}
+
+/**
+ * The heat of the reaction of a step, shown where and when the reaction happens. `s`: how
+ * strongly (0..1), from the heat per mole: almost in proportion for small heats, levelling off
+ * for large ones, so that a few kJ hardly show and a hundred are plain to see.
+ */
+interface Heat {
+  dH: number;
+  s: number;
+  at: number;
+  /** The atoms of the molecules that react. */
+  ids: string[];
+  /** Middle of those molecules at the moment of the reaction, and the radius of a ring round them. */
+  site: Vec;
+  r0: number;
+}
+const heatCache = new WeakMap<StepAnim, Heat | null>();
+/** Heat (kJ/mol) at which the effect is at 63% of its full strength. */
+const HEAT_SCALE = 150;
+/** Seconds the ring lasts. */
+const HEAT_LIFE = 0.75;
+
+export function heatOf(step: StepAnim): Heat | null {
+  const got = heatCache.get(step);
+  if (got !== undefined) return got;
+  let h: Heat | null = null;
+  const at = reactionMoment(step);
+  const dH = step.heat ?? (step.energy ? step.energy.to - step.energy.from : 0);
+  const s = 1 - Math.exp(-Math.abs(dH) / HEAT_SCALE);
+  if (at !== null && s >= 0.02) {
+    const ends = new Set<string>();
+    for (const ar of step.arrows) for (const id of [ar.src?.a, ar.src?.b, ar.dst?.a, ar.dst?.b]) if (id) ends.add(id);
+    for (const sh of step.shifts ?? []) for (const id of [sh.src.a, sh.src.b, sh.dst.a, sh.dst.b]) if (id) ends.add(id);
+    if (!ends.size) for (const pl of step.pulls ?? []) ends.add(pl.a).add(pl.b);
+    const ids = new Set<string>();
+    for (const id of ends) for (const w of [step.before, step.after]) if (w.atoms.has(id)) for (const x of component(w, id)) ids.add(x);
+    const spots = [...ids].filter((id) => step.after.atoms.has(id)).map((id) => {
+      const tr = step.tracks.get(id);
+      return { p: tr ? trackAt(tr, at) : (step.after.atoms.get(id) as Vec), r: element(step.after.atoms.get(id)!.el).r };
+    });
+    if (spots.length) {
+      const site = centroid(spots.map((x) => x.p));
+      h = { dH, s, at, ids: [...ids], site, r0: Math.max(...spots.map((x) => dist(x.p, site) + x.r)) + 14 };
+    }
+  }
+  heatCache.set(step, h);
+  return h;
+}
+
+/** Radius of the ring `dt` seconds after the reaction: outward for heat given off, inward for heat taken in. */
+function heatRing(h: Heat, dt: number): number {
+  if (h.dH < 0) return h.r0 + (60 + 200 * h.s) * (1 - Math.exp(-dt / 0.24));
+  return h.r0 * (1 - 0.66 * Math.pow(clamp(dt / HEAT_LIFE, 0, 1), 1.7));
+}
+
+/**
+ * Heat given off goes into the motion of what is around: as the ring passes, the molecules there
+ * shake harder, and it dies down. Extra amplitude at p.
+ */
+function shaking(h: Heat, p: Vec, step: StepAnim, t: number): number {
+  const dt = (t - h.at) * step.duration;
+  if (h.dH >= 0 || dt <= 0) return 0;
+  const d = dist(p, h.site);
+  const front = heatRing(h, dt);
+  if (d > front) return 0;
+  return (2 + 7 * h.s) * Math.exp(-d / 240) * clamp((front - d) / 40, 0, 1) * Math.exp(-dt / 0.9);
+}
+
+/** Heat taken in comes out of the motion of what is around: inside the ring the molecules go still for a while. */
+function stillness(h: Heat, p: Vec, step: StepAnim, t: number): number {
+  const dt = (t - h.at) * step.duration;
+  if (h.dH <= 0 || dt <= 0) return 1;
+  const d = dist(p, h.site);
+  return 1 - Math.min(0.9, 1.6 * h.s) * Math.exp(-d / (h.r0 * 1.5)) * clamp(dt / 0.15, 0, 1) * Math.exp(-dt / 1.4);
+}
+
+/**
+ * Heat given off: the reacting molecules go white for an instant and a thin ring round them
+ * spreads and fades. Heat taken in: they go a cold blue for an instant and a ring of the same
+ * size closes in on them and fades. `u`: stage units per 1/1000 of the width of the view.
+ */
+function drawHeat(step: StepAnim, t: number, pos: Map<string, Vec>, u: number): string {
+  const h = heatOf(step);
+  if (!h) return '';
+  const dt = (t - h.at) * step.duration;
+  if (dt < 0 || dt > HEAT_LIFE) return '';
+  const exo = h.dH < 0;
+  let out = `<g class="heat ${exo ? 'exo' : 'endo'}">`;
+  // The flash: up in a twenty-fifth of a second, gone in half a second.
+  const pulse = dt < 0.04 ? dt / 0.04 : Math.exp(-(dt - 0.04) / 0.13);
+  const op = Math.min(0.94, 2.1 * h.s) * pulse;
+  if (op > 0.02) {
+    for (const id of h.ids) {
+      const p = pos.get(id);
+      const a = step.after.atoms.get(id);
+      if (p && a) out += `<circle class="flash" cx="${f1(p.x)}" cy="${f1(p.y)}" r="${f1(element(a.el).r + 7)}" opacity="${op.toFixed(2)}"/>`;
+    }
+  }
+  const fade = Math.pow(1 - dt / HEAT_LIFE, exo ? 1.3 : 0.8) * clamp(dt / 0.05, 0, 1);
+  const ring = Math.min(1, 1.9 * h.s) * fade;
+  if (ring > 0.02) out += `<circle class="ring" cx="${f1(h.site.x)}" cy="${f1(h.site.y)}" r="${f1(heatRing(h, dt))}" stroke-width="${f1((1.4 + 1.6 * h.s) * u)}" opacity="${ring.toFixed(2)}"/>`;
+  return out + '</g>';
+}
+
+function energyChart(steps: StepAnim[], k: number, t: number, stageWidth: number, below: boolean, cam: Box, atStrike = false): string {
   // Under the count chart (whole stage in view), else pinned to the view's top-right corner.
   let fs: number;
   let box: Box;
@@ -1660,15 +1776,22 @@ function energyChart(steps: StepAnim[], k: number, t: number, stageWidth: number
   const cy = box.y + head;
   const cw = box.w - 2 * pad;
   const ch = box.h - head - pad;
-  type Seg = { from: number; to: number; peak: number | null };
+  // `a`..`c`: the part of the step in which the level changes; `b`: where a barrier peaks.
+  type Seg = { from: number; to: number; peak: number | null; a: number; b: number; c: number };
   const segs: Seg[] = [];
   let level = 0;
   for (const st of steps) {
     const e = st.energy;
+    // With `atStrike` the level changes when the reaction happens, at the same moment as the
+    // flash on the molecules: the hill is climbed while the electrons move and the drop is at the strike.
+    const hit = atStrike ? reactionMoment(st) : null;
+    const span = hit === null ? { a: 0.2, b: 0.5, c: 0.8 }
+      : e?.barrier !== undefined ? { a: Math.max(0, Math.min(st.phase?.b0 ?? hit - 0.25, hit - 0.05)), b: hit, c: Math.min(1, hit + 0.3 / st.duration) }
+        : { a: hit, b: hit, c: Math.min(1, hit + 0.3 / st.duration) };
     if (e) {
-      segs.push({ from: e.from, to: e.to, peak: e.barrier !== undefined ? Math.max(e.from + e.barrier, e.from, e.to) : null });
+      segs.push({ from: e.from, to: e.to, peak: e.barrier !== undefined ? Math.max(e.from + e.barrier, e.from, e.to) : null, ...span });
       level = e.to;
-    } else segs.push({ from: level, to: level, peak: null });
+    } else segs.push({ from: level, to: level, peak: null, ...span });
   }
   const vals = segs.flatMap((sg) => [sg.from, sg.to, sg.peak ?? sg.from]);
   let lo = Math.min(...vals);
@@ -1680,15 +1803,14 @@ function energyChart(steps: StepAnim[], k: number, t: number, stageWidth: number
   const Y = (v: number) => cy + ch - ((v - lo) / (hi - lo)) * ch;
   const X = (i: number, u: number) => cx + ((i + u) / steps.length) * cw;
   const at = (sg: Seg, u: number) => {
-    if (u <= 0.2) return sg.from;
-    if (u >= 0.8) return sg.to;
-    const v = (u - 0.2) / 0.6;
-    if (sg.peak === null) return sg.from + (sg.to - sg.from) * smooth(v);
-    return v < 0.5 ? sg.from + (sg.peak - sg.from) * smooth(v * 2) : sg.peak + (sg.to - sg.peak) * smooth(v * 2 - 1);
+    if (u <= sg.a) return sg.from;
+    if (u >= sg.c) return sg.to;
+    if (sg.peak === null) return sg.from + (sg.to - sg.from) * smooth((u - sg.a) / (sg.c - sg.a));
+    return u < sg.b ? sg.from + (sg.peak - sg.from) * smooth((u - sg.a) / (sg.b - sg.a)) : sg.peak + (sg.to - sg.peak) * smooth((u - sg.b) / (sg.c - sg.b));
   };
   const line = (i: number, u1: number) => {
     const pts: string[] = [];
-    const n = Math.max(2, Math.round(28 * u1));
+    const n = Math.max(2, Math.round(60 * u1));
     for (let j = 0; j <= n; j++) {
       const u = (u1 * j) / n;
       pts.push(`${f1(X(i, u))},${f1(Y(at(segs[i], u)))}`);

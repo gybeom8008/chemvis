@@ -7,6 +7,7 @@
 import { ELECTRONEGATIVITY, METALS, bondLength, element } from '../chem/elements';
 import { domainsInWorld, lonePairDirsInWorld, placeNew, relayout } from '../chem/geometry';
 import { SmilesError } from '../chem/smiles';
+import { stepEnthalpy } from '../chem/enthalpy';
 import { formulaCharge, lookupMolecule, normalizeFormula } from '../chem/library';
 import { parse, type Cmd, type Diag, type StepAst } from '../dsl/parser';
 import { STAGES, channelArcAtY, getStage, inRegion, randomInRegion, regionCenter, type Region, type StageDef } from '../stage/stages';
@@ -34,7 +35,7 @@ import {
 } from '../util/math';
 import { Rng } from '../util/rng';
 import type { ArrowAnim, Keyframe, NoteTarget, StepAnim, Timeline } from './timeline';
-import { hopProgress, tallyBox, trackAt as trackPos } from './timeline';
+import { SNATCH, hopProgress, snatchAt, tallyBox, trackAt as trackPos } from './timeline';
 import {
   sameFormula,
   allComponents,
@@ -240,6 +241,14 @@ export interface CompileOptions {
    * it, and an atom that passes from one molecule to another does so quickly.
    */
   tight?: boolean;
+  /**
+   * With `tight`: motion that reads as bodies moved by forces rather than as paths from one point
+   * to the next. What is drawn in starts slowly, rushes, and is stopped by what it meets, which
+   * gives a little; what is pushed off leaves at once and is slowed by the water; an atom passed
+   * from one molecule to another is let go, drifts off and is snatched (timeline.ts, SNATCH);
+   * groups that are in the way swing aside as the other molecule gets near, not beforehand.
+   */
+  tangible?: boolean;
 }
 
 export function compile(src: string, opts: CompileOptions = {}): CompileResult {
@@ -254,6 +263,7 @@ function compileScene(src: string, opts: CompileOptions, selectionPass: boolean,
   const ast = parse(src);
   const ctx = new Ctx();
   ctx.tight = !!opts.tight;
+  ctx.tangible = !!opts.tight && !!opts.tangible && !selectionPass;
   ctx.selectionPass = selectionPass;
   ctx.reference = reference;
   ctx.errors.push(...ast.errors);
@@ -403,6 +413,35 @@ class Ctx {
   selectionPass = false;
   reference: Timeline | null = null;
   get plannedMotion(): boolean { return this.tight && !this.selectionPass; }
+  /** See CompileOptions.tangible. */
+  tangible = false;
+  /**
+   * How a move covers its way in time. Without `tangible` every move starts and stops gently.
+   * With it the way is covered as the force behind the move would have it (see Feel).
+   * `length`: the way in px, for the size of the give at the end of a pull.
+   */
+  pace(feel: Feel | undefined, length: number): (u: number) => number {
+    if (!this.plannedMotion) return smooth;
+    if (!this.tangible) return gentle;
+    if (feel === 'pull') {
+      const give = Math.min(0.04, 5 / Math.max(1, length));
+      return (u) => pulled(u, give);
+    }
+    return feel === 'push' ? pushed : feel === 'even' ? gentle : glide;
+  }
+  /**
+   * Add a passing displacement to atoms on top of whatever paths they have in this step (a body
+   * that gives when another reaches it). `at` must be zero at the end of the step.
+   */
+  sway(ids: string[], at: (t: number) => Vec): void {
+    const N = 200;
+    for (const id of ids) {
+      const a = this.w.atoms.get(id);
+      if (!a) continue;
+      const tr = this.A.tracks.get(id) ?? [{ t: 0, x: a.x, y: a.y }];
+      this.A.tracks.set(id, Array.from({ length: N + 1 }, (_, i) => ({ t: i / N, ...add(trackPos(tr, i / N), at(i / N)) })));
+    }
+  }
   effects: EngineEffect[] = [];
   /** 접촉 순서를 정한 경로는 단계 끝 배치 보정으로 앞당기지 않는다. */
   causalMotion = new Set<string>();
@@ -988,13 +1027,18 @@ class Ctx {
    * Move a set of atoms rigidly along a path of the pivot, optionally turning
    * by `rotation` radians, between step times t0 and t1.
    */
-  moveGroup(ids: string[], pivot: Vec, path: Vec[], rotation: number, t0: number, t1: number, turnBy = 1): void {
+  moveGroup(ids: string[], pivot: Vec, path: Vec[], rotation: number, t0: number, t1: number, turnBy = 1, feel?: Feel): void {
     const pts = resample(path, 14);
     const total = polyLength(pts) || 1;
     const fr: number[] = [0];
     for (let i = 1; i < pts.length; i++) fr.push(fr[i - 1] + dist(pts[i - 1], pts[i]) / total);
-    // Where the pivot is after the fraction f of the way.
+    const pace = this.pace(feel ?? (total < 1.5 ? 'even' : undefined), total);
+    // Where the pivot is after the fraction f of the way (a little past its end: straight on).
     const along = (f: number): Vec => {
+      if (f > 1 && pts.length > 1 && total > 1.5) {
+        const n = pts.length - 1;
+        return add(pts[n], scale(norm(sub(pts[n], pts[n - 1])), (f - 1) * total));
+      }
       for (let i = 1; i < pts.length; i++) {
         if (f <= fr[i] || i === pts.length - 1) {
           const span = fr[i] - fr[i - 1];
@@ -1022,7 +1066,7 @@ class Ctx {
       if (this.tight) {
         for (let i = 0; i <= N; i++) {
           const u = i / N;
-          const f = this.plannedMotion ? gentle(u) : smooth(u);
+          const f = pace(u);
           const q = add(along(f), rotate(off, rotation * smooth(clamp(f / Math.max(turnBy, 1e-6), 0, 1))));
           if (i === 0 && this.A.tracks.get(id)?.length) continue;
           this.pushKf(id, { t: t0 + (t1 - t0) * u, x: q.x, y: q.y });
@@ -1045,7 +1089,7 @@ class Ctx {
 
   /** 회전하는 분자 전체를 원자 반지름으로 검사한 뒤 우회 경로를 고른다. */
   clearRoute(ids: string[], pivot: Vec, goal: Vec, rotation: number, t0: number, t1: number,
-    original: { path: Vec[]; turnBy: number }): { path: Vec[]; turnBy: number } {
+    original: { path: Vec[]; turnBy: number }, feel?: Feel): { path: Vec[]; turnBy: number } {
     const moving = ids.map((id) => ({ off: sub(this.w.atoms.get(id)!, pivot), r: element(this.w.atoms.get(id)!.el).r }));
     const obstacles = [...this.w.atoms.values()].filter((a) => !ids.includes(a.id) && !a.crowd && !a.gone);
     const clear = (path: Vec[], turnBy: number): boolean => {
@@ -1053,7 +1097,7 @@ class Ctx {
       const count = Math.max(120, pts.length);
       let previous: Vec[] | null = null;
       for (let i = 0; i <= count; i++) {
-        const u = i / count, f = gentle(u);
+        const u = i / count, f = Math.min(1, this.pace(feel, polyLength(pts))(u));
         const center = polyAt(pts, f);
         const angle = rotation * smooth(clamp(f / turnBy, 0, 1));
         const positions = moving.map((a) => add(center, rotate(a.off, angle)));
@@ -1540,7 +1584,11 @@ class Ctx {
       dir = fromAngle(best);
     } else dir = norm(sub(M, T));
     // Tight: so close that the pair which reaches across has only a bond's length to go.
-    const gap = element(T.el).r + element(M.el).r + (this.tight ? 15 : 58);
+    // With `tangible`, an H that hangs on one atom is come up to only as near as two molecules
+    // that attract each other lie (about 1.7 bond lengths): the H is then snatched across that gap,
+    // and no pair has to reach over it.
+    const snatch = this.tangible && T.el === 'H' && tn.length === 1 && (M.lp > 0 || M.rad > 0);
+    const gap = snatch ? bondLength(M.el, T.el, 1) * 1.7 : element(T.el).r + element(M.el).r + (this.tight ? 15 : 58);
     const mn = neighbors(this.w, mover).map((n) => this.w.atoms.get(n.id)!);
     const pivot = { x: M.x, y: M.y };
     // Where the mover ends up when it comes in from `d`, and how far it turns: its unpaired
@@ -1605,6 +1653,8 @@ class Ctx {
     }
     // 치환에서는 떠날 원자 반대쪽을 먼저 비운다. 새 결합 뒤 큰 회전은 하지 않는다.
     let prepared = false;
+    // With `tangible` they are not turned beforehand: they give way as the other molecule gets near.
+    const yielding: { ids: string[]; pivot: Vec; rotation: number; from: Map<string, Vec> }[] = [];
     if (this.plannedMotion) for (const cmd of this.upcoming) {
       if (cmd.op !== 'arrow' || !cmd.args[0]?.includes('~')) continue;
       const src = this.arrowEnd(cmd.args[0]);
@@ -1619,9 +1669,12 @@ class Ctx {
       // 현재 순서에서 가까운 빈 자리를 고르며 H ID를 그대로 유지한다.
       for (const h of hs) {
         slots.sort((a, b) => angDiff(a, angleOf(sub(h, T))) - angDiff(b, angleOf(sub(h, T))));
-        this.turnBranch(target, h.id, slots.shift() ?? axis + Math.PI, 0, 0.3);
+        const slot = slots.shift() ?? axis + Math.PI;
+        const later = this.tangible ? this.turnBranchLater(target, h.id, slot) : null;
+        if (later) yielding.push(later);
+        else this.turnBranch(target, h.id, slot, 0, 0.3);
       }
-      prepared = true;
+      prepared = !this.tangible || yielding.length === 0;
       break;
     }
     const { goal, rot, want } = pose(dir);
@@ -1637,8 +1690,35 @@ class Ctx {
       const { path, turnBy } = routeIn(pivot, goal, dir, around, clear);
       const t0 = prepared ? 0.3 : 0;
       const rotation = mn.length ? rot : 0;
-      const route = this.plannedMotion ? this.clearRoute(ids, pivot, goal, rotation, t0, 1, { path, turnBy }) : { path, turnBy };
-      this.moveGroup(ids, pivot, route.path, rotation, t0, 1, route.turnBy);
+      const route = this.plannedMotion ? this.clearRoute(ids, pivot, goal, rotation, t0, 1, { path, turnBy }, 'pull') : { path, turnBy };
+      this.moveGroup(ids, pivot, route.path, rotation, t0, 1, route.turnBy, 'pull');
+      if (this.tangible) {
+        const way = this.A.tracks.get(mover)!;
+        const rest = dist(goal, T);
+        // What stands where the mover comes in is pushed aside by it: the nearer it is, the further they have swung.
+        const reach = 70;
+        let most = 0;
+        const given = Array.from({ length: 201 }, (_, i) => {
+          most = Math.max(most, smooth(clamp((rest + reach - dist(trackPos(way, i / 200), T)) / reach, 0, 1)));
+          return most;
+        });
+        for (const y of yielding) {
+          for (const id of y.ids) {
+            const off = sub(y.from.get(id)!, y.pivot);
+            this.A.tracks.set(id, given.map((g, i) => ({ t: i / 200, ...add(y.pivot, rotate(off, y.rotation * g)) })));
+          }
+        }
+        // The two draw each other: the one that is come to leans toward the comer (the lighter it
+        // is, the more), and is pressed back to its place as the comer arrives.
+        const weigh = (list: string[]) => list.reduce((sum, id) => sum + (this.w.atoms.get(id)!.el === 'H' ? 0.15 : 1), 0);
+        const other = component(this.w, target);
+        const lean = 10 * weigh(comp) / (weigh(comp) + weigh(other));
+        this.sway(this.group(other), (t) => {
+          const u = clamp((t - t0) / (1 - t0), 0, 1);
+          const k = u < PULL_MEET ? Math.pow(u / PULL_MEET, 2.2) : Math.pow(1 - (u - PULL_MEET) / (1 - PULL_MEET), 3);
+          return scale(dir, lean * k);
+        });
+      }
     } else this.moveGroup(ids, pivot, [pivot, goal], mn.length ? rot : 0, 0, 1);
     this.focusMol(comp);
     // The molecule it comes up to is part of the scene too.
@@ -1670,6 +1750,29 @@ class Ctx {
       }
     }
     this.moveGroup([...ids], pivot, [pivot, pivot], rotation, t0, t1);
+  }
+
+  /**
+   * Turn a branch to where it will end up, without a path yet: the caller decides when it swings
+   * (as another molecule gets near). Null if the branch already has a path in this step or is part of a ring.
+   */
+  turnBranchLater(root: string, child: string, angle: number): { ids: string[]; pivot: Vec; rotation: number; from: Map<string, Vec> } | null {
+    const ids = new Set([child]);
+    const queue = [child];
+    for (const id of queue) for (const n of neighbors(this.w, id)) {
+      if (n.id === root) { if (id !== child) return null; continue; }
+      if (!ids.has(n.id)) { ids.add(n.id); queue.push(n.id); }
+    }
+    if ([...ids].some((id) => this.A.tracks.has(id))) return null;
+    const pivot = { x: this.w.atoms.get(root)!.x, y: this.w.atoms.get(root)!.y };
+    const rotation = signedAng(angleOf(sub(this.w.atoms.get(child)!, pivot)), angle);
+    const from = new Map<string, Vec>();
+    for (const id of ids) {
+      const at = this.w.atoms.get(id)!;
+      from.set(id, { x: at.x, y: at.y });
+      Object.assign(at, add(pivot, rotate(sub(at, pivot), rotation)));
+    }
+    return { ids: [...ids], pivot, rotation, from };
   }
 
   /** 분자 안팎에서 결합도 공통 이웃도 없는 원자쌍에 필요한 여백을 계산한다. */
@@ -1717,8 +1820,8 @@ class Ctx {
     const low = Math.max(C.y, from.y) + clearance;
     const path = rounded([from, { x: from.x, y: low }, { x: goal.x - clearance, y: low }, { x: goal.x - clearance, y: goal.y }, goal], 3);
     const ids = this.group(moving);
-    const route = this.clearRoute(ids, from, goal, 0, 0.45, 1, { path, turnBy: 1 });
-    this.moveGroup(ids, from, route.path, 0, 0.45, 1);
+    const route = this.clearRoute(ids, from, goal, 0, 0.45, 1, { path, turnBy: 1 }, 'pull');
+    this.moveGroup(ids, from, route.path, 0, 0.45, 1, 1, 'pull');
   }
 
   /** The O of the -OH that `a` gives up, if the next step condenses `a` with `b`. */
@@ -1863,7 +1966,7 @@ class Ctx {
       const pose = this.waterPose(water, tg);
       // Come in from outside the shell along its own direction, not across the ion.
       const outside = add(pose.goal, scale(tg.u, 60));
-      this.moveGroup(water, pose.pivot, [pose.pivot, outside, pose.goal], pose.rot, s0, s0 + 0.6 * span);
+      this.moveGroup(water, pose.pivot, [pose.pivot, outside, pose.goal], pose.rot, s0, s0 + 0.6 * span, 1, 'pull');
       shell.push(anchorOf(this.w, water));
     });
     const key = anchorOf(this.w, comp);
@@ -2108,7 +2211,7 @@ class Ctx {
           water = pool[bi];
         }
         const pose = this.waterPose(water, tg);
-        this.moveGroup(water, pose.pivot, [pose.pivot, pose.goal], pose.rot, 0, 0.42);
+        this.moveGroup(water, pose.pivot, [pose.pivot, pose.goal], pose.rot, 0, 0.42, 1, 'pull');
         shell.push(anchorOf(this.w, water));
       }
       this.w.attached.set(pick, shell);
@@ -2346,7 +2449,7 @@ class Ctx {
       const water = this.spawn('H2O', this.autoName('~H2O'), true, add(tg.pos, { x: 0, y: -70 }), this.rng.range(0, 6.28));
       for (const id of water) this.A.appear.add(id);
       const pose = this.waterPose(water, tg);
-      this.moveGroup(water, pose.pivot, [pose.pivot, pose.goal], pose.rot, t0, t1);
+      this.moveGroup(water, pose.pivot, [pose.pivot, pose.goal], pose.rot, t0, t1, 1, 'pull');
       shell.push(anchorOf(this.w, water));
     }
     const key = anchorOf(this.w, comp);
@@ -2783,16 +2886,18 @@ class Ctx {
         const water = component(this.w, anchor);
         const p = centerOf(this.w, water);
         const away = dist(p, middle) > 1e-6 ? norm(sub(p, middle)) : scale(axis, sign);
-        this.moveGroup(water, p, [p, add(p, scale(away, 65))], 0, 0.42, 0.60);
+        this.moveGroup(water, p, [p, add(p, scale(away, 65))], 0, 0.42, 0.60, 1, 'push');
       }
       this.detach(comp);
-      this.moveGroup(comp, near, [near, touch], 0, 0.42, 0.64);
+      this.moveGroup(comp, near, [near, touch], 0, 0.42, 0.64, 1, 'pull');
       held.forEach((id) => this.causalMotion.add(id));
     }
     // 만난 뒤에는 둘 사이 간격을 유지하며 함께 격자로 간다.
     const goalMiddle = lerpV(goals[0], goals[1], 0.5);
     const turn = signedAng(angleOf(axis), angleOf(sub(goals[1], goals[0])));
     this.moveGroup([...cat, ...an], middle, [middle, goalMiddle], turn, 0.64, 1);
+    // The two ions meet where the pull has brought them together (PULL_MEET of the way in).
+    if (this.tangible) this.A.strike = 0.42 + (0.64 - 0.42) * PULL_MEET;
     lattice.push(...cat, ...an);
     lattice.forEach((id) => this.causalMotion.add(id));
     this.focusMol(cat);
@@ -3107,7 +3212,7 @@ class Ctx {
       const goal = free.shift()!;
       const start = { x: ion.x, y: ion.y };
       this.detach([ion.id]);
-      this.moveGroup([ion.id], start, [start, lerpV(start, goal, 0.6), goal], 0, 0, 1);
+      this.moveGroup([ion.id], start, [start, lerpV(start, goal, 0.6), goal], 0, 0, 1, 1, 'pull');
       // Its electrons, when they come, arrive on the side that touches the metal.
       ion.face = angleOf(sub(spot, goal));
       // From here on it stays where it touches the piece and moves with it.
@@ -3525,8 +3630,8 @@ class Ctx {
       const around = centroid(mol);
       const clear = Math.max(...mol.map((x) => dist(x, around) + element(x.el).r)) + 34;
       const { path, turnBy } = routeIn(from, spot, norm(sub(spot, Aat)), around, clear);
-      const route = this.plannedMotion ? this.clearRoute(water, from, spot, rot, 0, 0.36, { path, turnBy }) : { path, turnBy };
-      this.moveGroup(water, from, route.path, rot, 0, 0.36, route.turnBy);
+      const route = this.plannedMotion ? this.clearRoute(water, from, spot, rot, 0, 0.36, { path, turnBy }, 'pull') : { path, turnBy };
+      this.moveGroup(water, from, route.path, rot, 0, 0.36, route.turnBy, 'pull');
     }
     // Where each electron pair ends up: a lone pair of the water's O joins A, the A–B pair stays
     // on B, a lone pair of B takes the H, and the O–H pair stays on O.
@@ -3967,8 +4072,10 @@ class Ctx {
         A.tracks.set(id, tr);
       } else {
         const tr = old ? old.filter((k) => k.t < c0) : [{ t: 0, x: b.x, y: b.y }];
+        // With `tangible`: what the change sets moving starts at once and is slowed by the water.
+        const settle = this.tangible && A.phase ? pushed : gentle;
         for (let i = 0; i <= 80; i++) {
-          const q = lerpV(p, end, gentle(i / 80));
+          const q = lerpV(p, end, settle(i / 80));
           tr.push({ t: c0 + (c1 - c0) * i / 80, ...q });
         }
         if (c1 < 1) tr.push({ t: 1, ...end });
@@ -3993,6 +4100,7 @@ class Ctx {
     }
     this.dockTurns = [];
     // 상대 원자 경로가 완성된 뒤 전달한다. 앞선 경로가 있어도 빠뜨리지 않는다.
+    const jolts: { ids: string[]; dir: Vec; hit: number }[] = [];
     for (const [id, partner] of handed) {
       const old = prefix.get(id);
       const p = start.get(id)!;
@@ -4000,6 +4108,35 @@ class Ctx {
       const at = this.w.atoms.get(id)!;
       const partnerAt = (t: number) => A.tracks.has(partner) ? trackPos(A.tracks.get(partner)!, t) : partnerEnd;
       const off0 = sub(p, partnerAt(c0)), off1 = sub(at, partnerEnd);
+      if (this.tangible && A.phase && !A.shifts?.length) {
+        // Snatched: let go, a short drift, then pulled straight onto the taker while the electrons
+        // move (b0..b1), and only afterwards round to its place with the rest of the molecule.
+        const { b0, b1 } = A.phase;
+        const o0 = sub(p, partnerAt(b0));
+        const land = scale(norm(o0), Math.hypot(off1.x, off1.y));
+        const swing = signedAng(angleOf(land), angleOf(off1));
+        const tr = old ? old.filter((k) => k.t < b0) : [{ t: 0, ...before.atoms.get(id)! }];
+        for (let i = 0; i <= 160; i++) {
+          const t = b0 + (b1 - b0) * i / 160;
+          tr.push({ t, ...add(partnerAt(t), lerpV(o0, land, snatchAt(i / 160))) });
+        }
+        for (let i = 1; i <= 60; i++) {
+          const t = b1 + (Math.max(c1, b1) - b1) * i / 60;
+          if (t <= b1) break;
+          tr.push({ t, ...add(partnerAt(t), rotate(land, swing * pushed(clamp((t - c0) / Math.max(1e-9, c1 - c0), 0, 1)))) });
+        }
+        tr.push({ t: 1, x: at.x, y: at.y });
+        A.tracks.set(id, tr);
+        const was = neighbors(before, id)[0]?.id;
+        if (was) (A.handed ??= []).push({ id, from: was, to: partner });
+        const hit = b0 + (b1 - b0) * SNATCH.hit;
+        A.strike = Math.max(A.strike ?? 0, hit);
+        // The taker gives a little under the blow and comes back.
+        const dir = norm(scale(o0, -1));
+        const body = component(before, partner).filter((x) => !handed.has(x));
+        jolts.push({ ids: [...this.group(body.filter((x) => this.w.atoms.has(x))), id], dir, hit });
+        continue;
+      }
       const tr = old ? old.filter((k) => k.t < c0) : [{ t: 0, ...before.atoms.get(id)! }];
       for (let i = 0; i <= 100; i++) {
         const t = c0 + (c1 - c0) * i / 100;
@@ -4021,7 +4158,14 @@ class Ctx {
       A.tracks.set(hydrogen, tr);
     }
     this.waterTurns = [];
-    if (!A.phase) {
+    for (const j of jolts) {
+      this.sway(j.ids, (t) => {
+        const x = (t - j.hit) / 0.2;
+        if (x <= 0 || x >= 1) return { x: 0, y: 0 };
+        return scale(j.dir, 3.2 * (x / 0.18) * Math.exp(1 - x / 0.18) * (1 - x));
+      });
+    }
+    if (!A.phase && !this.tangible) {
       // 짧은 하위 경로가 있어도 단계 전체 시작과 끝은 완만하다. 모든 원자에 같은 시간을 쓴다.
       for (const [id, tr] of A.tracks) if (!this.causalMotion.has(id)) A.tracks.set(id, Array.from({ length: 201 }, (_, i) => ({
         t: i / 200, ...trackPos(tr, gentle(i / 200)),
@@ -4035,7 +4179,8 @@ class Ctx {
         const at = this.w.atoms.get(id)!;
         const formed = { x: at.x, y: at.y };
         const tr = (A.tracks.get(id) ?? [{ t: 0, ...formed }]).filter((k) => k.t < t0);
-        for (let i = 0; i <= 80; i++) tr.push({ t: t0 + (1 - t0) * i / 80, ...add(formed, scale(delta, gentle(i / 80))) });
+        const leave = this.tangible ? pushed : gentle;
+        for (let i = 0; i <= 80; i++) tr.push({ t: t0 + (1 - t0) * i / 80, ...add(formed, scale(delta, leave(i / 80))) });
         shift(at, delta);
         A.tracks.set(id, tr);
       }
@@ -4044,6 +4189,50 @@ class Ctx {
     this.rigid = [];
     A.after = cloneWorld(this.w);
     if (!this.mid) A.mid = A.before;
+    // The reaction happens when the electrons have arrived, unless something more particular said when.
+    // (Single electrons go over one after another: when the last has arrived.)
+    if (this.tangible && A.phase && A.strike === undefined) A.strike = A.phase.b0 + (A.phase.b1 - A.phase.b0) * (A.arrows.some((ar) => ar.kind !== 'pair') ? 1 : 0.62);
+    if (this.tangible) this.heat(before);
+  }
+
+  /** Where the heat of the reaction is reckoned from: the world before the first step whose heat is still unknown. */
+  heatFrom: World | null = null;
+
+  /**
+   * The heat of this step's reaction (StepAnim.heat). What the script states (`energy`) is taken
+   * as it is. Otherwise it is worked out from standard enthalpies of formation of what was there
+   * before and what is there after. Not every change of the count is heat, so nothing is given:
+   *  - when light drives the step (the energy comes with the light, not from around);
+   *  - on an electrode (the energy leaves as electrical work);
+   *  - when atoms came into the reckoning or left it (a molecule entering, water of the crowd joining in).
+   * A step that ends in something the table does not have (a short-lived ion on the way) gives no
+   * heat of its own: the heat is reckoned from before that step and shown when a known product is
+   * reached. A result the table itself does not vouch for (StepEnthalpy.reliable: it rests on an
+   * estimate from bond enthalpies, or is smaller than its own uncertainty) is not shown at all:
+   * it can have the wrong sign (HBr adding to ethene once came out as taking heat in).
+   */
+  heat(before: World): void {
+    const A = this.A;
+    if (A.energy) {
+      this.heatFrom = null;
+      if (A.energy.to !== A.energy.from) A.heat = A.energy.to - A.energy.from;
+      return;
+    }
+    const from = this.heatFrom ?? before;
+    const counted = (w: World): string => allComponents(w)
+      .filter((ids) => ids.some((id) => !w.atoms.get(id)!.crowd) && !ids.some((id) => w.atoms.get(id)!.gone))
+      .flat().sort().join(' ');
+    if (A.photons.length || this.stage.electrodes || A.appear.size || counted(from) !== counted(this.w)) {
+      this.heatFrom = null;
+      return;
+    }
+    const got = stepEnthalpy(from, this.w, this.stage);
+    if (got.dH === null) {
+      this.heatFrom = from;
+      return;
+    }
+    this.heatFrom = null;
+    if (got.reliable && Math.abs(got.dH) >= 0.5 && A.strike !== undefined) A.heat = got.dH;
   }
 
   finishStep(before: World): void {
@@ -4598,6 +4787,36 @@ function resolveOverlaps(ctx: Ctx, _focus: Set<string>): void {
 function gentle(t: number): number {
   const u = clamp(t, 0, 1);
   return u * u * u * (10 + u * (-15 + 6 * u));
+}
+
+/**
+ * What moves a body, which decides how it covers its way (CompileOptions.tangible):
+ *  - 'pull': drawn to what it goes to. Slow at first, faster and faster, stopped where the two
+ *    meet; it presses in a little and comes back.
+ *  - 'push': thrown off. Fastest at the start, slowed by the water until it lies still.
+ *  - 'glide': goes by itself. Soon up to speed, then a long slowing down.
+ *  - 'even': starts and stops alike (a turn on the spot).
+ */
+type Feel = 'pull' | 'push' | 'glide' | 'even';
+
+/** The part of a pull's time after which the two have met. */
+const PULL_MEET = 0.8;
+
+function pulled(u: number, give: number): number {
+  const t = clamp(u, 0, 1);
+  if (t < PULL_MEET) return Math.pow(t / PULL_MEET, 2.2);
+  const y = (t - PULL_MEET) / (1 - PULL_MEET);
+  return 1 + give * (y / 0.22) * Math.exp(1 - y / 0.22) * (1 - y);
+}
+
+function pushed(u: number): number {
+  return 1 - Math.pow(1 - clamp(u, 0, 1), 3);
+}
+
+function glide(u: number): number {
+  const t = clamp(u, 0, 1);
+  const v = 1 - t;
+  return 1 - v * v * v * (1 + 3 * t);
 }
 
 /** Round the corners of a path (Chaikin), keeping its ends. */

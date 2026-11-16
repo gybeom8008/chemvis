@@ -181,8 +181,9 @@ export interface StepAnim {
   /**
    * Atoms snatched from one molecule by another in this step (see SNATCH): the pair that held the
    * atom lets go first, the atom crosses bare, and the taker's pair closes on it as it lands.
+   * `t0`..`t1`: the part of the step in which that happens (the two pairs' part of the change window).
    */
-  handed?: { id: string; from: string; to: string }[];
+  handed?: { id: string; from: string; to: string; t0: number; t1: number }[];
   /** The moment (step time) at which the reaction happens: the new bond closes, the two ions touch. */
   strike?: number;
   /** Heat given off (negative) or taken in (positive) at `strike`, in kJ per mole of this reaction. */

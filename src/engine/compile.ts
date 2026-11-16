@@ -4023,7 +4023,9 @@ class Ctx {
       if (!broken || g.length > 2) continue;
       const inside = g.includes(broken.a) ? broken.a : broken.b;
       const outside = inside === broken.a ? broken.b : broken.a;
-      const delta = scale(norm(sub(pre.get(inside)!, pre.get(outside)!)), 60);
+      // (After a snatch the two are already further apart by the gap the atom crossed.)
+      const snatched = this.tangible && neighbors(this.w, outside).length > 0 && !neighbors(this.w, outside).some((n) => !!getBond(before, n.id, outside));
+      const delta = scale(norm(sub(pre.get(inside)!, pre.get(outside)!)), snatched ? 38 : 60);
       for (const id of g) shift(this.w.atoms.get(id)!, delta);
     }
     for (const d of this.drift) {
@@ -4108,10 +4110,18 @@ class Ctx {
       const at = this.w.atoms.get(id)!;
       const partnerAt = (t: number) => A.tracks.has(partner) ? trackPos(A.tracks.get(partner)!, t) : partnerEnd;
       const off0 = sub(p, partnerAt(c0)), off1 = sub(at, partnerEnd);
-      if (this.tangible && A.phase && !A.shifts?.length) {
+      if (this.tangible && A.phase) {
         // Snatched: let go, a short drift, then pulled straight onto the taker while the electrons
         // move (b0..b1), and only afterwards round to its place with the rest of the molecule.
-        const { b0, b1 } = A.phase;
+        // In a net reaction of four pairs the drawing gives the pair that takes this atom and the
+        // pair that lets it go a part of the window (pairs.ts, `span`): the atom keeps that clock.
+        let { b0, b1 } = A.phase;
+        const shifts = A.shifts ?? [];
+        if (shifts.length === 4) {
+          const taking = shifts.findIndex((sh) => sh.dst.kind === 'bond' && (sh.dst.a === id || sh.dst.b === id));
+          const [f0, f1] = taking >= 2 ? [0.3, 1] : taking >= 0 ? [0, 0.62] : [0, 1];
+          [b0, b1] = [b0 + (b1 - b0) * f0, b0 + (b1 - b0) * f1];
+        }
         const o0 = sub(p, partnerAt(b0));
         const land = scale(norm(o0), Math.hypot(off1.x, off1.y));
         const swing = signedAng(angleOf(land), angleOf(off1));
@@ -4128,7 +4138,7 @@ class Ctx {
         tr.push({ t: 1, x: at.x, y: at.y });
         A.tracks.set(id, tr);
         const was = neighbors(before, id)[0]?.id;
-        if (was) (A.handed ??= []).push({ id, from: was, to: partner });
+        if (was) (A.handed ??= []).push({ id, from: was, to: partner, t0: b0, t1: b1 });
         const hit = b0 + (b1 - b0) * SNATCH.hit;
         A.strike = Math.max(A.strike ?? 0, hit);
         // The taker gives a little under the blow and comes back.

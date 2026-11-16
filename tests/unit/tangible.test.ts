@@ -71,23 +71,29 @@ describe('tangible motion', () => {
   });
 
   it('a handed H is let go, drifts, and lands on its taker at the strike', () => {
-    for (const id of ['acid-hcl', 'base-nh3', 'neutralization']) {
-      const tl = tangible(id);
-      const s = tl.steps.find((x) => x.handed?.length)!;
+    // Also where a net reaction is drawn as four pairs changing hands (condensation, hydrolysis):
+    // there the atom keeps the clock of the two pairs that let it go and take it.
+    const steps = ['acid-hcl', 'base-nh3', 'neutralization', 'condensation'].flatMap((id) => tangible(id).steps.filter((x) => x.handed?.length).map((s) => ({ id, s })));
+    expect(steps.map((x) => x.id)).toEqual(['acid-hcl', 'base-nh3', 'neutralization', 'condensation', 'condensation']);
+    for (const { id, s } of steps) {
       expect(s, id).toBeTruthy();
-      const { b0, b1 } = s.phase!;
-      const at = (f: number) => b0 + (b1 - b0) * f;
       for (const h of s.handed!) {
+        const at = (f: number) => h.t0 + (h.t1 - h.t0) * f;
+        expect(h.t0).toBeGreaterThanOrEqual(s.phase!.b0 - 1e-9);
+        expect(h.t1).toBeLessThanOrEqual(s.phase!.b1 + 1e-9);
         const dTo = (f: number) => dist(pos(s, h.id, at(f)), pos(s, h.to, at(f)));
         const dFrom = (f: number) => dist(pos(s, h.id, at(f)), pos(s, h.from, at(f)));
         const bondTo = dist(s.after.atoms.get(h.id)!, s.after.atoms.get(h.to)!);
-        // While the old pair lets go the atom has barely left; it has not reached the taker.
-        expect(dFrom(SNATCH.free) - dFrom(0)).toBeGreaterThan(0.5);
-        expect(dFrom(SNATCH.free) - dFrom(0)).toBeLessThan(0.2 * (dTo(0) - bondTo));
-        expect(dTo(SNATCH.grab)).toBeGreaterThan(bondTo + 0.5 * (dTo(0) - bondTo));
+        const way = dTo(0) - bondTo;
         // It lands at the strike, at bond length.
-        expect(dTo(SNATCH.hit)).toBeCloseTo(bondTo, 0);
+        expect(dTo(SNATCH.hit), `${id} lands`).toBeCloseTo(bondTo, 0);
         expect(s.strike).toBeCloseTo(at(SNATCH.hit), 6);
+        // Where it starts beside its taker already (a net reaction brings them together first) there is no way to cross.
+        if (way < 6) continue;
+        // While the old pair lets go the atom has barely left; it has not reached the taker.
+        expect(dFrom(SNATCH.free) - dFrom(0), `${id} slides`).toBeGreaterThan(0.5);
+        expect(dTo(0) - dTo(SNATCH.free)).toBeLessThan(0.2 * way);
+        expect(dTo(SNATCH.grab)).toBeGreaterThan(bondTo + 0.5 * way);
         // The last tenth before landing covers more ground than the whole slide: a snatch.
         expect(dTo(SNATCH.grab) - dTo(SNATCH.hit)).toBeGreaterThan(2.5 * (dTo(0) - dTo(SNATCH.slide)));
         // It never passes through its taker.

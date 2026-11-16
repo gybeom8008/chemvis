@@ -112,6 +112,8 @@ export class StageView {
   private collective = false;
   /** Where each note box sits relative to its target, decided once per step so it never jumps. */
   private notePlace = new Map<string, { dx: number; dy: number }>();
+  /** The charge each atom was lit with in the last frame drawn (glow looks). For checks: the drawing does not read it. */
+  readonly lit = new Map<string, number>();
 
   constructor(svg: SVGSVGElement) {
     this.svg = svg;
@@ -526,6 +528,7 @@ export class StageView {
     if (glow) {
       const turn = smooth(clamp((prog - 0.4) / 0.6, 0, 1));
       const lights: string[] = [];
+      this.lit.clear();
       // An atom that leaves a piece of metal as an ion takes the piece's charge with it: the piece
       // loses its light, and the ion gains it, as far as the ion has come away.
       const parting = new Map<string, number>();
@@ -561,6 +564,7 @@ export class StageView {
           const w = w0.atoms.has(a.id) ? w0 : after;
           q = chargeOn(w, w.atoms.get(a.id)!, law);
         }
+        this.lit.set(a.id, q);
         // The light comes up from nothing as the charge grows: no threshold at which it pops in.
         const mag = Math.max(Math.abs(q) - 0.04, 0);
         if (mag < 0.01) continue;

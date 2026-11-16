@@ -2,7 +2,7 @@
 
 AI가 쓴 짧은 장면 대본을 화학 반응의 장면(원자, 전자, 결합의 움직임)으로 그려 주는 웹앱. Vite + TypeScript + SVG. Firefox가 기준이고 Chromium에서도 동작해야 한다.
 
-**일을 시작하기 전에 [docs/plan/handover.md](docs/plan/handover.md)를 읽는다.** 지금 상태, 정해진 것, 남은 일, Astra와 일하는 방법이 거기에 있다.
+**일을 시작하기 전에 [docs/plan/handover.md](docs/plan/handover.md)를 읽는다.** 지금 상태, 정해진 것, 남은 일이 거기에 있다.
 
 ## 가장 중요한 것
 
@@ -17,7 +17,7 @@ AI가 쓴 짧은 장면 대본을 화학 반응의 장면(원자, 전자, 결합
 - 여럿 가운데 하나를 고르는 표시(전자쌍 방향, 전하 표시 방향)는 저장된 좌표로 한 번만 정하고 분자와 함께 회전시킨다(`src/render/pairs.ts`의 `stableDomains`, `stableFreeAngle`).
 - **실험실은 무기한 중단이다**(윤범님, 2026-11-14). 그동안 만든 것은 [archive/lab](archive/lab/README.md)에 모아 두었다. 다시 하라는 말이 있기 전에는 손대지 않는다.
 - 화면 문구와 문서는 존댓말, 번역 투 없이. 윤범님 계정 설정의 금지어 목록을 화면 문구에도 적용한다.
-- Astra(윤범님의 ChatGPT 모델)에게 일을 맡기는 방법은 [docs/plan/handover.md](docs/plan/handover.md) 8절에 있다. 쉬게 두지 않는다.
+- **ChatGPT(Astra, Codex)는 더 쓰지 않는다**(윤범님, 2026-11-16. 요금제가 끝났다). Astra가 만든 것(반응열 표, 수업 대본, 동선 검사)은 그대로 쓰고, 맡기려던 일은 직접 한다.
 - `main`에만 push한다. PR은 요청이 있을 때만. 강제 push 금지. push하면 CI가 검사 후 GitHub Pages에 배포한다.
 - 확인을 구하지 말고 끝까지 한다. 허락 창이 뜨는 일은 피한다.
 

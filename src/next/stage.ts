@@ -42,7 +42,7 @@ export class Stage {
   /** How electrons are drawn: as pairs in pouches, or the earlier way (lines and curved arrows). */
   style: 'lines' | 'pairs' = 'pairs';
   /** How atoms and charge look: element colours and badges, or plain atoms with charge as light. */
-  look: 'color' | 'glow' | 'cause' | 'tangible' = 'color';
+  look: 'color' | 'glow' | 'cause' | 'tangible' | 'reach' = 'color';
   /** Which colour means which charge (glow look). */
   palette: 'red-positive' | 'red-negative' = 'red-positive';
   /** Runs after each drawn frame. */
@@ -66,7 +66,8 @@ export class Stage {
   load(src: string): CompileResult {
     // The 'pairs' drawing gets the motion laid out for it (molecules come right up to each other),
     // and the 'tangible' look gets it laid out as bodies moved by forces.
-    const res = compile(src, { tight: this.style === 'pairs', tangible: this.style === 'pairs' && this.look === 'tangible' });
+    const pairs = this.style === 'pairs';
+    const res = compile(src, { tight: pairs, tangible: pairs && (this.look === 'tangible' || this.look === 'reach'), reach: pairs && this.look === 'reach' });
     if (res.timeline) {
       this.src = src;
       this.tl = res.timeline;

@@ -127,7 +127,7 @@ app.innerHTML = `
         <div id="old"></div>
       </figure>
       <figure>
-        <figcaption>검토할 방식 <small>끌려가고 낚아채는 움직임, 반응하는 순간의 열</small>
+        <figcaption>검토할 방식 <small>서로 끌려 다가가고, 손을 뻗어 착 붙는 움직임</small>
           <span class="seg" role="group" aria-label="전하 색">전하 색
             <button data-palette="red-positive" aria-pressed="true">빨강이 +</button><button data-palette="red-negative" aria-pressed="false">빨강이 −</button>
           </span></figcaption>
@@ -151,17 +151,17 @@ const $ = <T extends HTMLElement = HTMLElement>(s: string) => app.querySelector(
 const oldStage = new Stage($('#old'));
 const newStage = new Stage($('#new'));
 const leftSel = $<HTMLSelectElement>('#left');
-// Left: the state just before the change under review (cause and effect, as it was), or an older way.
+// Left: the state just before the change under review (tangible motion, as it was), or an older way.
 const setLeft = (v: string) => {
   const which = v === 'lines' || v === 'pairs' ? v : 'prev';
   oldStage.style = which === 'lines' ? 'lines' : 'pairs';
-  oldStage.look = which === 'prev' ? 'cause' : 'color';
+  oldStage.look = which === 'prev' ? 'tangible' : 'color';
   leftSel.value = which;
 };
 setLeft(new URLSearchParams(location.search).get('left') ?? 'prev');
-// Right: under review. Motion as of bodies moved by forces, and the heat of a reaction at its moment.
+// Right: under review. Two molecules come to each other, and an atom handed over is reached for and snaps across.
 newStage.style = 'pairs';
-newStage.look = 'tangible';
+newStage.look = 'reach';
 
 // Which colour means which charge. The choice is kept for the next visit.
 const keyBox = $('.key');

@@ -5,7 +5,7 @@ import { StageView } from '../../src/render/view';
 import { CHAPTERS } from '../../src/tutorial/chapters';
 
 /**
- * Charge that follows the electrons (looks 'cause' and 'tangible') must not make charge from
+ * Charge that follows the electrons (looks 'cause', 'tangible' and 'reach') must not make charge from
  * nowhere: while pairs change hands, the charges the atoms are lit with add up to what the
  * molecules had before. Checked through the real drawing (StageView.draw), on a stand-in for the SVG.
  */
@@ -26,12 +26,12 @@ const scene = (id: string) => CHAPTERS.find((c) => c.id === id)!.script;
 // Scenes whose electrons move as pairs that stay on atoms (single electrons in flight are not on any atom).
 const scenes = ['acid-hcl', 'base-nh3', 'neutralization', 'substitution', 'addition', 'condensation', 'coordination'];
 
-for (const look of ['cause', 'tangible'] as const) {
+for (const look of ['cause', 'tangible', 'reach'] as const) {
   describe(`charge that follows the electrons (${look})`, () => {
     it('adds up to the same at every moment of a step', { timeout: 120000 }, () => {
       const worst: string[] = [];
       for (const id of scenes) {
-        const tl = compile(scene(id), { tight: true, tangible: look === 'tangible' }).timeline!;
+        const tl = compile(scene(id), { tight: true, tangible: look !== 'cause', reach: look === 'reach' }).timeline!;
         const view = new StageView(fakeSvg());
         view.setTimeline(tl);
         tl.steps.forEach((s, k) => {

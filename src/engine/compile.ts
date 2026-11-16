@@ -35,7 +35,7 @@ import {
 } from '../util/math';
 import { Rng } from '../util/rng';
 import type { ArrowAnim, Keyframe, NoteTarget, StepAnim, Timeline } from './timeline';
-import { SNATCH, hopProgress, snatchAt, tallyBox, trackAt as trackPos } from './timeline';
+import { REACH, SNATCH, hopProgress, reachAt, snatchAt, tallyBox, trackAt as trackPos } from './timeline';
 import {
   sameFormula,
   allComponents,
@@ -249,6 +249,12 @@ export interface CompileOptions {
    * groups that are in the way swing aside as the other molecule gets near, not beforehand.
    */
   tangible?: boolean;
+  /**
+   * With `tangible`: an atom handed over is never held by nothing (timeline.ts, REACH), and two
+   * molecules that come together both move, drawn to each other and turning to face each other,
+   * instead of one travelling to the other while that one waits.
+   */
+  reach?: boolean;
 }
 
 export function compile(src: string, opts: CompileOptions = {}): CompileResult {
@@ -264,6 +270,7 @@ function compileScene(src: string, opts: CompileOptions, selectionPass: boolean,
   const ctx = new Ctx();
   ctx.tight = !!opts.tight;
   ctx.tangible = !!opts.tight && !!opts.tangible && !selectionPass;
+  ctx.reach = ctx.tangible && !!opts.reach;
   ctx.selectionPass = selectionPass;
   ctx.reference = reference;
   ctx.errors.push(...ast.errors);
@@ -352,6 +359,7 @@ function compileSteps(ctx: Ctx, input: StepAst[]): StepAnim[] {
     ctx.afterCommands = [];
     ctx.batteryMode = null;
     ctx.upcoming = input[index + 1]?.cmds ?? [];
+    ctx.stepCmds = s.cmds;
     let maxDur = 0;
     for (const cmd of s.cmds) {
       ctx.line = cmd.line;
@@ -406,6 +414,8 @@ class Ctx {
   touched = new Set<string>();
   /** The commands of the step after this one: how a molecule comes up to another depends on what the two do next. */
   upcoming: Cmd[] = [];
+  /** The commands of the step in hand. */
+  stepCmds: Cmd[] = [];
   autoCount = new Map<string, number>();
   continuation = false;
   /** See CompileOptions.tight. */
@@ -415,6 +425,8 @@ class Ctx {
   get plannedMotion(): boolean { return this.tight && !this.selectionPass; }
   /** See CompileOptions.tangible. */
   tangible = false;
+  /** See CompileOptions.reach. */
+  reach = false;
   /**
    * How a move covers its way in time. Without `tangible` every move starts and stops gently.
    * With it the way is covered as the force behind the move would have it (see Feel).
@@ -1588,7 +1600,8 @@ class Ctx {
     // that attract each other lie (about 1.7 bond lengths): the H is then snatched across that gap,
     // and no pair has to reach over it.
     const snatch = this.tangible && T.el === 'H' && tn.length === 1 && (M.lp > 0 || M.rad > 0);
-    const gap = snatch ? bondLength(M.el, T.el, 1) * 1.7 : element(T.el).r + element(M.el).r + (this.tight ? 15 : 58);
+    // (With `reach` a little nearer: the taker's pair has to reach the H across what is left.)
+    const gap = snatch ? bondLength(M.el, T.el, 1) * (this.reach ? 1.5 : 1.7) : element(T.el).r + element(M.el).r + (this.tight ? 15 : 58);
     const mn = neighbors(this.w, mover).map((n) => this.w.atoms.get(n.id)!);
     const pivot = { x: M.x, y: M.y };
     // Where the mover ends up when it comes in from `d`, and how far it turns: its unpaired
@@ -1687,12 +1700,14 @@ class Ctx {
       const mc = comp.map((id) => this.w.atoms.get(id)!);
       const around = centroid(tc);
       const clear = Math.max(...tc.map((x) => dist(x, around) + element(x.el).r)) + Math.max(...mc.map((x) => dist(x, M) + element(x.el).r)) + 14;
-      const { path, turnBy } = routeIn(pivot, goal, dir, around, clear);
       const t0 = prepared ? 0.3 : 0;
       const rotation = mn.length ? rot : 0;
-      const route = this.plannedMotion ? this.clearRoute(ids, pivot, goal, rotation, t0, 1, { path, turnBy }, 'pull') : { path, turnBy };
-      this.moveGroup(ids, pivot, route.path, rotation, t0, 1, route.turnBy, 'pull');
-      if (this.tangible) {
+      // With `reach` the two come to each other: neither waits for the other.
+      const both = this.reach && !prepared ? this.meet(comp, mover, target, pivot, dir, gap, rotation, want, yielding) : false;
+      const { path, turnBy } = both ? { path: [], turnBy: 1 } : routeIn(pivot, goal, dir, around, clear);
+      const route = both || !this.plannedMotion ? { path, turnBy } : this.clearRoute(ids, pivot, goal, rotation, t0, 1, { path, turnBy }, 'pull');
+      if (!both) this.moveGroup(ids, pivot, route.path, rotation, t0, 1, route.turnBy, 'pull');
+      if (this.tangible && !both) {
         const way = this.A.tracks.get(mover)!;
         const rest = dist(goal, T);
         // What stands where the mover comes in is pushed aside by it: the nearer it is, the further they have swung.
@@ -1724,6 +1739,79 @@ class Ctx {
     // The molecule it comes up to is part of the scene too.
     this.focusMol(component(this.w, target));
     (this.A.pulls ??= []).push({ a: mover, b: target });
+  }
+
+  /**
+   * Two molecules come to each other (CompileOptions.reach). The one that is come to does not
+   * wait: it turns the side it is met on toward the comer and moves its share of the way (the
+   * lighter of the two the greater share), so that both are seen to be drawn together. Where they
+   * end up relative to each other is exactly as `approach` laid it out. False if the one come to
+   * cannot move (part of a solid, already moving, or come to by several at once).
+   */
+  meet(comp: string[], mover: string, target: string, pivot: Vec, dir: Vec, gap: number, rotation: number, want: number,
+    yielding: { ids: string[]; pivot: Vec; rotation: number; from: Map<string, Vec> }[]): boolean {
+    const other = component(this.w, target);
+    const body = this.group(other);
+    const ids = this.group(comp);
+    const inSolid = [...this.w.crystals.values()].some((list) => list.some((id) => body.includes(id)));
+    if (inSolid || body.some((id) => this.w.atoms.get(id)!.lattice || this.w.atoms.get(id)!.sei)) return false;
+    if (this.stepCmds.filter((c) => c.op === 'approach').length > 1) return false;
+    // (Branches that give way have no path yet: their world positions are where they end up.)
+    const giving = new Set(yielding.flatMap((y) => y.ids));
+    if (body.some((id) => this.A.tracks.has(id) && !giving.has(id)) || body.some((id) => ids.includes(id))) return false;
+    const T = this.w.atoms.get(target)!;
+    const M = this.w.atoms.get(mover)!;
+    const weigh = (list: string[]) => list.reduce((sum, id) => sum + (this.w.atoms.get(id)!.el === 'H' ? 0.15 : 1), 0);
+    const wM = weigh(ids), wT = weigh(body);
+    const Tc = centroid(other.map((id) => this.w.atoms.get(id)!));
+    // Turn: the side it is met on comes round toward the comer. A heavy molecule turns less.
+    const full = other.length > 1 ? signedAng(angleOf(dir), angleOf(sub(pivot, Tc))) : 0;
+    const theta = clamp(full * clamp(2.6 / wT, 0.3, 1), -2.6, 2.6);
+    const turned = (p: Vec, k: number): Vec => add(Tc, rotate(sub(p, Tc), theta * k));
+    const dir1 = rotate(dir, theta);
+    const goal1 = add(turned(T, 1), scale(dir1, gap));
+    // Its share of the way that is left between them.
+    const share = clamp(wM / (wM + wT), 0.2, 0.7);
+    const closing = sub(pivot, goal1);
+    const len = Math.hypot(closing.x, closing.y);
+    const s = scale(closing, (share * Math.min(len, 260 / share)) / Math.max(1, len));
+    const goal = add(goal1, s);
+    const pace = this.pace('pull', Math.hypot(s.x, s.y) + 1);
+    const N = 200;
+    const local = new Map(body.map((id) => [id, { x: this.w.atoms.get(id)!.x, y: this.w.atoms.get(id)!.y }]));
+    const moved = (p: Vec, t: number): Vec => {
+      const f = pace(t);
+      return add(turned(p, smooth(clamp(f / 0.85, 0, 1))), scale(s, f));
+    };
+    // Where the one come to is at each moment (branches that give way: already out of the way, to
+    // be on the safe side while the comer's way in is chosen).
+    for (const id of body) this.A.tracks.set(id, Array.from({ length: N + 1 }, (_, i) => ({ t: i / N, ...moved(local.get(id)!, i / N) })));
+    for (const id of body) Object.assign(this.w.atoms.get(id)!, moved(local.get(id)!, 1));
+    const around = add(Tc, s);
+    const tc = other.map((id) => this.w.atoms.get(id)!);
+    const mc = comp.map((id) => this.w.atoms.get(id)!);
+    const clear = Math.max(...tc.map((x) => dist(x, around) + element(x.el).r)) + Math.max(...mc.map((x) => dist(x, M) + element(x.el).r)) + 14;
+    // (A lone atom is not turned: its electrons face the other.)
+    const turn = comp.length > 1 ? rotation + theta : 0;
+    if (comp.length === 1) M.face = want + theta;
+    const { path, turnBy } = routeIn(pivot, goal, dir1, around, clear);
+    const route = this.clearRoute(ids, pivot, goal, turn, 0, 1, { path, turnBy }, 'pull');
+    this.moveGroup(ids, pivot, route.path, turn, 0, 1, route.turnBy, 'pull');
+    // What stands where the comer comes in gives way as far as it has come near.
+    if (yielding.length) {
+      const way = this.A.tracks.get(mover)!;
+      const reach = 70;
+      let most = 0;
+      const given = Array.from({ length: N + 1 }, (_, i) => {
+        most = Math.max(most, smooth(clamp((gap + reach - dist(trackPos(way, i / N), moved(local.get(target)!, i / N))) / reach, 0, 1)));
+        return most;
+      });
+      for (const y of yielding) for (const id of y.ids) {
+        const off = sub(y.from.get(id)!, y.pivot);
+        this.A.tracks.set(id, given.map((g, i) => ({ t: i / N, ...moved(add(y.pivot, rotate(off, y.rotation * g)), i / N) })));
+      }
+    }
+    return true;
   }
 
   /** 중심 원자를 축으로 가지 전체를 돌린다. 고리가 축으로 되돌아오면 건드리지 않는다. */
@@ -4050,13 +4138,22 @@ class Ctx {
       A.phase.c0 = Math.max(A.phase.c0, A.phase.b1);
       if (this.drift.length) A.phase.c1 = Math.max(A.phase.c0 + 0.12, 0.70);
     }
-    const c0 = A.phase?.c0 ?? 0, c1 = A.phase?.c1 ?? 1;
     const handed = new Map<string, string>();
     if (A.phase) for (const id of before.atoms.keys()) {
       const was = neighbors(before, id).map((n) => n.id);
       const now = neighbors(this.w, id).map((n) => n.id);
       if (was.length && now.length && !now.some((n) => was.includes(n))) handed.set(id, now[0]);
     }
+    // A hand-over by reach is quick: reaching, snapping across and settling take about three
+    // quarters of a second, and what it sets off (the ion left behind going its way) follows at once.
+    if (this.reach && A.phase && handed.size && !A.shifts?.length && !this.drift.length) {
+      const was = A.phase.b1 - A.phase.b0;
+      const now = Math.min(was, 0.27);
+      A.phase.b1 = A.phase.b0 + now;
+      A.phase.c0 = A.phase.b1;
+      if (A.phase.c1 !== undefined) A.phase.c1 = Math.max(A.phase.c0 + 0.2, A.phase.c1 - (was - now));
+    }
+    const c0 = A.phase?.c0 ?? 0, c1 = A.phase?.c1 ?? 1;
     const prefix = new Map([...A.tracks].map(([id, tr]) => [id, tr.map((k) => ({ ...k }))]));
     for (const [id, at] of this.w.atoms) {
       const b = before.atoms.get(id);
@@ -4128,7 +4225,7 @@ class Ctx {
         const tr = old ? old.filter((k) => k.t < b0) : [{ t: 0, ...before.atoms.get(id)! }];
         for (let i = 0; i <= 160; i++) {
           const t = b0 + (b1 - b0) * i / 160;
-          tr.push({ t, ...add(partnerAt(t), lerpV(o0, land, snatchAt(i / 160))) });
+          tr.push({ t, ...add(partnerAt(t), lerpV(o0, land, this.reach ? reachAt(i / 160) : snatchAt(i / 160))) });
         }
         for (let i = 1; i <= 60; i++) {
           const t = b1 + (Math.max(c1, b1) - b1) * i / 60;
@@ -4138,8 +4235,8 @@ class Ctx {
         tr.push({ t: 1, x: at.x, y: at.y });
         A.tracks.set(id, tr);
         const was = neighbors(before, id)[0]?.id;
-        if (was) (A.handed ??= []).push({ id, from: was, to: partner, t0: b0, t1: b1 });
-        const hit = b0 + (b1 - b0) * SNATCH.hit;
+        if (was) (A.handed ??= []).push({ id, from: was, to: partner, t0: b0, t1: b1, ...(this.reach ? { reach: true } : {}) });
+        const hit = b0 + (b1 - b0) * (this.reach ? REACH.hit : SNATCH.hit);
         A.strike = Math.max(A.strike ?? 0, hit);
         // The taker gives a little under the blow and comes back.
         const dir = norm(scale(o0, -1));

@@ -12,7 +12,7 @@
  */
 import { ELECTRONEGATIVITY, METALS as METAL_ELS, element } from '../chem/elements';
 import { electronDomains } from '../chem/geometry';
-import { plateSlot, snatchPairs, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
+import { plateSlot, reachPairs, snatchPairs, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
 import { component, formalCharge, type Atom, type World } from '../engine/world';
 import { add, clamp, dist, fromAngle, lerp, lerpV, norm, perp, scale, smooth, sub, type Vec } from '../util/math';
 
@@ -1153,13 +1153,16 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   // that lets go of an atom follows, so that in between the atom is held from both sides. An atom
   // that is snatched from one molecule by another (step.handed) is the other way round: it is let
   // go first, crosses bare, and is taken as it lands (the engine moves it by the same clock).
-  const snatched = new Set((step.handed ?? []).map((h) => h.id));
-  const timing = (ar: ArrowAnim, lf: number): { take: number; let: number } => {
+  // By reach (handed.reach) the atom is never held by nothing: the taker's pair reaches it while the
+  // old bond, stretched thin, still holds it, and it changes hands in the instant they meet.
+  const snatched = new Map((step.handed ?? []).map((h) => [h.id, h]));
+  const timing = (ar: ArrowAnim, lf: number): { take: number; let: number; thin?: number; charge?: number } => {
     const S = ar.src!;
     const D = ar.dst!;
     const other = S.kind !== 'bond' && D.kind === 'bond' ? (D.a === S.a ? D.b : D.a)
       : S.kind === 'bond' && D.kind === 'atom' ? (S.a === D.a ? S.b : S.a) : undefined;
-    if (other && snatched.has(other)) return snatchPairs(lf);
+    const h = other ? snatched.get(other) : undefined;
+    if (h) return h.reach ? reachPairs(lf) : snatchPairs(lf);
     return { take: smooth(clamp(lf / 0.62, 0, 1)), let: smooth(clamp((lf - 0.38) / 0.62, 0, 1)) };
   };
 
@@ -1257,7 +1260,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       const [f0, f1] = span.get(m.ar) ?? [0, 1];
       const lf = clamp((win.frac - f0) / (f1 - f0), 0, 1);
       const tm = timing(m.ar, lf);
-      const g = S.kind === 'bond' && D.kind === 'atom' ? tm.let : D.kind === 'bond' ? tm.take : smooth(lf);
+      const g = tm.charge ?? (S.kind === 'bond' && D.kind === 'atom' ? tm.let : D.kind === 'bond' ? tm.take : smooth(lf));
       return { leave: g, arrive: g };
     };
     const delta = new Map<string, number>();
@@ -1488,7 +1491,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     let hold: string;
     const [f0, f1] = span.get(m.ar) ?? [0, 1];
     const lf = clamp((win.frac - f0) / (f1 - f0), 0, 1);
-    const { take: eTake, let: eLet } = timing(m.ar, lf);
+    const { take: eTake, let: eLet, thin = 1 } = timing(m.ar, lf);
     let g = smooth(lf);
     let tip0: Vec;
     let tip1: Vec;
@@ -1531,7 +1534,8 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       tip0 = inner(hold, other, oS);
       c0 = sharePoint(hold, other, oS);
       if (m.pair) {
-        w0 = strandWidth(nS);
+        // (Stretched thin while the atom it holds is being drawn away.)
+        w0 = strandWidth(nS) * thin;
         acr0 = nS <= 1;
       } else {
         lat0 = scale(across(hold, other), SIDE * m.side0);

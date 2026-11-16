@@ -74,6 +74,52 @@ export function snatchPairs(f: number): { let: number; take: number } {
   };
 }
 
+/**
+ * The same hand-over without a moment in which the atom is held by nothing (CompileOptions.reach),
+ * as fractions of the two pairs' window. From `start` the taker's pair reaches out for the atom
+ * like a hand, and the atom is drawn toward it: the bond that holds it grows a little longer and
+ * thinner. At `snap` the hand has reached the atom; the old bond lets go and the atom is on the
+ * taker by `hit`, like a piece of iron on a magnet. `tug`: how much of its way the atom has been
+ * drawn out when it snaps across.
+ */
+export const REACH = { start: 0.08, snap: 0.62, hit: 0.72, tug: 0.38 };
+
+/** How far the atom has come from its old place (0) to its new one (1); a little over 1 as it presses in and springs back. */
+export function reachAt(f: number): number {
+  const u = clamp(f, 0, 1);
+  const { start, snap, hit, tug } = REACH;
+  if (u <= start) return 0;
+  // Drawn out harder and harder as the hand comes near.
+  if (u <= snap) return tug * Math.pow((u - start) / (snap - start), 1.7);
+  if (u <= hit) {
+    const y = (u - snap) / (hit - snap);
+    // Goes on at the speed it was drawn out with, and is across in a few frames.
+    const v = ((tug * 1.7) / (snap - start)) * (hit - snap);
+    return tug + v * y + (1 - tug - v) * Math.pow(y, 2.5);
+  }
+  const x = (u - hit) / (1 - hit);
+  return 1 + 0.3 * Math.exp(-5 * x) * Math.sin(9 * x) * (1 - x);
+}
+
+/**
+ * The two pairs of a reach. `take`: how far the taker's pair has reached (1 at `snap`, when it
+ * touches the atom). `let`: how far the old pair has drawn back (0 until `snap`: it holds the atom
+ * until the hand has it). `thin`: the old bond's width while it is stretched. `charge`: how far the
+ * atom has changed hands, for the reckoning of charge (it changes hands at the snap, not while the
+ * hand is only reaching).
+ */
+export function reachPairs(f: number): { take: number; let: number; thin: number; charge: number } {
+  const u = clamp(f, 0, 1);
+  const { start, snap, hit, tug } = REACH;
+  const x = clamp((u - snap) / (hit - snap), 0, 1);
+  return {
+    take: smooth(clamp((u - start) / (snap - start), 0, 1)),
+    let: 1 - Math.pow(1 - x, 3),
+    thin: 1 - 0.32 * (reachAt(Math.min(u, snap)) / tug),
+    charge: smooth(x),
+  };
+}
+
 /** Where moving electrons start or end, when that is on atoms (lone pair, unpaired electron, bond, atom). */
 export interface ElectronEnd {
   kind: 'lp' | 'e' | 'atom' | 'bond';
@@ -183,7 +229,7 @@ export interface StepAnim {
    * atom lets go first, the atom crosses bare, and the taker's pair closes on it as it lands.
    * `t0`..`t1`: the part of the step in which that happens (the two pairs' part of the change window).
    */
-  handed?: { id: string; from: string; to: string; t0: number; t1: number }[];
+  handed?: { id: string; from: string; to: string; t0: number; t1: number; reach?: boolean }[];
   /** The moment (step time) at which the reaction happens: the new bond closes, the two ions touch. */
   strike?: number;
   /** Heat given off (negative) or taken in (positive) at `strike`, in kJ per mole of this reaction. */

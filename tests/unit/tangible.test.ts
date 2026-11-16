@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../src/engine/compile';
-import { SNATCH, snatchAt, snatchPairs, trackAt, type StepAnim } from '../../src/engine/timeline';
+import { REACH, SNATCH, reachAt, reachPairs, snatchAt, snatchPairs, trackAt, type StepAnim } from '../../src/engine/timeline';
 import { component, neighbors } from '../../src/engine/world';
 import { element } from '../../src/chem/elements';
 import { CHAPTERS } from '../../src/tutorial/chapters';
@@ -227,5 +227,114 @@ describe('the heat of a reaction', () => {
         if (!s.phase && s.strike === undefined) expect(s.heat, `${id} step ${k + 1}`).toBeUndefined();
       });
     }
+  });
+});
+
+/**
+ * CompileOptions.reach: two molecules come to each other, and an atom handed over is never held by
+ * nothing (the taker's pair reaches it while the old bond, stretched, still holds it).
+ */
+const reach = (id: string) => compile(scene(id), { tight: true, tangible: true, reach: true }).timeline!;
+
+describe('the reach curve', () => {
+  it('draws the atom out, snaps it across in a few frames, and settles at 1', () => {
+    expect(reachAt(REACH.start)).toBe(0);
+    expect(reachAt(REACH.snap)).toBeCloseTo(REACH.tug, 6);
+    expect(reachAt(REACH.hit)).toBeCloseTo(1, 6);
+    expect(reachAt(1)).toBeCloseTo(1, 6);
+    let lastV = 0;
+    for (let i = 1; i <= Math.round(REACH.hit * 200); i++) {
+      const v = reachAt(i / 200) - reachAt((i - 1) / 200);
+      expect(v).toBeGreaterThanOrEqual(0);
+      if (i / 200 > REACH.start + 0.01) expect(v).toBeGreaterThan(lastV - 1e-9);
+      lastV = v;
+    }
+    // The snap is short beside the drawing out.
+    expect(REACH.hit - REACH.snap).toBeLessThan(0.25 * (REACH.snap - REACH.start));
+  });
+  it('the atom is held at every moment: by its old bond until the hand has it', () => {
+    for (let f = 0; f <= 1.0001; f += 0.005) {
+      const p = reachPairs(f);
+      expect(p.let === 0 || p.take === 1, `f ${f}`).toBe(true);
+      // It changes hands at the snap, not while the hand is only reaching.
+      if (f < REACH.snap) expect(p.charge).toBe(0);
+      expect(p.thin).toBeGreaterThan(0.6);
+      expect(p.thin).toBeLessThanOrEqual(1);
+    }
+    expect(reachPairs(REACH.snap).take).toBe(1);
+    expect(reachPairs(REACH.hit).let).toBe(1);
+    expect(reachPairs(REACH.hit).charge).toBe(1);
+  });
+});
+
+describe('motion by reach', () => {
+  it('ends every step in the world it says it ends in, with bonds kept at length', { timeout: 60000 }, () => {
+    for (const id of scenes) {
+      for (const s of reach(id).steps) {
+        for (const [aid, at] of s.after.atoms) expect(dist(pos(s, aid, 1), at), `${id} step ${s.index + 1} ${aid}`).toBeLessThan(0.6);
+        const kept = [...s.before.bonds.values()].filter((bd) => s.after.bonds.has(bd.a < bd.b ? `${bd.a}|${bd.b}` : `${bd.b}|${bd.a}`));
+        for (let i = 0; i <= 50; i++) for (const bd of kept) {
+          const A = s.before.atoms.get(bd.a)!;
+          const B = s.before.atoms.get(bd.b)!;
+          if (A.crowd || !s.after.atoms.has(bd.a) || !s.after.atoms.has(bd.b)) continue;
+          const d0 = dist(A, B);
+          const d1 = dist(s.after.atoms.get(bd.a)!, s.after.atoms.get(bd.b)!);
+          const d = dist(pos(s, bd.a, i / 50), pos(s, bd.b, i / 50));
+          expect(d, `${id} step ${s.index + 1} ${bd.a}-${bd.b} at ${i / 50}`).toBeGreaterThan(Math.min(d0, d1) - 1.5);
+          expect(d, `${id} step ${s.index + 1} ${bd.a}-${bd.b} at ${i / 50}`).toBeLessThan(Math.max(d0, d1) + 1.5);
+        }
+      }
+    }
+  });
+
+  it('two molecules come to each other: both move, and they end as the approach laid them out', () => {
+    for (const id of ['acid-hcl', 'base-nh3', 'neutralization', 'substitution', 'addition']) {
+      const s = reach(id).steps.find((x) => x.pulls?.length && !x.phase)!;
+      const s0 = tangible(id).steps.find((x) => x.pulls?.length && !x.phase)!;
+      const { a, b } = s.pulls![0];
+      // Both have gone a good part of the way.
+      expect(dist(pos(s, a, 1), pos(s, a, 0)), `${id} comer`).toBeGreaterThan(25);
+      expect(dist(pos(s, b, 1), pos(s, b, 0)), `${id} the one come to`).toBeGreaterThan(25);
+      // The distance between them only closes, faster and faster until they meet.
+      const d = (t: number) => dist(pos(s, a, t), pos(s, b, t));
+      for (let i = 1; i <= 80; i++) expect(d(i / 100), `${id} at ${i / 100}`).toBeLessThan(d((i - 1) / 100) + 0.3);
+      expect(d(0.5) - d(0.75)).toBeGreaterThan(d(0.05) - d(0.3));
+      // Relative to each other they end as in the motion without reach (but for the gap an H is snatched across).
+      const A = component(s.after, a);
+      const B = component(s.after, b);
+      const H = s.after.atoms.get(b)!.el === 'H' && neighbors(s.before, b).length === 1;
+      if (H) expect(d(1)).toBeCloseTo(34 * 1.5, 0);
+      else for (const x of A) for (const y of B) expect(dist(s.after.atoms.get(x)!, s.after.atoms.get(y)!), `${id} ${x}-${y}`).toBeCloseTo(dist(s0.after.atoms.get(x)!, s0.after.atoms.get(y)!), 0);
+    }
+  });
+
+  it('an H handed over is drawn out on its stretched bond, then is across in a few frames', () => {
+    for (const id of ['acid-hcl', 'base-nh3', 'neutralization']) {
+      const s = reach(id).steps.find((x) => x.handed?.length)!;
+      const h = s.handed![0];
+      expect(h.reach).toBe(true);
+      // Reaching, snapping and settling are quick: about three quarters of a second.
+      expect((h.t1 - h.t0) * s.duration).toBeLessThan(0.85);
+      const at = (f: number) => h.t0 + (h.t1 - h.t0) * f;
+      const dTo = (f: number) => dist(pos(s, h.id, at(f)), pos(s, h.to, at(f)));
+      const dFrom = (f: number) => dist(pos(s, h.id, at(f)), pos(s, h.from, at(f)));
+      const bond = dFrom(0);
+      // Until the snap it is still on its bond, which has grown a little longer: by a tenth to a third.
+      expect(dFrom(REACH.snap) / bond, `${id} stretch`).toBeGreaterThan(1.1);
+      expect(dFrom(REACH.snap) / bond, `${id} stretch`).toBeLessThan(1.33);
+      for (let f = 0; f <= REACH.snap; f += 0.02) expect(dFrom(f)).toBeLessThanOrEqual(dFrom(REACH.snap) + 1e-6);
+      // Then it is on its taker, at bond length, within the snap.
+      expect(dTo(REACH.hit)).toBeCloseTo(dist(s.after.atoms.get(h.id)!, s.after.atoms.get(h.to)!), 0);
+      expect((REACH.hit - REACH.snap) * (h.t1 - h.t0) * s.duration).toBeLessThan(0.1);
+      expect(s.strike).toBeCloseTo(at(REACH.hit), 6);
+      // What it leaves behind goes its way as soon as the hand-over is done, not after a wait.
+      expect(s.phase!.c0).toBeCloseTo(h.t1, 6);
+    }
+  });
+
+  it('leaves the motion without reach as it was', () => {
+    const s = tangible('acid-hcl').steps.find((x) => x.handed?.length)!;
+    expect(s.handed![0].reach).toBeUndefined();
+    expect(s.phase!.b1 - s.phase!.b0).toBeGreaterThan(0.4);
   });
 });

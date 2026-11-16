@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../src/engine/compile';
-import { REACH, SNATCH, reachAt, reachPairs, snatchAt, snatchPairs, trackAt, type StepAnim } from '../../src/engine/timeline';
+import { REACH, REACH_STIFF, SNATCH, reachAt, reachPairs, snatchAt, snatchPairs, trackAt, type StepAnim } from '../../src/engine/timeline';
 import { component, neighbors } from '../../src/engine/world';
 import { element } from '../../src/chem/elements';
 import { CHAPTERS } from '../../src/tutorial/chapters';
@@ -312,7 +312,7 @@ describe('motion by reach', () => {
     for (const id of ['acid-hcl', 'base-nh3', 'neutralization']) {
       const s = reach(id).steps.find((x) => x.handed?.length)!;
       const h = s.handed![0];
-      expect(h.reach).toBe(true);
+      expect(h.reach).toBe('soft');
       // Reaching, snapping and settling are quick: about three quarters of a second.
       expect((h.t1 - h.t0) * s.duration).toBeLessThan(0.85);
       const at = (f: number) => h.t0 + (h.t1 - h.t0) * f;
@@ -336,5 +336,103 @@ describe('motion by reach', () => {
     const s = tangible('acid-hcl').steps.find((x) => x.handed?.length)!;
     expect(s.handed![0].reach).toBeUndefined();
     expect(s.phase!.b1 - s.phase!.b0).toBeGreaterThan(0.4);
+  });
+});
+
+/**
+ * CompileOptions.reach 'stiff': the hand-over as something stiff and springy. The bond hardly
+ * gives, the atom is across all but at once, and what was under tension springs back.
+ */
+const stiff = (id: string) => compile(scene(id), { tight: true, tangible: true, reach: 'stiff' }).timeline!;
+
+describe('the stiff reach', () => {
+  it('hardly stretches, then crosses in a small part of the time the soft one takes', () => {
+    expect(REACH_STIFF.tug).toBeLessThan(0.5 * REACH.tug);
+    expect(REACH_STIFF.thin).toBeLessThan(0.5 * REACH.thin);
+    expect(REACH_STIFF.hit - REACH_STIFF.snap).toBeLessThan(0.4 * (REACH.hit - REACH.snap));
+    expect(reachAt(REACH_STIFF.snap, REACH_STIFF)).toBeCloseTo(REACH_STIFF.tug, 6);
+    expect(reachAt(REACH_STIFF.hit, REACH_STIFF)).toBeCloseTo(1, 6);
+    expect(reachAt(1, REACH_STIFF)).toBeCloseTo(1, 6);
+    // Stiff: half-way through the drawing out it has given less than a fifth of what it gives in the end.
+    const half = (REACH_STIFF.start + REACH_STIFF.snap) / 2;
+    expect(reachAt(half, REACH_STIFF)).toBeLessThan(0.2 * REACH_STIFF.tug);
+    // Springy: after landing it goes past its place and back more than once.
+    let turns = 0;
+    let last = 0;
+    for (let f = REACH_STIFF.hit + 0.002; f <= 1; f += 0.002) {
+      const d = reachAt(f, REACH_STIFF) - 1;
+      if (last !== 0 && Math.sign(d) !== Math.sign(last) && Math.abs(d) > 1e-4) turns++;
+      if (Math.abs(d) > 1e-4) last = d;
+    }
+    expect(turns).toBeGreaterThanOrEqual(2);
+  });
+  it('the old pair holds until the snap, the charge changes hands in it, and the pair that let go springs back', () => {
+    for (let f = 0; f <= 1.0001; f += 0.002) {
+      const p = reachPairs(f, REACH_STIFF);
+      if (f < REACH_STIFF.snap) {
+        expect(p.let).toBe(0);
+        expect(p.charge).toBe(0);
+        expect(p.spring).toBe(0);
+        // The hand strains out but has not got it yet.
+        expect(p.take).toBeLessThanOrEqual(REACH_STIFF.reachTo + 1e-9);
+      }
+      if (f > REACH_STIFF.hit) {
+        expect(p.take).toBeCloseTo(1, 9);
+        expect(p.let).toBeCloseTo(1, 9);
+      }
+      expect(p.thin).toBeGreaterThan(0.85);
+    }
+    const after = Array.from({ length: 60 }, (_, i) => reachPairs(REACH_STIFF.hit + (i + 1) * 0.005, REACH_STIFF).spring);
+    expect(Math.min(...after)).toBeLessThan(-1.5);
+    expect(Math.max(...after)).toBeGreaterThan(0.3);
+    expect(reachPairs(1, REACH_STIFF).spring).toBeCloseTo(0, 6);
+  });
+});
+
+describe('motion by stiff reach', () => {
+  it('ends every step in the world it says it ends in', { timeout: 60000 }, () => {
+    for (const id of scenes) {
+      for (const s of stiff(id).steps) {
+        for (const [aid, at] of s.after.atoms) expect(dist(pos(s, aid, 1), at), `${id} step ${s.index + 1} ${aid}`).toBeLessThan(0.6);
+      }
+    }
+  });
+
+  it('the H stays on its bond, a few percent longer, then is across within two frames', () => {
+    for (const id of ['acid-hcl', 'base-nh3', 'neutralization']) {
+      const s = stiff(id).steps.find((x) => x.handed?.length)!;
+      const h = s.handed![0];
+      expect(h.reach).toBe('stiff');
+      const at = (f: number) => h.t0 + (h.t1 - h.t0) * f;
+      const dTo = (f: number) => dist(pos(s, h.id, at(f)), pos(s, h.to, at(f)));
+      const dFrom = (f: number) => dist(pos(s, h.id, at(f)), pos(s, h.from, at(f)));
+      const bond = dFrom(0);
+      const end = dist(s.after.atoms.get(h.id)!, s.after.atoms.get(h.to)!);
+      // Stiff: until the snap the bond is at most a tenth longer.
+      expect(dFrom(REACH_STIFF.snap) / bond, `${id} stretch`).toBeGreaterThan(1.02);
+      expect(dFrom(REACH_STIFF.snap) / bond, `${id} stretch`).toBeLessThan(1.1);
+      // The crossing: most of the way, in less than two frames at 60 a second.
+      const jump = dTo(REACH_STIFF.snap) - dTo(REACH_STIFF.hit);
+      expect(jump, `${id} jump`).toBeGreaterThan(10);
+      expect(jump).toBeGreaterThan(0.8 * (dTo(0) - end));
+      const seconds = (REACH_STIFF.hit - REACH_STIFF.snap) * (h.t1 - h.t0) * s.duration;
+      expect(seconds, `${id} crossing time`).toBeLessThan(2 / 60);
+      expect(dTo(REACH_STIFF.hit)).toBeCloseTo(end, 0);
+      expect(s.strike).toBeCloseTo(at(REACH_STIFF.hit), 6);
+      // The path keeps that sharpness (nothing laid over it has smeared the jump over more samples).
+      const tr = s.tracks.get(h.id)!;
+      const inJump = tr.filter((k) => k.t > at(REACH_STIFF.snap) + 1e-9 && k.t < at(REACH_STIFF.hit) - 1e-9).length;
+      expect(inJump).toBeGreaterThanOrEqual(3);
+      // Springy: it presses in past its place by a pixel or more, and is back out past it after.
+      const ring = Array.from({ length: 80 }, (_, i) => dTo(REACH_STIFF.hit + (i + 1) * 0.005) - end);
+      expect(Math.min(...ring)).toBeLessThan(-1);
+      expect(Math.max(...ring)).toBeGreaterThan(0.3);
+      // What it leaves behind is let go with it: it has started away by the time the window ends.
+      expect(s.phase!.c0).toBeCloseTo(at(REACH_STIFF.hit), 6);
+      // The molecule that held it springs back the other way at the snap.
+      const from0 = pos(s, h.from, at(REACH_STIFF.snap));
+      const kick = Math.max(...Array.from({ length: 30 }, (_, i) => dist(pos(s, h.from, at(REACH_STIFF.snap) + (i + 1) * 0.004), from0)));
+      expect(kick, `${id} recoil`).toBeGreaterThan(1.5);
+    }
   });
 });

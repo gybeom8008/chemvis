@@ -71,9 +71,9 @@ export interface DrawOptions {
    * 'cause': the glow look, with every change drawn as the effect of what moves (charge follows
    * the electrons). 'tangible': 'cause', with the heat of a reaction shown at the moment it
    * happens, on the molecules themselves (for a timeline compiled with `tangible`).
-   * 'reach': drawn as 'tangible' (for a timeline compiled with `reach` as well).
+   * 'reach', 'snap': drawn as 'tangible' (for a timeline compiled with `reach`, or `reach: 'stiff'`).
    */
-  look?: 'color' | 'glow' | 'cause' | 'tangible' | 'reach';
+  look?: 'color' | 'glow' | 'cause' | 'tangible' | 'reach' | 'snap';
   /**
    * Which colour means which charge in the 'glow' look. 'red-positive': red where electrons are
    * short, blue where there are more. 'red-negative': the other way round, as electrostatic
@@ -374,7 +374,7 @@ export class StageView {
         const c = centroid(ids.map((i) => pos.get(i)!));
         const temp = this.tempAt(c, step, t);
         const h = hashString(root);
-        const warm = (opt.look === 'tangible' || opt.look === 'reach') && step ? heatOf(step) : null;
+        const warm = (opt.look === 'tangible' || opt.look === 'reach' || opt.look === 'snap') && step ? heatOf(step) : null;
         const amp = warm ? 1.3 * temp * stillness(warm, c, step!, t) + shaking(warm, c, step!, t)
           : 1.3 * temp + (opt.look === 'cause' ? this.kick(c, step, t, w1, basePos) : 0);
         const fq = 0.8 * Math.sqrt(temp);
@@ -508,7 +508,7 @@ export class StageView {
     const win = { pre, during, post, settle, prog, cue, frac };
     if (this.svg.dataset.style !== (opt.style ?? 'lines')) this.svg.dataset.style = opt.style ?? 'lines';
     // 'cause' is the glow look with one more rule: what changes is drawn as the effect of what moves.
-    const tangible = opt.look === 'tangible' || opt.look === 'reach';
+    const tangible = opt.look === 'tangible' || opt.look === 'reach' || opt.look === 'snap';
     const cause = tangible || opt.look === 'cause';
     const glow = cause || opt.look === 'glow';
     const law: ChargeLaw = tangible ? 'firm' : cause ? 'count' : 'spread';

@@ -12,7 +12,7 @@
  */
 import { ELECTRONEGATIVITY, METALS as METAL_ELS, element } from '../chem/elements';
 import { electronDomains } from '../chem/geometry';
-import { plateSlot, reachPairs, snatchPairs, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
+import { REACH, REACH_STIFF, plateSlot, reachPairs, snatchPairs, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
 import { component, formalCharge, type Atom, type World } from '../engine/world';
 import { add, clamp, dist, fromAngle, lerp, lerpV, norm, perp, scale, smooth, sub, type Vec } from '../util/math';
 
@@ -1156,13 +1156,24 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   // By reach (handed.reach) the atom is never held by nothing: the taker's pair reaches it while the
   // old bond, stretched thin, still holds it, and it changes hands in the instant they meet.
   const snatched = new Map((step.handed ?? []).map((h) => [h.id, h]));
-  const timing = (ar: ArrowAnim, lf: number): { take: number; let: number; thin?: number; charge?: number } => {
+  const timing = (ar: ArrowAnim, lf: number): { take: number; let: number; thin?: number; charge?: number; spring?: number } => {
     const S = ar.src!;
     const D = ar.dst!;
     const other = S.kind !== 'bond' && D.kind === 'bond' ? (D.a === S.a ? D.b : D.a)
       : S.kind === 'bond' && D.kind === 'atom' ? (S.a === D.a ? S.b : S.a) : undefined;
     const h = other ? snatched.get(other) : undefined;
-    if (h) return h.reach ? reachPairs(lf) : snatchPairs(lf);
+    if (h) return h.reach ? reachPairs(lf, h.reach === 'stiff' ? REACH_STIFF : REACH) : snatchPairs(lf);
+    // An electron the handed atom keeps (it swings from the old partner to the new one, as when a
+    // radical takes an H) goes across with the atom, in the snap: not ahead of it, where it would
+    // cut across the pair that is reaching.
+    if (S.kind === 'bond' && D.kind === 'bond') {
+      const kept = [S.a, S.b!].find((x) => x === D.a || x === D.b);
+      const hk = kept ? snatched.get(kept) : undefined;
+      if (hk?.reach === 'stiff') {
+        const c = reachPairs(lf, REACH_STIFF).charge;
+        return { take: c, let: c };
+      }
+    }
     return { take: smooth(clamp(lf / 0.62, 0, 1)), let: smooth(clamp((lf - 0.38) / 0.62, 0, 1)) };
   };
 
@@ -1491,7 +1502,9 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     let hold: string;
     const [f0, f1] = span.get(m.ar) ?? [0, 1];
     const lf = clamp((win.frac - f0) / (f1 - f0), 0, 1);
-    const { take: eTake, let: eLet, thin = 1 } = timing(m.ar, lf);
+    const { take: eTake, let: eLet, thin = 1, spring = 0 } = timing(m.ar, lf);
+    // (Only the pair that let go springs: the one that took the atom has it ringing on its end already.)
+    let sprung = 0;
     let g = smooth(lf);
     let tip0: Vec;
     let tip1: Vec;
@@ -1528,6 +1541,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     } else if (S.kind === 'bond' && D.kind === 'atom' && (D.a === S.a || D.a === S.b)) {
       // Shared electrons let go of one atom and stay on the other.
       g = eLet;
+      sprung = spring;
       hold = D.a;
       const other = S.a === D.a ? S.b! : S.a;
       if (!pos.has(hold) || !pos.has(other)) continue;
@@ -1576,8 +1590,10 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     const ph = pos.get(hold)!;
     // Turn about the atom that holds them, so that the pouch swings instead of cutting through the atom.
     const swing = (p0: Vec, p1: Vec): Vec => add(ph, fromAngle(angLerp(angOf(ph, p0), angOf(ph, p1), g), lerp(dist(ph, p0), dist(ph, p1), g)));
-    const tip = swing(tip0, tip1);
-    const c = swing(c0, c1);
+    const u0 = norm(sub(swing(tip0, tip1), ph));
+    // Sprung back on itself: shorter than at rest, then a little longer, then still.
+    const tip = add(swing(tip0, tip1), scale(u0, sprung));
+    const c = add(swing(c0, c1), scale(u0, sprung));
     const u = norm(sub(tip, ph));
     const lat = lerpV(lat0, lat1, g);
     const op = opacity(hold);

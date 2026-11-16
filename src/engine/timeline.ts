@@ -75,48 +75,83 @@ export function snatchPairs(f: number): { let: number; take: number } {
 }
 
 /**
- * The same hand-over without a moment in which the atom is held by nothing (CompileOptions.reach),
- * as fractions of the two pairs' window. From `start` the taker's pair reaches out for the atom
- * like a hand, and the atom is drawn toward it: the bond that holds it grows a little longer and
- * thinner. At `snap` the hand has reached the atom; the old bond lets go and the atom is on the
- * taker by `hit`, like a piece of iron on a magnet. `tug`: how much of its way the atom has been
- * drawn out when it snaps across.
+ * The same hand-over as a reach (CompileOptions.reach), in fractions of the two pairs' window.
+ * From `start` the taker's pair reaches out for the atom like a hand (as far as `reachTo` of the
+ * way to it), and the atom is drawn toward it on its own bond, which grows a little longer and
+ * thinner. At `snap` the old bond lets go and the atom is on the taker by `hit`, like a piece of
+ * iron on a magnet; it presses in and rings like something springy (`ring`).
+ *  - `tug`: how much of its way the atom has been drawn out when it snaps across;
+ *  - `pow`: how late the drawing out comes (higher: nothing for long, then it strains);
+ *  - `thin`: how much of its width the stretched bond loses;
+ *  - `strain`: the hand goes out fast and then creeps, as against a stiff pull;
+ *  - `recoil`: how far (px) the pair that let go springs back on itself.
  */
-export const REACH = { start: 0.08, snap: 0.62, hit: 0.72, tug: 0.38 };
+export interface Reach {
+  start: number;
+  snap: number;
+  hit: number;
+  tug: number;
+  pow: number;
+  reachTo: number;
+  thin: number;
+  strain: boolean;
+  recoil: number;
+  ring: { amp: number; damp: number; freq: number };
+}
+
+/** The first reach: the hand goes all the way, the bond stretches by a good sixth, the atom crosses in about 0.07 s. */
+export const REACH: Reach = {
+  start: 0.08, snap: 0.62, hit: 0.72, tug: 0.38, pow: 1.7, reachTo: 1, thin: 0.32, strain: false, recoil: 0,
+  ring: { amp: 0.3, damp: 5, freq: 9 },
+};
+
+/**
+ * Stiff and springy: the bond hardly gives (a few percent longer, a little thinner), the hand
+ * strains most of the way out, and then the atom is across in a frame or two, all but at once.
+ * What was under tension springs back: the pair that let go, the atom on its new bond.
+ */
+export const REACH_STIFF: Reach = {
+  start: 0.08, snap: 0.56, hit: 0.59, tug: 0.13, pow: 2.4, reachTo: 0.62, thin: 0.12, strain: true, recoil: 3.4,
+  ring: { amp: 0.26, damp: 5.5, freq: 17 },
+};
 
 /** How far the atom has come from its old place (0) to its new one (1); a little over 1 as it presses in and springs back. */
-export function reachAt(f: number): number {
+export function reachAt(f: number, k: Reach = REACH): number {
   const u = clamp(f, 0, 1);
-  const { start, snap, hit, tug } = REACH;
+  const { start, snap, hit, tug, pow } = k;
   if (u <= start) return 0;
   // Drawn out harder and harder as the hand comes near.
-  if (u <= snap) return tug * Math.pow((u - start) / (snap - start), 1.7);
+  if (u <= snap) return tug * Math.pow((u - start) / (snap - start), pow);
   if (u <= hit) {
     const y = (u - snap) / (hit - snap);
     // Goes on at the speed it was drawn out with, and is across in a few frames.
-    const v = ((tug * 1.7) / (snap - start)) * (hit - snap);
+    const v = ((tug * pow) / (snap - start)) * (hit - snap);
     return tug + v * y + (1 - tug - v) * Math.pow(y, 2.5);
   }
   const x = (u - hit) / (1 - hit);
-  return 1 + 0.3 * Math.exp(-5 * x) * Math.sin(9 * x) * (1 - x);
+  return 1 + k.ring.amp * Math.exp(-k.ring.damp * x) * Math.sin(k.ring.freq * x) * (1 - x);
 }
 
 /**
- * The two pairs of a reach. `take`: how far the taker's pair has reached (1 at `snap`, when it
- * touches the atom). `let`: how far the old pair has drawn back (0 until `snap`: it holds the atom
- * until the hand has it). `thin`: the old bond's width while it is stretched. `charge`: how far the
- * atom has changed hands, for the reckoning of charge (it changes hands at the snap, not while the
- * hand is only reaching).
+ * The two pairs of a reach. `take`: how far the taker's pair has reached (`reachTo` at `snap`, 1 at
+ * `hit`, when it has the atom). `let`: how far the old pair has drawn back (0 until `snap`: it holds
+ * the atom until then). `thin`: the old bond's width while it is stretched. `charge`: how far the
+ * atom has changed hands, for the reckoning of charge (at the snap, not while the hand is only
+ * reaching). `spring`: px by which the pair that let go is shorter (negative) or longer than at
+ * rest, as it springs back.
  */
-export function reachPairs(f: number): { take: number; let: number; thin: number; charge: number } {
+export function reachPairs(f: number, k: Reach = REACH): { take: number; let: number; thin: number; charge: number; spring: number } {
   const u = clamp(f, 0, 1);
-  const { start, snap, hit, tug } = REACH;
+  const { start, snap, hit, tug } = k;
   const x = clamp((u - snap) / (hit - snap), 0, 1);
+  const r = clamp((u - start) / (snap - start), 0, 1);
+  const z = clamp((u - hit) / (1 - hit), 0, 1);
   return {
-    take: smooth(clamp((u - start) / (snap - start), 0, 1)),
+    take: k.reachTo * (k.strain ? 1 - Math.pow(1 - r, 2.5) : smooth(r)) + (1 - k.reachTo) * smooth(x),
     let: 1 - Math.pow(1 - x, 3),
-    thin: 1 - 0.32 * (reachAt(Math.min(u, snap)) / tug),
+    thin: 1 - k.thin * (reachAt(Math.min(u, snap), k) / tug),
     charge: smooth(x),
+    spring: u > hit && k.recoil ? -k.recoil * Math.exp(-5 * z) * Math.sin(15 * z) * (1 - z) : 0,
   };
 }
 
@@ -229,7 +264,7 @@ export interface StepAnim {
    * atom lets go first, the atom crosses bare, and the taker's pair closes on it as it lands.
    * `t0`..`t1`: the part of the step in which that happens (the two pairs' part of the change window).
    */
-  handed?: { id: string; from: string; to: string; t0: number; t1: number; reach?: boolean }[];
+  handed?: { id: string; from: string; to: string; t0: number; t1: number; reach?: 'soft' | 'stiff' }[];
   /** The moment (step time) at which the reaction happens: the new bond closes, the two ions touch. */
   strike?: number;
   /** Heat given off (negative) or taken in (positive) at `strike`, in kJ per mole of this reaction. */

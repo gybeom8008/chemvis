@@ -35,7 +35,7 @@ import {
 } from '../util/math';
 import { Rng } from '../util/rng';
 import type { ArrowAnim, Keyframe, NoteTarget, StepAnim, Timeline } from './timeline';
-import { REACH, SNATCH, hopProgress, reachAt, snatchAt, tallyBox, trackAt as trackPos } from './timeline';
+import { REACH, REACH_STIFF, SNATCH, hopProgress, reachAt, snatchAt, tallyBox, trackAt as trackPos, type Reach } from './timeline';
 import {
   sameFormula,
   allComponents,
@@ -252,9 +252,10 @@ export interface CompileOptions {
   /**
    * With `tangible`: an atom handed over is never held by nothing (timeline.ts, REACH), and two
    * molecules that come together both move, drawn to each other and turning to face each other,
-   * instead of one travelling to the other while that one waits.
+   * instead of one travelling to the other while that one waits. 'stiff': the hand-over as
+   * something stiff and springy (REACH_STIFF): the bond hardly gives, and the atom is across all but at once.
    */
-  reach?: boolean;
+  reach?: boolean | 'stiff';
 }
 
 export function compile(src: string, opts: CompileOptions = {}): CompileResult {
@@ -270,7 +271,7 @@ function compileScene(src: string, opts: CompileOptions, selectionPass: boolean,
   const ctx = new Ctx();
   ctx.tight = !!opts.tight;
   ctx.tangible = !!opts.tight && !!opts.tangible && !selectionPass;
-  ctx.reach = ctx.tangible && !!opts.reach;
+  ctx.reach = !ctx.tangible || !opts.reach ? false : opts.reach === 'stiff' ? 'stiff' : 'soft';
   ctx.selectionPass = selectionPass;
   ctx.reference = reference;
   ctx.errors.push(...ast.errors);
@@ -426,7 +427,8 @@ class Ctx {
   /** See CompileOptions.tangible. */
   tangible = false;
   /** See CompileOptions.reach. */
-  reach = false;
+  reach: false | 'soft' | 'stiff' = false;
+  get reachBy(): Reach { return this.reach === 'stiff' ? REACH_STIFF : REACH; }
   /**
    * How a move covers its way in time. Without `tangible` every move starts and stops gently.
    * With it the way is covered as the force behind the move would have it (see Feel).
@@ -451,7 +453,9 @@ class Ctx {
       const a = this.w.atoms.get(id);
       if (!a) continue;
       const tr = this.A.tracks.get(id) ?? [{ t: 0, x: a.x, y: a.y }];
-      this.A.tracks.set(id, Array.from({ length: N + 1 }, (_, i) => ({ t: i / N, ...add(trackPos(tr, i / N), at(i / N)) })));
+      // The path's own moments are kept (an atom that snaps across in a hundredth of the step stays that sharp).
+      const times = [...new Set([...Array.from({ length: N + 1 }, (_, i) => i / N), ...tr.map((k) => k.t)])].sort((p, q) => p - q);
+      this.A.tracks.set(id, times.map((t) => ({ t, ...add(trackPos(tr, t), at(t)) })));
     }
   }
   effects: EngineEffect[] = [];
@@ -4150,8 +4154,9 @@ class Ctx {
       const was = A.phase.b1 - A.phase.b0;
       const now = Math.min(was, 0.27);
       A.phase.b1 = A.phase.b0 + now;
-      A.phase.c0 = A.phase.b1;
-      if (A.phase.c1 !== undefined) A.phase.c1 = Math.max(A.phase.c0 + 0.2, A.phase.c1 - (was - now));
+      // Stiff: what the hand-over sets off starts the moment the atom lands, like something let go under tension.
+      A.phase.c0 = this.reach === 'stiff' ? A.phase.b0 + now * REACH_STIFF.hit : A.phase.b1;
+      if (A.phase.c1 !== undefined) A.phase.c1 = Math.max(A.phase.c0 + 0.2, A.phase.c1 - (was - now) - (A.phase.b1 - A.phase.c0));
     }
     const c0 = A.phase?.c0 ?? 0, c1 = A.phase?.c1 ?? 1;
     const prefix = new Map([...A.tracks].map(([id, tr]) => [id, tr.map((k) => ({ ...k }))]));
@@ -4199,7 +4204,7 @@ class Ctx {
     }
     this.dockTurns = [];
     // 상대 원자 경로가 완성된 뒤 전달한다. 앞선 경로가 있어도 빠뜨리지 않는다.
-    const jolts: { ids: string[]; dir: Vec; hit: number }[] = [];
+    const jolts: { ids: string[]; dir: Vec; hit: number; amp: number; springy: boolean }[] = [];
     for (const [id, partner] of handed) {
       const old = prefix.get(id);
       const p = start.get(id)!;
@@ -4223,25 +4228,36 @@ class Ctx {
         const land = scale(norm(o0), Math.hypot(off1.x, off1.y));
         const swing = signedAng(angleOf(land), angleOf(off1));
         const tr = old ? old.filter((k) => k.t < b0) : [{ t: 0, ...before.atoms.get(id)! }];
-        for (let i = 0; i <= 160; i++) {
-          const t = b0 + (b1 - b0) * i / 160;
-          tr.push({ t, ...add(partnerAt(t), lerpV(o0, land, this.reach ? reachAt(i / 160) : snatchAt(i / 160))) });
+        const by = this.reachBy;
+        // Round to its place with the rest of the molecule once that begins to settle (from c0,
+        // which may be before the pairs' window is over).
+        const round = (t: number) => swing * pushed(clamp((t - c0) / Math.max(1e-9, c1 - c0), 0, 1));
+        // Finely sampled: the crossing may take a hundredth of the step.
+        for (let i = 0; i <= 400; i++) {
+          const t = b0 + (b1 - b0) * i / 400;
+          tr.push({ t, ...add(partnerAt(t), rotate(lerpV(o0, land, this.reach ? reachAt(i / 400, by) : snatchAt(i / 400)), round(t))) });
         }
         for (let i = 1; i <= 60; i++) {
           const t = b1 + (Math.max(c1, b1) - b1) * i / 60;
           if (t <= b1) break;
-          tr.push({ t, ...add(partnerAt(t), rotate(land, swing * pushed(clamp((t - c0) / Math.max(1e-9, c1 - c0), 0, 1)))) });
+          tr.push({ t, ...add(partnerAt(t), rotate(land, round(t))) });
         }
         tr.push({ t: 1, x: at.x, y: at.y });
         A.tracks.set(id, tr);
         const was = neighbors(before, id)[0]?.id;
-        if (was) (A.handed ??= []).push({ id, from: was, to: partner, t0: b0, t1: b1, ...(this.reach ? { reach: true } : {}) });
-        const hit = b0 + (b1 - b0) * (this.reach ? REACH.hit : SNATCH.hit);
+        if (was) (A.handed ??= []).push({ id, from: was, to: partner, t0: b0, t1: b1, ...(this.reach ? { reach: this.reach } : {}) });
+        const hit = b0 + (b1 - b0) * (this.reach ? by.hit : SNATCH.hit);
         A.strike = Math.max(A.strike ?? 0, hit);
         // The taker gives a little under the blow and comes back.
         const dir = norm(scale(o0, -1));
         const body = component(before, partner).filter((x) => !handed.has(x));
-        jolts.push({ ids: [...this.group(body.filter((x) => this.w.atoms.has(x))), id], dir, hit });
+        const springy = this.reach === 'stiff';
+        jolts.push({ ids: [...this.group(body.filter((x) => this.w.atoms.has(x))), id], dir, hit, amp: springy ? 4.2 : 3.2, springy });
+        // Stiff: the molecule that held it was under tension too, and springs back the other way when it lets go.
+        if (springy && was) {
+          const held = component(before, was).filter((x) => !handed.has(x) && this.w.atoms.has(x));
+          jolts.push({ ids: this.group(held), dir: scale(dir, -1), hit: b0 + (b1 - b0) * by.snap, amp: 3, springy });
+        }
         continue;
       }
       const tr = old ? old.filter((k) => k.t < c0) : [{ t: 0, ...before.atoms.get(id)! }];
@@ -4269,7 +4285,9 @@ class Ctx {
       this.sway(j.ids, (t) => {
         const x = (t - j.hit) / 0.2;
         if (x <= 0 || x >= 1) return { x: 0, y: 0 };
-        return scale(j.dir, 3.2 * (x / 0.18) * Math.exp(1 - x / 0.18) * (1 - x));
+        // Springy: knocked, and rings a turn or two before it is still.
+        if (j.springy) return scale(j.dir, j.amp * 1.5 * Math.exp(-4.5 * x) * Math.sin(11 * x) * (1 - x));
+        return scale(j.dir, j.amp * (x / 0.18) * Math.exp(1 - x / 0.18) * (1 - x));
       });
     }
     if (!A.phase && !this.tangible) {

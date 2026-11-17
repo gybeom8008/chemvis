@@ -37,14 +37,14 @@ scene "물 분자 하나"
 stage solution
 mol w = H2O at center
 
-step "물 분자는 산소(O) 원자 하나와 수소(H) 원자 둘로 되어 있다"
+step "물 분자는 산소(O) 원자 하나와 수소(H) 원자 둘로 되어 있다."
   note w.O "산소 원자"
   note w.H1 "수소 원자"
-step "O와 H 사이에 걸친 전자쌍은 공유 결합이다. 두 원자가 전자 두 개를 함께 쓰고 있다는 뜻이다"
+step "O와 H 사이에 걸친 전자쌍은 공유 결합이다. 두 원자가 전자 두 개를 함께 쓰고 있다는 뜻이다."
   note w.O~w.H1 "공유 결합(전자 2개)"
-step "O에만 붙어 있는 전자쌍은 결합에 쓰이지 않은 전자다. 이런 전자 한 쌍을 비공유 전자쌍이라고 하는데, O에는 두 쌍이 있다"
+step "O에만 붙어 있는 전자쌍은 결합에 쓰이지 않은 전자다. 이런 전자 한 쌍을 비공유 전자쌍이라고 하는데, O에는 두 쌍이 있다."
   note w.O:lp "비공유 전자쌍"
-step "O 둘레의 전자를 모두 세면 8개다. 결합 두 개에 4개, 비공유 전자쌍 두 개에 4개가 있다"
+step "O 둘레의 전자를 모두 세면 8개다. 결합 두 개에 4개, 비공유 전자쌍 두 개에 4개가 있다."
   note w.O "전자 8개(옥텟)"
 `),
     tryIt: `<code>H2O</code>를 <code>NH3</code>로, <code>w.O</code>를 <code>w.N</code>으로 바꿔 보자.`,
@@ -62,13 +62,13 @@ stage solution
 mol n = NH3 at left
 mol h = H+ at right
 
-step "오른쪽에 있는 수소 이온(H+)은 전자가 하나도 없어서 전하가 +1이다"
+step "오른쪽에 있는 수소 이온(H+)은 전자가 하나도 없어서 전하가 +1이다."
   note h.H "전자 0개, 전하 +1"
-step "암모니아와 H+가 서로 끌려 다가간다. 이때 N의 비공유 전자쌍은 H+ 쪽을 향한다"
+step "암모니아와 H+가 서로 끌려 다가간다. 이때 N의 비공유 전자쌍은 H+ 쪽을 향한다."
   approach n.N h.H
-step "N의 비공유 전자쌍이 H를 붙잡아 N–H 결합이 된다. 그 순간 +1 전하는 H에서 N으로 옮겨 간다"
+step "N의 비공유 전자쌍이 H를 붙잡아 N–H 결합이 된다. 그 순간 +1 전하는 H에서 N으로 옮겨 간다."
   arrow n.N:lp -> n.N~h.H
-step "전하가 N에 표시되는 까닭은 N이 제 전자쌍을 결합에 내줬기 때문이다"
+step "전하가 N에 표시되는 까닭은 N이 제 전자쌍을 결합에 내줬기 때문이다."
   note n.N "형식 전하 +1"
 `),
     tryIt: `<code>NH3</code>를 <code>H2O</code>로, <code>n.N</code>을 <code>n.O</code>로 바꾸면 H₃O⁺가 생긴다.`,
@@ -86,12 +86,12 @@ lens attract on
 crowd H2O in water 44
 mol w = H2O at center
 
-step "분자와 분자 사이의 점선은 수소 결합이다. 한 분자의 H와 옆 분자의 O 사이에 생긴다"
+step "분자와 분자 사이의 점선은 수소 결합이다. 한 분자의 H와 옆 분자의 O 사이에 생긴다."
   note w.O "조금 − (δ−)"
   note w.H1 "조금 + (δ+)"
-step "물을 데우면 분자가 더 빨리 움직인다"
+step "물을 데우면 분자가 더 빨리 움직인다."
   heat water
-step "다시 식히면 움직임도 느려진다"
+step "다시 식히면 움직임도 느려진다."
   cool water
 `),
     tryIt: `보기 설정에서 <b>분자 사이 인력</b>을 껐다 켜 보자.`,
@@ -110,9 +110,9 @@ crowd H2O in water 28
 place Na+ in left x5
 place Cl- in left x5
 
-step "처음에는 Na+와 Cl-가 왼쪽에 몰려 있다"
+step "처음에는 Na+와 Cl-가 왼쪽에 몰려 있다."
   note left "이온이 몰린 쪽"
-step "시간이 지나면서 이온은 제멋대로 움직이며 물 전체로 퍼진다"
+step "시간이 지나면서 이온은 제멋대로 움직이며 물 전체로 퍼진다."
   spread Na+ Cl- in water
 `),
     tryIt: `<code>in water</code>를 <code>in right</code>로 바꿔 보자. 이온이 오른쪽 구역으로만 퍼진다.`,
@@ -128,15 +128,15 @@ stage interface
 crowd H2O in water 52
 crowd H2O in air 3
 
-step "액체 속 물 분자는 수소 결합으로 서로 당기고 있다"
+step "액체 속 물 분자는 수소 결합으로 서로 당기고 있다."
   note water "수소 결합으로 이어진 물 분자"
-step "물을 데우면 분자가 더 빨리 움직인다"
+step "물을 데우면 분자가 더 빨리 움직인다."
   heat water
-step "그러다 수면 가까이 있던 물 분자 하나가 이웃 분자의 힘을 이기고 공기 중으로 나간다(증발)"
+step "그러다 수면 가까이 있던 물 분자 하나가 이웃 분자의 힘을 이기고 공기 중으로 나간다(증발)."
   evaporate H2O
-step "이어서 하나가 더 증발한다"
+step "이어서 하나가 더 증발한다."
   evaporate H2O
-step "반대로 공기 중에 있던 물 분자 하나는 수면 아래로 내려와 다시 액체가 된다(응결)"
+step "반대로 공기 중에 있던 물 분자 하나는 수면 아래로 내려와 다시 액체가 된다(응결)."
   condense H2O
 `),
     tryIt: `<code>heat water</code>를 <code>cool water</code>로 바꿔 보자.`,
@@ -152,11 +152,11 @@ stage interface
 crowd H2O in water 50
 crowd H2O in air 2
 
-step "물을 세게 가열하면 분자가 아주 빨리 움직인다"
+step "물을 세게 가열하면 분자가 아주 빨리 움직인다."
   heat water
-step "그러면 액체 속에서도 물 분자 몇 개가 기체로 바뀌어 기포가 생기고, 이 기포가 떠오른다"
+step "그러면 액체 속에서도 물 분자 몇 개가 기체로 바뀌어 기포가 생기고, 이 기포가 떠오른다."
   boil 3
-step "다른 곳에서도 기포가 생겨 떠오른다"
+step "다른 곳에서도 기포가 생겨 떠오른다."
   boil 4
 `),
     tryIt: `<code>boil 3</code>의 숫자(2~6)를 바꾸면, 기포 하나를 이루는 물 분자 수가 달라진다.`,
@@ -173,11 +173,11 @@ stage solution
 lens attract on
 crowd H2O in water 40
 
-step "액체 물에서는 수소 결합이 제멋대로 이어져 있다"
+step "액체 물에서는 수소 결합이 제멋대로 이어져 있다."
   wait
-step "온도가 내려가면 물 분자는 육각형 그물 모양으로 가지런히 이어지며 얼음이 된다"
+step "온도가 내려가면 물 분자는 육각형 그물 모양으로 가지런히 이어지며 얼음이 된다."
   freeze water
-step "다시 데우면 그물이 흐트러지면서 녹는다"
+step "다시 데우면 그물이 흐트러지면서 녹는다."
   melt water
 `),
     tryIt: `얼음 단계에서 보기 설정의 <b>분자 사이 인력</b>을 껐다 켜면서 그물 모양을 비교해 보자.`,
@@ -194,11 +194,11 @@ lens attract on
 crowd H2O in water 46
 crystal s = NaCl at bottom 5x3
 
-step "아래쪽은 Na+와 Cl-가 번갈아 줄지어 있는 소금 결정이다"
+step "아래쪽은 Na+와 Cl-가 번갈아 줄지어 있는 소금 결정이다."
   note s "NaCl 결정"
-step "결정 모서리의 이온 둘은 물 분자에 둘러싸이면서 결정에서 떨어져 나온다"
+step "결정 모서리의 이온 둘은 물 분자에 둘러싸이면서 결정에서 떨어져 나온다."
   dissolve 2 from s
-step "이어서 다른 이온 둘도 떨어져 나온다"
+step "이어서 다른 이온 둘도 떨어져 나온다."
   dissolve 2 from s
 `),
     tryIt: `<code>NaCl</code>을 <code>KBr</code>로 바꿔 보자.`,
@@ -217,11 +217,11 @@ place NO3- in left x3
 place Na+ in right x3
 place Cl- in right x3
 
-step "질산은 용액(Ag+, NO3-)과 소금물(Na+, Cl-)을 섞었다"
+step "질산은 용액(Ag+, NO3-)과 소금물(Na+, Cl-)을 섞었다."
   spread Ag+ NO3- Na+ Cl- in water
-step "이 가운데 Ag+와 Cl-는 물 분자를 떨치고 서로 결합해 고체 염화은(AgCl) 결정이 된다"
+step "이 가운데 Ag+와 Cl-는 물 분자를 떨치고 서로 결합해 고체 염화은(AgCl) 결정이 된다."
   precipitate Ag+ Cl- x3
-step "나머지 Na+와 NO3-는 녹은 채로 남는다"
+step "나머지 Na+와 NO3-는 녹은 채로 남는다."
   note Na+ "녹은 채 남은 Na+"
 `),
     tryIt: `<code>x3</code>을 <code>x2</code>로 바꾸면 Ag+와 Cl-가 하나씩 녹은 채로 남는다.`,
@@ -237,10 +237,10 @@ stage soil
 mol c = Ca2+ on clay in topsoil
 mol k = K+ on clay in topsoil
 
-step "점토 표면의 음전하 부위(−)에 Ca2+와 K+가 흡착해 있다"
+step "점토 표면의 음전하 부위(−)에 Ca2+와 K+가 흡착해 있다."
   note c "Ca2+: 전하 +2, 부위 2개"
   note k "K+: 전하 +1, 부위 1개"
-step "빗물에 섞여 온 H+ 두 개가 Ca2+가 있던 부위를 차지한다. 떨어져 나온 Ca2+는 흙 틈의 물속으로 나간다"
+step "빗물에 섞여 온 H+ 두 개가 Ca2+가 있던 부위를 차지한다. 떨어져 나온 Ca2+는 흙 틈의 물속으로 나간다."
   exchange c with 2 H+ on clay
 `),
     tryIt: `<code>2 H+</code>를 <code>1 H+</code>로 바꾸면 전하가 맞지 않는다는 오류가 난다.`,
@@ -256,11 +256,11 @@ stage soil
 mol c = Ca2+ on clay in topsoil
 mol k = K+ on clay in topsoil
 
-step "빗물에 섞여 온 H+ 두 개가 점토 표면에서 Ca2+가 있던 부위를 차지한다"
+step "빗물에 섞여 온 H+ 두 개가 점토 표면에서 Ca2+가 있던 부위를 차지한다."
   exchange c with 2 H+ on clay
-step "떨어져 나온 Ca2+는 물 분자에 둘러싸인 채 빗물을 따라 속흙으로 내려간다"
+step "떨어져 나온 Ca2+는 물 분자에 둘러싸인 채 빗물을 따라 속흙으로 내려간다."
   leach c from topsoil to subsoil
-step "반면 점토에 흡착해 있는 K+는 그대로 남는다. 빗물에 씻겨 내려가는 것은 물에 녹아 나온 이온뿐이다"
+step "반면 점토에 흡착해 있는 K+는 그대로 남는다. 빗물에 씻겨 내려가는 것은 물에 녹아 나온 이온뿐이다."
   note k "아직 흡착해 있는 K+"
 `),
     tryIt: `<code>to subsoil</code>을 <code>to groundwater</code>로 바꿔 보자.`,
@@ -282,12 +282,12 @@ place K+ in outside x1
 place Na+ in outside x5
 place Na+ in inside x3
 
-step "세포 안에는 K+가, 바깥에는 Na+가 많다"
+step "세포 안에는 K+가, 바깥에는 Na+가 많다."
   note k "K+ 통로"
   note p "나트륨-칼륨 펌프"
-step "먼저 K+ 하나가 통로를 지나, K+가 적은 바깥으로 나간다(확산)"
+step "먼저 K+ 하나가 통로를 지나, K+가 적은 바깥으로 나간다(확산)."
   cross K+ via k
-step "펌프는 ATP 에너지를 써서 Na+ 세 개를 밖으로, K+ 두 개를 안으로 옮긴다(능동 수송)"
+step "펌프는 ATP 에너지를 써서 Na+ 세 개를 밖으로, K+ 두 개를 안으로 옮긴다(능동 수송)."
   pump p 3 Na+ out 2 K+ in
 `),
     tryIt: `<code>cross K+ via k</code>를 <code>cross Na+ via k</code>로 바꾸면 K+ 전용 통로라는 경고가 뜬다. 통로마다 지나갈 수 있는 이온이 정해져 있다.`,
@@ -306,11 +306,11 @@ crowd H2O in inside 22
 place Na+ in inside x4
 place Cl- in inside x4
 
-step "막 아래쪽(안쪽)에 소금 이온이 많다. 이온은 막을 지나가지 못하지만, 물 분자는 물 통로로 지나간다"
+step "막 아래쪽(안쪽)에 소금 이온이 많다. 이온은 막을 지나가지 못하지만, 물 분자는 물 통로로 지나간다."
   note a "물 통로(아쿠아포린)"
-step "물 분자는 이온이 적은 위쪽에서 이온이 많은 아래쪽으로 더 많이 건너간다"
+step "물 분자는 이온이 적은 위쪽에서 이온이 많은 아래쪽으로 더 많이 건너간다."
   osmosis 4
-step "물이 계속 건너가 아래쪽이 묽어지면, 건너가는 속도도 느려진다"
+step "물이 계속 건너가 아래쪽이 묽어지면, 건너가는 속도도 느려진다."
   osmosis 4
 `),
     tryIt: `소금 이온을 <code>in outside</code>로 옮겨 적으면 물이 위쪽으로 건너간다.`,
@@ -328,11 +328,11 @@ crowd H2O in water 30
 mol a = HCl at left
 mol w = H2O at center
 
-step "물 분자와 HCl이 서로 끌려 다가간다. 이때 O의 비공유 전자쌍은 HCl의 H 쪽을 향한다"
+step "물 분자와 HCl이 서로 끌려 다가간다. 이때 O의 비공유 전자쌍은 HCl의 H 쪽을 향한다."
   approach w.O a.H
-step "O의 전자쌍은 새 O–H 결합이 되고, H–Cl 결합의 전자쌍은 Cl로 옮겨 간다"
+step "O의 전자쌍은 새 O–H 결합이 되고, H–Cl 결합의 전자쌍은 Cl로 옮겨 간다."
   transfer a.H to w.O
-step "이렇게 해서 하이드로늄 이온(H3O+)과 염화 이온(Cl-)이 생기고, 둘레의 물 분자가 두 이온을 둘러싼다"
+step "이렇게 해서 하이드로늄 이온(H3O+)과 염화 이온(Cl-)이 생기고, 둘레의 물 분자가 두 이온을 둘러싼다."
   solvate all
 `),
     tryIt: `<code>transfer a.H to w.O</code> 한 줄은 다음 두 줄과 같다: <code>arrow w.O:lp -> w.O~a.H</code> <code>arrow a.H~a.Cl -> a.Cl</code>`,
@@ -349,11 +349,11 @@ crowd H2O in water 30
 mol n = NH3 at left
 mol w = H2O at center
 
-step "암모니아와 물 분자가 서로 끌려 다가간다. 이때 N의 비공유 전자쌍은 물의 H 쪽을 향한다"
+step "암모니아와 물 분자가 서로 끌려 다가간다. 이때 N의 비공유 전자쌍은 물의 H 쪽을 향한다."
   approach n.N w.H1
-step "N의 전자쌍은 새 N–H 결합이 되고, O–H 결합의 전자쌍은 O로 옮겨 간다"
+step "N의 전자쌍은 새 N–H 결합이 되고, O–H 결합의 전자쌍은 O로 옮겨 간다."
   transfer w.H1 to n.N
-step "이렇게 해서 암모늄 이온(NH4+)과 수산화 이온(OH-)이 생긴다"
+step "이렇게 해서 암모늄 이온(NH4+)과 수산화 이온(OH-)이 생긴다."
   note n.N "NH4+ (N에 전하 +1)"
   note w.O "OH- (O에 전하 −1)"
 `),
@@ -372,15 +372,15 @@ crowd H2O in water 24
 mol a = H3O+ at left
 mol b = OH- at right
 
-step "산성 용액에는 하이드로늄 이온(H3O+)이, 염기성 용액에는 수산화 이온(OH-)이 있다"
+step "산성 용액에는 하이드로늄 이온(H3O+)이, 염기성 용액에는 수산화 이온(OH-)이 있다."
   note a.O "산성을 내는 H3O+"
   note b.O "염기성을 내는 OH-"
-step "두 용액을 섞으면 OH-와 H3O+가 서로 끌려 다가간다. 이때 OH-의 비공유 전자쌍은 H3O+의 H 쪽을 향한다"
+step "두 용액을 섞으면 OH-와 H3O+가 서로 끌려 다가간다. 이때 OH-의 비공유 전자쌍은 H3O+의 H 쪽을 향한다."
   approach b.O a.H1
-step "H3O+의 H+ 하나가 OH-로 옮겨 가면서 열이 나온다"
+step "H3O+의 H+ 하나가 OH-로 옮겨 가면서 열이 나온다."
   transfer a.H1 to b.O
   energy -56 kJ/mol
-step "결국 두 이온은 물 분자 두 개가 되고, 산성과 염기성이 함께 사라진다(중화)"
+step "결국 두 이온은 물 분자 두 개가 되고, 산성과 염기성이 함께 사라진다(중화)."
   note a.O "물"
   note b.O "물"
 `),
@@ -400,15 +400,15 @@ crowd H2O in water 26
 mol z = Zn at left
 mol c = Cu2+ at right
 
-step "왼쪽의 아연 원자(Zn)에는 바깥 전자가 2개 있다. 오른쪽의 구리 이온(Cu2+)은 반대로 전자가 2개 모자란다"
+step "왼쪽의 아연 원자(Zn)에는 바깥 전자가 2개 있다. 오른쪽의 구리 이온(Cu2+)은 반대로 전자가 2개 모자란다."
   note z.Zn "바깥 전자 2개"
   note c.Cu "전자 2개 모자람"
-step "구리 이온과 아연 원자가 서로 끌려 다가간다"
+step "구리 이온과 아연 원자가 서로 끌려 다가간다."
   approach c.Cu z.Zn
-step "아연의 바깥 전자 두 개는 하나씩 구리 이온으로 옮겨 가고, 그때마다 에너지가 나온다"
+step "아연의 바깥 전자 두 개는 하나씩 구리 이온으로 옮겨 가고, 그때마다 에너지가 나온다."
   hop 2 z.Zn -> c.Cu
   energy -212 kJ/mol
-step "전자를 잃은 아연은 Zn2+가 되고(산화), 전자를 얻은 구리는 Cu 원자가 된다(환원)"
+step "전자를 잃은 아연은 Zn2+가 되고(산화), 전자를 얻은 구리는 Cu 원자가 된다(환원)."
   solvate z
 `),
     tryIt: `<code>energy -212 kJ/mol</code> 뒤에 <code>barrier 60</code>을 더 적으면, 반응이 넘어야 하는 에너지 언덕(활성화 에너지)이 그려진다.`,
@@ -433,16 +433,16 @@ mol c = Cu2+ in right
 place Cu2+ in right
 place SO42- in right x2
 
-step "왼쪽에는 아연판이 황산아연 용액에, 오른쪽에는 구리판이 황산구리 용액에 잠겨 있다. 두 판은 도선으로, 두 용액은 염다리로 이어져 있다"
+step "왼쪽에는 아연판이 황산아연 용액에, 오른쪽에는 구리판이 황산구리 용액에 잠겨 있다. 두 판은 도선으로, 두 용액은 염다리로 이어져 있다."
   note left "아연판"
   note right "구리판"
-step "먼저 아연판 표면의 아연 원자 하나가 전자 2개를 판에 남기고, Zn2+가 되어 용액으로 나간다(산화)"
+step "먼저 아연판 표면의 아연 원자 하나가 전자 2개를 판에 남기고, Zn2+가 되어 용액으로 나간다(산화)."
   oxidize left
-step "판에 남은 전자 2개는 도선을 따라 구리판으로 간다. 이렇게 흐르는 전자가 바로 전류다"
+step "판에 남은 전자 2개는 도선을 따라 구리판으로 간다. 이렇게 흐르는 전자가 바로 전류다."
   wire 2
-step "구리판에 도착한 전자 2개는 구리 이온이 얻는다. 전자를 얻은 구리 이온은 구리 원자가 되어 판의 일부가 된다(환원)"
+step "구리판에 도착한 전자 2개는 구리 이온이 얻는다. 전자를 얻은 구리 이온은 구리 원자가 되어 판의 일부가 된다(환원)."
   reduce c at right
-step "이제 왼쪽 용액에는 양이온이 늘고, 오른쪽 용액에는 줄었다. 그래서 염다리의 Cl-는 왼쪽으로, K+는 오른쪽으로 들어가 전하를 맞춘다"
+step "이제 왼쪽 용액에는 양이온이 늘고, 오른쪽 용액에는 줄었다. 그래서 염다리의 Cl-는 왼쪽으로, K+는 오른쪽으로 들어가 전하를 맞춘다."
   bridge Cl- K+ x2
 `),
     tryIt: `<code>wire 2</code>를 <code>wire 1</code>로 바꾸면 환원 전극에 전자가 모자란다는 오류가 난다. 구리 이온 하나가 구리 원자가 되려면 전자가 2개 필요하기 때문이다.`,
@@ -459,17 +459,17 @@ stage gas
 mol c = Cl2 at 400,330
 mol m = CH4 at 640,330
 
-step "Cl2는 빛을 흡수하면 결합이 깨진다. 이때 결합 전자 두 개는 두 Cl로 하나씩 나뉘어 간다"
+step "Cl2는 빛을 흡수하면 결합이 깨진다. 이때 결합 전자 두 개는 두 Cl로 하나씩 나뉘어 간다."
   light c
   hop c.Cl1~c.Cl2 -> c.Cl1
   hop c.Cl1~c.Cl2 -> c.Cl2
-step "홑전자가 생긴 Cl을 염소 라디칼이라고 한다. 그중 하나와 메테인이 서로 끌려 다가간다"
+step "홑전자가 생긴 Cl을 염소 라디칼이라고 한다. 그중 하나와 메테인이 서로 끌려 다가간다."
   approach c.Cl2 m.H1
-step "Cl의 홑전자는 C–H 결합 전자 하나와 짝을 지어 새 Cl–H 결합이 되고, C–H 결합의 나머지 전자 하나는 C에 남는다"
+step "Cl의 홑전자는 C–H 결합 전자 하나와 짝을 지어 새 Cl–H 결합이 되고, C–H 결합의 나머지 전자 하나는 C에 남는다."
   hop c.Cl2 -> c.Cl2~m.H1
   hop m.C~m.H1 -> c.Cl2~m.H1
   hop m.C~m.H1 -> m.C
-step "이렇게 해서 염화수소(HCl)와 메틸 라디칼(CH3·)이 생긴다. 이 메틸 라디칼이 다시 Cl2와 반응하면서 연쇄 반응이 이어진다"
+step "이렇게 해서 염화수소(HCl)와 메틸 라디칼(CH3·)이 생긴다. 이 메틸 라디칼이 다시 Cl2와 반응하면서 연쇄 반응이 이어진다."
   note m.C "홑전자 1개"
 `),
     tryIt: `<code>light c</code> 줄을 지워도 화면은 그려진다. 하지만 실제로는 빛이나 열이 있어야 Cl–Cl 결합이 깨진다.`,
@@ -487,15 +487,15 @@ crowd H2O in water 20
 mol n = NH3 at left
 mol m = CH3Br at right
 
-step "브로모메테인(CH3Br)의 Br은 전자를 세게 당긴다. 그래서 Br과 결합한 C는 조금 +를 띤다"
+step "브로모메테인(CH3Br)의 Br은 전자를 세게 당긴다. 그래서 Br과 결합한 C는 조금 +를 띤다."
   note m.C "조금 + (δ+)"
   note m.Br "전자를 세게 당기는 Br"
-step "암모니아와 브로모메테인이 서로 끌려 다가간다. 암모니아는 Br의 반대쪽에서 C를 만나고, N의 비공유 전자쌍은 C를 향한다"
+step "암모니아와 브로모메테인이 서로 끌려 다가간다. 암모니아는 Br의 반대쪽에서 C를 만나고, N의 비공유 전자쌍은 C를 향한다."
   approach n.N m.C
-step "N의 전자쌍은 N–C 새 결합이 되고, C–Br 결합의 전자쌍은 Br로 간다. Br은 브로민화 이온(Br-)이 되어 떨어져 나간다"
+step "N의 전자쌍은 N–C 새 결합이 되고, C–Br 결합의 전자쌍은 Br로 간다. Br은 브로민화 이온(Br-)이 되어 떨어져 나간다."
   arrow n.N:lp -> n.N~m.C
   arrow m.C~m.Br -> m.Br
-step "결국 C에는 Br 대신 N이 결합해 있다. 이처럼 원자 하나가 다른 것으로 바뀌는 반응을 치환 반응이라고 한다"
+step "결국 C에는 Br 대신 N이 결합해 있다. 이처럼 원자 하나가 다른 것으로 바뀌는 반응을 치환 반응이라고 한다."
   note n.N "새로 결합한 N"
 `),
     tryIt: `<code>NH3</code>를 <code>OH-</code>로, <code>n.N</code>을 모두 <code>n.O</code>로 바꿔 보자. 메탄올(CH₃OH)이 생긴다.`,
@@ -512,18 +512,18 @@ stage solution
 mol e = C2H4 at 380,300
 mol h = HBr at 660,300
 
-step "에텐(C2H4)의 두 C는 이중 결합으로 이어져 있다. 두 C 사이에 전자쌍이 두 개 있다는 뜻이다"
+step "에텐(C2H4)의 두 C는 이중 결합으로 이어져 있다. 두 C 사이에 전자쌍이 두 개 있다는 뜻이다."
   note e.C1~e.C2 "이중 결합"
-step "브로민화수소(HBr)와 에텐이 서로 끌려 다가간다. HBr의 H는 이중 결합 쪽을 향한다"
+step "브로민화수소(HBr)와 에텐이 서로 끌려 다가간다. HBr의 H는 이중 결합 쪽을 향한다."
   approach h.H e.C1
-step "이중 결합의 전자쌍 하나는 새 C–H 결합이 되고, H–Br 결합의 전자쌍은 Br로 간다"
+step "이중 결합의 전자쌍 하나는 새 C–H 결합이 되고, H–Br 결합의 전자쌍은 Br로 간다."
   arrow e.C1~e.C2 -> e.C1~h.H
   arrow h.H~h.Br -> h.Br
-step "그러자 H와 결합하지 않은 쪽 C는 전자가 모자라 +를 띠게 된다. Br-는 이 C에 끌려 다가간다"
+step "그러자 H와 결합하지 않은 쪽 C는 전자가 모자라 +를 띠게 된다. Br-는 이 C에 끌려 다가간다."
   approach h.Br e.C2
-step "Br-의 비공유 전자쌍은 새 C–Br 결합이 된다"
+step "Br-의 비공유 전자쌍은 새 C–Br 결합이 된다."
   arrow h.Br:lp -> h.Br~e.C2
-step "이중 결합이 있던 두 C에 H와 Br이 하나씩 더해졌다. 이렇게 두 분자가 하나로 합쳐지는 반응을 첨가 반응이라고 한다"
+step "이중 결합이 있던 두 C에 H와 Br이 하나씩 더해졌다. 이렇게 두 분자가 하나로 합쳐지는 반응을 첨가 반응이라고 한다."
   note e.C2 "Br이 더해진 C"
   note e.C1 "H가 더해진 C"
 `),
@@ -541,16 +541,16 @@ crowd H2O in water 16
 mol g1 = Gly at 330,300
 mol g2 = Gly at 670,300
 
-step "화면에는 글라이신 분자 두 개가 있다. 글라이신은 한쪽 끝에 카복실기(-COOH)가, 다른 쪽 끝에 아미노기(-NH2)가 있다"
+step "화면에는 글라이신 분자 두 개가 있다. 글라이신은 한쪽 끝에 카복실기(-COOH)가, 다른 쪽 끝에 아미노기(-NH2)가 있다."
   note g1.C2 "카복실기"
   note g2.N "아미노기"
-step "두 분자가 서로 끌려 다가간다. 오른쪽 분자의 아미노기가 왼쪽 분자의 카복실기를 향한다"
+step "두 분자가 서로 끌려 다가간다. 오른쪽 분자의 아미노기가 왼쪽 분자의 카복실기를 향한다."
   approach g2.N g1.C2
-step "왼쪽 분자의 -OH와 오른쪽 분자의 H 하나가 떨어져 나와 물 분자가 되고, 남은 C와 N이 결합한다(축합)"
+step "왼쪽 분자의 -OH와 오른쪽 분자의 H 하나가 떨어져 나와 물 분자가 되고, 남은 C와 N이 결합한다(축합)."
   condensation g1.C2 g2.N
-step "이렇게 생긴 C–N 결합을 펩타이드 결합이라고 한다"
+step "이렇게 생긴 C–N 결합을 펩타이드 결합이라고 한다."
   note g1.C2~g2.N "펩타이드 결합"
-step "물 분자가 들어가면 펩타이드 결합이 깨지면서 두 아미노산으로 다시 나뉜다(가수분해)"
+step "물 분자가 들어가면 펩타이드 결합이 깨지면서 두 아미노산으로 다시 나뉜다(가수분해)."
   hydrolysis g1.C2~g2.N
 `),
     tryIt: `<code>Gly</code>를 <code>Ala</code>(알라닌)로 바꿔 보자. 원자 이름은 SMILES 순서(<code>CC(N)C(=O)O</code>)를 따르기 때문에 카복실 탄소가 <code>C3</code>가 된다.`,
@@ -571,19 +571,19 @@ mol n2 = NH3 at 680,310
 mol n3 = NH3 at 500,130
 mol n4 = NH3 at 500,490
 
-step "가운데 있는 구리 이온(Cu2+)은 다른 분자의 비공유 전자쌍과 결합할 수 있다"
+step "가운데 있는 구리 이온(Cu2+)은 다른 분자의 비공유 전자쌍과 결합할 수 있다."
   note c.Cu "Cu2+"
-step "둘레의 암모니아 네 분자가 구리 이온에 끌려 다가간다. 이때 N의 비공유 전자쌍은 구리 이온을 향한다"
+step "둘레의 암모니아 네 분자가 구리 이온에 끌려 다가간다. 이때 N의 비공유 전자쌍은 구리 이온을 향한다."
   approach n1.N c.Cu
   approach n2.N c.Cu
   approach n3.N c.Cu
   approach n4.N c.Cu
-step "N의 비공유 전자쌍은 N과 Cu 사이로 옮겨 가 배위 결합이 된다. 이런 결합이 모두 네 개 생긴다"
+step "N의 비공유 전자쌍은 N과 Cu 사이로 옮겨 가 배위 결합이 된다. 이런 결합이 모두 네 개 생긴다."
   ligand n1.N -> c.Cu
   ligand n2.N -> c.Cu
   ligand n3.N -> c.Cu
   ligand n4.N -> c.Cu
-step "이렇게 해서 착이온 [Cu(NH3)4]2+가 만들어진다. 전자쌍은 모두 N에서 왔기 때문에, +2 전하는 여전히 구리에 있다"
+step "이렇게 해서 착이온 [Cu(NH3)4]2+가 만들어진다. 전자쌍은 모두 N에서 왔기 때문에, +2 전하는 여전히 구리에 있다."
   note c.Cu "전하 +2"
 `),
     tryIt: `<code>NH3</code>를 <code>H2O</code>로, <code>.N</code>을 모두 <code>.O</code>로 바꿔 보자. 물 분자도 같은 방식으로 구리 이온과 결합한다.`,
@@ -602,16 +602,16 @@ crowd H2O in water 22
 mol o = OH- at left
 mol m = CH3Br at right
 
-step "아직 반응하기 전이다. 오른쪽 위 그래프는 분자들의 에너지를 나타낸다"
+step "아직 반응하기 전이다. 오른쪽 위 그래프는 분자들의 에너지를 나타낸다."
   note o.O "OH-"
   note m.C "CH3Br"
-step "OH-와 CH3Br이 서로 끌려 다가간다. OH-는 CH3Br의 C를 향한다"
+step "OH-와 CH3Br이 서로 끌려 다가간다. OH-는 CH3Br의 C를 향한다."
   approach o.O m.C
-step "결합이 바뀌는 동안 에너지는 잠깐 올라갔다가(언덕) 내려간다. 이 언덕의 높이를 활성화 에너지라고 한다(숫자는 물속 기준 대략적인 값)"
+step "결합이 바뀌는 동안 에너지는 잠깐 올라갔다가(언덕) 내려간다. 이 언덕의 높이를 활성화 에너지라고 한다(숫자는 물속 기준 대략적인 값)."
   arrow o.O:lp -> o.O~m.C
   arrow m.C~m.Br -> m.Br
   energy -75 kJ/mol barrier 95
-step "반응이 끝나면 에너지가 처음보다 낮아지고, 낮아진 만큼 열이 주변으로 나간다(발열 반응). 반대로 에너지가 처음보다 높아지는 반응은 주변에서 열을 흡수한다(흡열 반응)"
+step "반응이 끝나면 에너지가 처음보다 낮아지고, 낮아진 만큼 열이 주변으로 나간다(발열 반응). 반대로 에너지가 처음보다 높아지는 반응은 주변에서 열을 흡수한다(흡열 반응)."
   note m.Br "떨어져 나간 Br-"
 `),
     tryIt: `<code>barrier 95</code>를 <code>barrier 40</code>으로 바꿔 보자. 촉매가 하는 일이 바로 이렇게 언덕을 낮추는 것이다.`,
@@ -628,11 +628,11 @@ stage gas
 place H2 in air x10
 place I2 in air x10
 
-step "용기 안에 수소(H2)와 아이오딘(I2) 분자가 섞여 있다. 기체 분자는 쉬지 않고 날아다니며 서로 부딪친다"
+step "용기 안에 수소(H2)와 아이오딘(I2) 분자가 섞여 있다. 기체 분자는 쉬지 않고 날아다니며 서로 부딪친다."
   wait
-step "H2와 I2가 부딪치면 결합이 바뀌어 HI 분자 두 개가 생긴다. 거꾸로 HI끼리 부딪쳐 H2와 I2가 다시 생기기도 한다"
+step "H2와 I2가 부딪치면 결합이 바뀌어 HI 분자 두 개가 생긴다. 거꾸로 HI끼리 부딪쳐 H2와 I2가 다시 생기기도 한다."
   ensemble H2 + I2 <=> 2 HI for 10s
-step "시간이 지나 두 반응의 빠르기가 같아지면, 분자 수는 더 이상 크게 변하지 않는다. 이 상태가 평형이다"
+step "시간이 지나 두 반응의 빠르기가 같아지면, 분자 수는 더 이상 크게 변하지 않는다. 이 상태가 평형이다."
   ensemble H2 + I2 <=> 2 HI for 8s
 `),
     tryIt: `<code>&lt;=&gt;</code>를 <code>-&gt;</code>로 바꾸면 역반응이 빠져서 HI만 계속 늘어난다.`,

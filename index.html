@@ -17,7 +17,6 @@
         <button role="tab" data-tab="demo" aria-selected="true">시연</button>
         <button role="tab" data-tab="lab" aria-selected="false">실험실</button>
       </nav>
-      <span class="scene-title" id="scene-title"></span>
       <div class="tools">
         <div class="pop-wrap">
           <button class="icon" id="btn-examples" aria-label="예시" title="예시" aria-expanded="false"></button>
@@ -40,8 +39,24 @@
       </div>
     </main>
 
+    <!--
+      학습 and 시연 are one screen: the scene, its title and text above it, and the script beside it.
+      학습 adds the list of lessons on the left (docs/plan/README.md).
+    -->
     <main class="work" id="work" role="tabpanel" aria-label="시연">
-      <div class="viewer-host" id="main-viewer"></div>
+      <nav class="tut-nav" id="tut-nav" aria-label="학습 목록"></nav>
+      <section class="tut-main" tabindex="-1">
+        <header class="tut-head">
+          <button class="icon" id="tut-menu" aria-label="목록" title="목록" aria-expanded="false"></button>
+          <div class="tut-heading">
+            <p class="tut-part" id="tut-part"></p>
+            <h2 class="tut-title" id="tut-title"></h2>
+          </div>
+        </header>
+        <div class="tut-intro" id="tut-intro"></div>
+        <button class="tut-more" id="tut-more" type="button" aria-expanded="false">설명 더 보기</button>
+        <div class="viewer-host" id="main-viewer"></div>
+      </section>
       <aside class="drawer" id="drawer" aria-label="대본" hidden>
         <div class="drawer-head">
           <span class="drawer-title">대본</span>
@@ -52,40 +67,9 @@
         </div>
         <div class="code" id="code-view"></div>
         <textarea class="code-edit" id="code-edit" spellcheck="false" hidden></textarea>
+        <p class="tryit" id="tryit" hidden></p>
         <ul class="diags" id="diags"></ul>
       </aside>
-    </main>
-
-    <main class="tut" id="tutorial" role="tabpanel" aria-label="학습" hidden>
-      <div class="tut-shell">
-        <nav class="tut-nav" id="tut-nav"></nav>
-        <section class="tut-main" tabindex="-1">
-          <header class="tut-head">
-            <button class="icon" id="tut-menu" aria-label="목차" title="목차" aria-expanded="false"></button>
-            <div class="tut-heading">
-              <p class="tut-part" id="tut-part"></p>
-              <h2 class="tut-title" id="tut-title"></h2>
-            </div>
-            <div class="tut-tools">
-              <div class="pop-wrap">
-                <button class="icon" id="tut-view" aria-label="보기 설정" title="보기 설정" aria-expanded="false"></button>
-                <div class="popover" id="tut-view-pop" hidden></div>
-              </div>
-              <button class="icon" id="tut-script" aria-label="대본" title="대본" aria-pressed="false"></button>
-              <button class="icon" id="tut-open" aria-label="시연에서 고쳐 보기" title="시연에서 고쳐 보기"></button>
-            </div>
-          </header>
-          <div class="tut-intro" id="tut-intro"></div>
-          <button class="tut-more" id="tut-more" type="button" aria-expanded="false">설명 더 보기</button>
-          <div class="tut-body">
-            <div class="viewer-host" id="tut-viewer"></div>
-            <aside class="tut-code" id="tut-code" hidden>
-              <div class="code" id="tut-code-view"></div>
-              <p class="tryit" id="tut-tryit"></p>
-            </aside>
-          </div>
-        </section>
-      </div>
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

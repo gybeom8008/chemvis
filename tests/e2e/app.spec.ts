@@ -43,7 +43,7 @@ test('the workspace opens as an empty canvas with controls waiting', async ({ pa
   expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('radial-gradient');
   await expect(page.locator('#main-viewer .pill')).toBeVisible();
   await expect(page.locator('#main-viewer [data-act="next"]')).toBeDisabled();
-  await expect(page.locator('#tutorial')).toBeHidden();
+  await expect(page.locator('body')).toHaveAttribute('data-tab', 'demo');
   // Loading a scene turns the controls on.
   await page.evaluate(() =>
     (window as unknown as { chemvis: Api }).chemvis.main.load('stage solution\nmol w = H2O\nstep "물"\n  wait\n'),
@@ -55,7 +55,7 @@ test('every tutorial chapter plays through without errors', async ({ page }) => 
   const errors = collectErrors(page);
   await page.goto('./?still');
   await page.locator('#btn-tutorial').click();
-  await expect(page.locator('#tutorial')).toBeVisible();
+  await expect(page.locator('body')).toHaveAttribute('data-tab', 'learn');
   const c = cv(page);
   const ids = await c.chapters();
   expect(ids.length).toBeGreaterThanOrEqual(10);
@@ -66,7 +66,7 @@ test('every tutorial chapter plays through without errors', async ({ page }) => 
     expect(st.n, id).toBeGreaterThan(0);
     for (let k = 0; k < st.n; k++) {
       for (const t of [0.3, 0.6, 1]) await c.tut.seek(k, t);
-      expect(await page.locator('#tut-viewer circle.atom').count(), `${id} step ${k + 1}`).toBeGreaterThan(0);
+      expect(await page.locator('#main-viewer circle.atom').count(), `${id} step ${k + 1}`).toBeGreaterThan(0);
     }
   }
   expect(errors).toEqual([]);
@@ -76,7 +76,7 @@ test('on the last step of a chapter the forward button offers the next chapter',
   await page.goto('./?still#/t/atoms');
   const c = cv(page);
   const st = await c.tut.state();
-  const next = page.locator('#tut-viewer [data-act="next"]');
+  const next = page.locator('#main-viewer [data-act="next"]');
   await expect(next).toHaveAttribute('aria-label', '다음 단계');
   await c.tut.seek(st.n - 1, 1);
   await expect(next).toHaveAttribute('aria-label', '다음 장');
@@ -124,24 +124,70 @@ test('three step buttons, three different jobs; no play button to confuse them',
 test('HCl chapter ends with H3O+ and Cl- charges drawn', async ({ page }) => {
   await page.goto('./?still#/t/acid-hcl');
   await cv(page).tut.seek(1, 1);
-  await expect(page.locator('#tut-viewer .charge.pos')).toHaveCount(1);
-  await expect(page.locator('#tut-viewer .charge.neg')).toHaveCount(1);
+  await expect(page.locator('#main-viewer .charge.pos')).toHaveCount(1);
+  await expect(page.locator('#main-viewer .charge.neg')).toHaveCount(1);
 });
 
-test('a lesson is a screen, not a window over another: Escape leaves it where it is', async ({ page }) => {
-  await page.goto('./?still#/t/forces');
-  await expect(page.locator('#tutorial')).toBeVisible();
-  await expect(page.locator('#work')).toBeHidden();
+test('학습 is 시연 with the list of lessons: one stage, the same tools in the same places', async ({ page }) => {
+  const box = async (sel: string) => (await page.locator(sel).boundingBox())!;
+  await page.goto('./?still#/x/root');
+  await expect.poll(async () => (await cv(page).main.state()).n).toBeGreaterThan(0);
+  await expect(page.locator('#tut-nav')).toBeHidden();
+  const tools = await Promise.all(['#btn-examples', '#btn-script', '#btn-view', '#btn-link'].map(box));
+  await page.locator('.tabs [data-tab="learn"]').click();
+  await expect(page.locator('#tut-nav')).toBeVisible();
+  // The same tools, where they were.
+  const again = await Promise.all(['#btn-examples', '#btn-script', '#btn-view', '#btn-link'].map(box));
+  again.forEach((b, i) => {
+    expect(Math.abs(b.x - tools[i].x)).toBeLessThan(1);
+    expect(Math.abs(b.y - tools[i].y)).toBeLessThan(1);
+  });
+  await expect(page.locator('#tut-open')).toHaveCount(0);
+  // The script of the lesson opens beside it and can be changed in place, with the lesson's suggestion under it.
+  await page.locator('#btn-script').click();
+  await expect(page.locator('#code-view')).toContainText('scene "물 분자 하나"');
+  await expect(page.locator('#tryit')).toBeVisible();
+  await page.locator('#btn-edit').click();
+  await page.locator('#code-edit').fill('scene "고친 수업"\nstage solution\nmol w = H2O\nstep "물."\n  wait\n');
+  await page.locator('#btn-edit').click();
+  await expect(page.locator('#tut-title')).toHaveText('원자, 결합, 전자쌍');
+  await expect(page.locator('#main-viewer .caption .text')).toHaveText('물.');
+  await expect(page.locator('body')).toHaveAttribute('data-tab', 'learn');
+  // Escape does not take the lesson away.
   await page.keyboard.press('Escape');
-  await expect(page.locator('#tutorial')).toBeVisible();
-  await expect(page).toHaveURL(/#\/t\/forces$/);
+  await expect(page.locator('#tut-nav')).toBeVisible();
+  // Back in 시연 the example is as it was, and the lesson keeps its change for when one comes back.
+  await page.locator('.tabs [data-tab="demo"]').click();
+  await expect(page.locator('#tut-title')).toHaveText('뿌리털이 흙에서 칼륨 이온을 얻을 때');
+  await page.locator('.tabs [data-tab="learn"]').click();
+  await expect(page.locator('#main-viewer .caption .text')).toHaveText('물.');
+});
+
+test('a scene says what it is about above the stage (intro), in the room kept for it', async ({ page }) => {
+  await page.goto('./?still');
+  await cv(page).main.load('scene "소개 시험"\nintro "물 분자 하나를 본다."\nstage solution\nmol w = H2O\nstep "물."\n  wait\n');
+  await expect(page.locator('#tut-title')).toHaveText('소개 시험');
+  await expect(page.locator('#tut-intro')).toHaveText('물 분자 하나를 본다.');
+});
+
+test('every lesson caption ends with a full stop', async ({ page }) => {
+  await page.goto('./?still#/t/atoms');
+  const c = cv(page);
+  for (const id of await c.chapters()) {
+    await c.tut.open(id);
+    const n = (await c.tut.state()).n;
+    for (let k = 0; k < n; k++) {
+      await c.tut.seek(k, 0.5);
+      await expect(page.locator('#main-viewer .caption .text'), `${id} step ${k + 1}`).toHaveText(/[.?!]$/);
+    }
+  }
 });
 
 test('a #z= link made the way the AI guide describes opens in the workspace', async ({ page }) => {
   const script = 'scene "링크 시험"\nstage solution\nmol n = NH3 at left\nmol h = H+ at right\nstep "다가간다"\n  approach n.N h.H\nstep "결합"\n  arrow n.N:lp -> n.N~h.H\n';
   const z = deflateRawSync(Buffer.from(script, 'utf8'), { level: 9 }).toString('base64url');
   await page.goto(`./?still#z=${z}`);
-  await expect(page.locator('#scene-title')).toHaveText('링크 시험');
+  await expect(page.locator('#tut-title')).toHaveText('링크 시험');
   await expect(page.locator('#main-viewer .caption .text')).toHaveText('다가간다');
   expect((await cv(page).main.state()).n).toBe(2);
 });
@@ -185,8 +231,8 @@ test('note boxes stay put while molecules jiggle', async ({ page }) => {
   for (let i = 0; i < 12; i++) {
     offsets.push(
       await page.evaluate(() => {
-        const l = document.querySelector('#tut-viewer .note line')!;
-        const r = document.querySelector('#tut-viewer .note rect')!;
+        const l = document.querySelector('#main-viewer .note line')!;
+        const r = document.querySelector('#main-viewer .note rect')!;
         return [+r.getAttribute('x')! - +l.getAttribute('x1')!, +r.getAttribute('y')! - +l.getAttribute('y1')!];
       }),
     );
@@ -203,7 +249,7 @@ test('phone width: no sideways scrolling in workspace or tutorial', async ({ pag
   await page.goto('./?still');
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.goto('./?still#/t/leaching');
-  await expect(page.locator('#tutorial')).toBeVisible();
+  await expect(page.locator('body')).toHaveAttribute('data-tab', 'learn');
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
@@ -212,7 +258,7 @@ test('attraction lines do not blink while nothing moves', async ({ page }) => {
   await cv(page).tut.seek(0, 1);
   const counts = new Set<number>();
   for (let i = 0; i < 15; i++) {
-    counts.add(await page.locator('#tut-viewer line.attract').count());
+    counts.add(await page.locator('#main-viewer line.attract').count());
     await page.waitForTimeout(50);
   }
   expect(counts.size).toBe(1);
@@ -229,7 +275,7 @@ test('examples open in the workspace like ready-made documents and play through'
   await items.first().click();
   await expect(page.locator('#examples-pop')).toBeHidden();
   await expect(page).toHaveURL(new RegExp(`#/x/${ids[0]}$`));
-  await expect(page.locator('#tutorial')).toBeHidden();
+  await expect(page.locator('body')).toHaveAttribute('data-tab', 'demo');
   const c = cv(page);
   for (const id of ids) {
     await page.evaluate((id) => (location.hash = `#/x/${id}`), id);
@@ -298,7 +344,7 @@ test('phone: the legend button sits inside the canvas, menus stay on screen, ele
 test('the old drawing (?style=lines): electrons light up, travel drawing the arrow, then the atoms settle', async ({ page }) => {
   await page.goto('./?still&style=lines#/t/arrows');
   const c = cv(page);
-  const v = page.locator('#tut-viewer');
+  const v = page.locator('#main-viewer');
   // Before the change: the lone pair about to move is marked where it sits; no arrow yet.
   await c.tut.seek(2, 0.08);
   await expect(v.locator('circle.e.cue')).toHaveCount(2);
@@ -338,7 +384,7 @@ test('phone tutorial: chapter list opens over the page, the intro unfolds on req
 test('electron pairs are the drawing; the heat of a reaction can be turned off and stays off', async ({ page }) => {
   await page.goto('./?still#/t/neutralization');
   const c = cv(page);
-  const v = page.locator('#tut-viewer');
+  const v = page.locator('#main-viewer');
   // Pairs, not lines and arrows.
   await c.tut.seek(2, 0.5);
   await expect(v.locator('svg.stage')).toHaveAttribute('data-look', 'glow');
@@ -353,16 +399,16 @@ test('electron pairs are the drawing; the heat of a reaction can be turned off a
     return false;
   };
   expect(await ringSeen()).toBe(true);
-  await page.locator('#tut-view').click();
-  const sw = page.locator('#tut-view-pop [data-heat]');
+  await page.locator('#btn-view').click();
+  const sw = page.locator('#view-pop [data-heat]');
   await expect(sw).toBeChecked();
   await sw.uncheck();
   expect(await ringSeen()).toBe(false);
   // Kept for the next visit.
   await page.reload();
   expect(await ringSeen()).toBe(false);
-  await page.locator('#tut-view').click();
-  await expect(page.locator('#tut-view-pop [data-heat]')).not.toBeChecked();
+  await page.locator('#btn-view').click();
+  await expect(page.locator('#view-pop [data-heat]')).not.toBeChecked();
 });
 
 test('three tabs in a row, each a screen of its own: 학습, 시연, 실험실', async ({ page }) => {
@@ -370,11 +416,14 @@ test('three tabs in a row, each a screen of its own: 학습, 시연, 실험실',
   const tab = (name: string) => page.locator(`.tabs [role="tab"]:text-is("${name}")`);
   await expect(page.locator('.tabs [role="tab"]')).toHaveText(['학습', '시연', '실험실']);
   const shows = async (on: string) => {
-    for (const [name, id] of [['학습', '#tutorial'], ['시연', '#work'], ['실험실', '#lab']]) {
-      await expect(tab(name)).toHaveAttribute('aria-selected', String(name === on));
-      if (name === on) await expect(page.locator(id)).toBeVisible();
-      else await expect(page.locator(id)).toBeHidden();
-    }
+    for (const name of ['학습', '시연', '실험실']) await expect(tab(name)).toHaveAttribute('aria-selected', String(name === on));
+    // 학습 and 시연 are one screen; 학습 adds the list of lessons.
+    if (on === '실험실') await expect(page.locator('#work')).toBeHidden();
+    else await expect(page.locator('#work')).toBeVisible();
+    if (on === '학습') await expect(page.locator('#tut-nav')).toBeVisible();
+    else await expect(page.locator('#tut-nav')).toBeHidden();
+    if (on === '실험실') await expect(page.locator('#lab')).toBeVisible();
+    else await expect(page.locator('#lab')).toBeHidden();
   };
   await shows('시연');
   // A scene in 시연 is kept while the other screens are looked at.

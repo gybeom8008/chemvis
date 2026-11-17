@@ -47,6 +47,7 @@ document.body.dataset.style = settings.style ?? 'pairs';
 document.body.dataset.palette = settings.palette ?? 'red-positive';
 
 const PLACEHOLDER = `scene "제목"
+intro "이 장면이 보여 주는 것"
 stage solution
 mol w = H2O at center
 step "설명 문장"
@@ -61,20 +62,35 @@ const icons: [string, string][] = [
   ['btn-link', 'link'],
   ['btn-edit', 'edit'],
   ['btn-drawer-close', 'close'],
-  ['tut-view', 'sliders'],
-  ['tut-script', 'code'],
-  ['tut-open', 'openIn'],
   ['tut-menu', 'menu'],
 ];
 for (const [id, name] of icons) $(id).innerHTML = icon(name);
 
-// ------------------------------------------------------------------ viewers
+// ------------------------------------------------------------------ the screen
+
+/**
+ * 학습 and 시연 are one screen with one stage: a scene, its title and text above it, the script
+ * beside it, the same tools in the bar. 학습 adds the list of lessons on the left, and plays the
+ * lesson chosen there; 시연 plays a scene an AI wrote, or an example. Each keeps its own scene
+ * while the other is looked at. 실험실 is a screen of its own (to come).
+ */
+type Tab = 'learn' | 'demo' | 'lab';
+let place: Tab = 'demo';
 
 const main = new Viewer($('main-viewer'), settings);
-const tut = new Viewer($('tut-viewer'), settings);
-tut.endAction = () => (CHAPTERS[CHAPTERS.indexOf(chapter) + 1] ? 'nextChapter' : 'restart');
+main.endAction = () => (place === 'learn' && CHAPTERS[CHAPTERS.indexOf(chapter) + 1] ? 'nextChapter' : 'restart');
 
-// ------------------------------------------------------------------ code panels
+// What each of the two keeps while the other is shown.
+let chapter: Chapter = CHAPTERS[0];
+/** The script of the lesson as it is now (edited, or as written). */
+let lessonSrc: string | null = null;
+let lessonK = 0;
+let demoSrc = '';
+let demoK = 0;
+/** The address of 시연 (a shared scene, an example). */
+let demoHash = '';
+
+// ------------------------------------------------------------------ code panel
 
 /** Script with line numbers; lines of each step are clickable and the current step is marked. */
 function renderCode(box: HTMLElement, src: string, tl: Timeline | null, onStep: (k: number) => void): void {
@@ -114,17 +130,33 @@ function highlight(line: string): string {
   return `${m[1]}<span class="k">${esc(m[2])}</span>${rest}`;
 }
 
-// ------------------------------------------------------------------ workspace (main)
-
 const drawer = $('drawer');
 const codeView = $('code-view');
 const codeEdit = $<HTMLTextAreaElement>('code-edit');
 let editing = false;
 
+/** The heading and text above the stage: the lesson's in 학습, the scene's own in 시연. */
+function paintHead(tl: Timeline | null): void {
+  if (place === 'learn') {
+    const n = CHAPTERS.indexOf(chapter) + 1;
+    $('tut-part').innerHTML = `<span class="pt">${esc(PARTS.find((p) => p.id === chapter.part)?.title ?? '')}</span><span class="cnt">${n} / ${CHAPTERS.length}</span>`;
+    $('tut-title').textContent = chapter.title;
+    $('tut-intro').innerHTML = chapter.intro;
+    $('tryit').innerHTML = chapter.tryIt;
+    $('tryit').hidden = false;
+  } else {
+    $('tut-part').innerHTML = '';
+    $('tut-title').textContent = tl?.title ?? '';
+    $('tut-intro').innerHTML = tl?.intro ? `<p>${esc(tl.intro)}</p>` : '';
+    $('tryit').hidden = true;
+  }
+  $('work').classList.toggle('no-intro', !$('tut-intro').innerHTML);
+}
+
 main.onLoad = (tl) => {
-  $('scene-title').textContent = tl ? tl.title : '';
   document.title = tl ? `${tl.title} · chemvis` : 'chemvis';
   renderCode(codeView, main.src, tl, (k) => main.player.go(k));
+  paintHead(tl);
   syncSettings();
 };
 main.onStep = (k) => markStep(codeView, k);
@@ -174,7 +206,7 @@ function focusLine(line: number): void {
   codeEdit.setSelectionRange(pos, pos + (lines[line - 1]?.length ?? 0));
 }
 
-/** Load a script into the workspace. Returns false if it had errors. */
+/** Load a script onto the stage. Returns false if it had errors. */
 function loadMain(src: string, play = false): boolean {
   const res = main.load(src);
   if (!res.timeline) main.src = src;
@@ -189,11 +221,19 @@ function loadMain(src: string, play = false): boolean {
   return true;
 }
 
+/** Clear the stage (시연 before anything was opened). */
+function clearMain(): void {
+  main.clear();
+  showDiags([], []);
+  renderCode(codeView, '', null, () => {});
+  paintHead(null);
+}
+
 function applyEdit(): void {
   if (!loadMain(codeEdit.value, true)) return;
   setEditing(false);
   // An edited example is no longer the example the address names.
-  if (location.hash.startsWith('#/x/')) history.replaceState(null, '', location.pathname + location.search);
+  if (place === 'demo' && location.hash.startsWith('#/x/')) history.replaceState(null, '', location.pathname + location.search);
 }
 
 $('btn-script').addEventListener('click', () => setDrawer(!document.body.classList.contains('drawer-open')));
@@ -209,7 +249,9 @@ codeEdit.addEventListener('keydown', (e) => {
 $('btn-link').addEventListener('click', async () => {
   const src = editing ? codeEdit.value : main.src;
   if (!src.trim()) return toast('대본이 비어 있어요');
-  const url = `${location.origin}${location.pathname}#${await encodeScript(src)}`;
+  // A lesson as it was written is linked by its name; anything else by its script.
+  const tail = place === 'learn' && src === chapter.script ? `/t/${chapter.id}` : await encodeScript(src);
+  const url = `${location.origin}${location.pathname}#${tail}`;
   try {
     await navigator.clipboard.writeText(url);
     toast('링크를 복사했어요');
@@ -227,7 +269,7 @@ function toast(msg: string): void {
   toastTimer = window.setTimeout(() => t.classList.remove('show'), 1600);
 }
 
-// ------------------------------------------------------------------ settings popovers
+// ------------------------------------------------------------------ settings popover
 
 function buildSettings(pop: HTMLElement): void {
   pop.innerHTML = `
@@ -271,7 +313,6 @@ function buildSettings(pop: HTMLElement): void {
       document.body.dataset.palette = settings.palette;
       syncSettings();
       main.redraw();
-      tut.redraw();
     }),
   );
   pop.querySelector<HTMLInputElement>('[data-cont]')!.addEventListener('change', (e) => {
@@ -305,9 +346,8 @@ function bindPopover(btnId: string, popId: string, build: (pop: HTMLElement) => 
   });
 }
 bindPopover('btn-view', 'view-pop');
-bindPopover('tut-view', 'tut-view-pop');
 
-// ------------------------------------------------------------------ examples (ready-made scenes)
+// ------------------------------------------------------------------ examples (ready-made scenes, in 시연)
 
 function buildExamples(pop: HTMLElement): void {
   pop.innerHTML =
@@ -326,21 +366,20 @@ bindPopover('btn-examples', 'examples-pop', buildExamples);
 function openExample(id: string): void {
   const ex = EXAMPLES.find((e) => e.id === id);
   if (!ex) return;
-  if (location.hash !== `#/x/${id}`) history.replaceState(null, '', `#/x/${id}`);
+  demoHash = `#/x/${id}`;
+  demoSrc = ex.script;
+  demoK = 0;
+  if (place !== 'demo') showPlace('demo');
+  else if (location.hash !== demoHash) history.replaceState(null, '', demoHash);
   if (editing) setEditing(false);
   loadMain(ex.script, true);
 }
 
-// ------------------------------------------------------------------ tutorial popup
-
-const learn = $('tutorial');
-let chapter: Chapter = CHAPTERS[0];
-/** The chapter on the stage of 학습. */
-let shown: Chapter | null = null;
+// ------------------------------------------------------------------ lessons (학습)
 
 function renderNav(): void {
   // On phones the list opens over the page; this row closes it again.
-  let html = `<div class="nav-top"><b>목차</b><button class="icon sm" id="tut-nav-close" type="button" aria-label="목차 닫기" title="목차 닫기">${icon('close')}</button></div>`;
+  let html = `<div class="nav-top"><b>목록</b><button class="icon sm" id="tut-nav-close" type="button" aria-label="목록 닫기" title="목록 닫기">${icon('close')}</button></div>`;
   for (const part of PARTS) {
     html += `<p class="part">${esc(part.title)}</p><ol>`;
     for (const c of CHAPTERS.filter((x) => x.part === part.id)) {
@@ -353,78 +392,104 @@ function renderNav(): void {
 }
 
 function setNav(open: boolean): void {
-  learn.classList.toggle('nav-open', open);
+  document.body.classList.toggle('nav-open', open);
   $('tut-menu').setAttribute('aria-expanded', String(open));
 }
 
 function setIntro(open: boolean): void {
-  learn.classList.toggle('intro-open', open);
+  document.body.classList.toggle('intro-open', open);
   $('tut-more').setAttribute('aria-expanded', String(open));
   $('tut-more').textContent = open ? '설명 접기' : '설명 더 보기';
 }
 
+/** Put a lesson on the stage (in 학습). */
 function showChapter(c: Chapter, play = false): void {
   chapter = c;
-  shown = c;
-  if (place === 'learn' && location.hash !== `#/t/${c.id}`) history.replaceState(null, '', `#/t/${c.id}`);
-  const n = CHAPTERS.indexOf(c) + 1;
-  $('tut-part').innerHTML = `<span class="pt">${esc(PARTS.find((p) => p.id === c.part)?.title ?? '')}</span><span class="cnt">${n} / ${CHAPTERS.length}</span>`;
+  lessonSrc = c.script;
   setNav(false);
   setIntro(false);
-  $('tut-title').textContent = c.title;
-  $('tut-intro').innerHTML = c.intro;
-  $('tut-tryit').innerHTML = c.tryIt;
   document.querySelectorAll<HTMLElement>('#tut-nav a[data-ch]').forEach((a) => a.classList.toggle('on', a.dataset.ch === c.id));
-  tut.load(c.script);
-  renderCode($('tut-code-view'), c.script, tut.tl, (k) => tut.player.go(k));
-  syncSettings();
-  if (play) tut.player.go(0);
+  if (location.hash !== `#/t/${c.id}`) history.replaceState(null, '', `#/t/${c.id}`);
+  if (editing) setEditing(false);
+  loadMain(c.script);
+  if (play) main.player.go(0);
 }
-tut.onStep = (k) => markStep($('tut-code-view'), k);
-tut.player.onEnd = () => {
+
+main.player.onEnd = () => {
+  if (place !== 'learn') return false;
   const next = CHAPTERS[CHAPTERS.indexOf(chapter) + 1];
   if (!next) return false;
-  history.replaceState(null, '', `#/t/${next.id}`);
   showChapter(next, true);
   return true;
 };
 
-// ------------------------------------------------------------------ the three screens
+function openTutorial(id?: string): void {
+  const c = CHAPTERS.find((x) => x.id === id) ?? chapter;
+  if (place !== 'learn') {
+    // Coming back to the same lesson finds it as it was left.
+    if (c === chapter && lessonSrc !== null) chapter = c;
+    else lessonSrc = null;
+    chapter = c;
+    showPlace('learn');
+  } else if (c !== chapter) showChapter(c);
+}
 
-/**
- * Three screens, one shown at a time, switched by the tabs: 학습 (the lessons), 시연 (a scene an
- * AI wrote, or an example: the workspace) and 실험실 (to come). The address says which: #/t/… for
- * a lesson, #/lab for the lab, anything else is 시연.
- */
-type Tab = 'learn' | 'demo' | 'lab';
-let place: Tab = 'demo';
-/** The address 시연 had (a shared scene, an example) while another screen is shown. */
-let demoHash = '';
+$('tut-menu').addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
+$('tut-more').addEventListener('click', () => setIntro(!document.body.classList.contains('intro-open')));
+$('tut-nav').addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('#tut-nav-close')) return setNav(false);
+  const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-ch]');
+  if (!a) return;
+  e.preventDefault();
+  showChapter(CHAPTERS.find((x) => x.id === a.dataset.ch) ?? chapter);
+});
+
+// ------------------------------------------------------------------ tabs
+
 function markTabs(): void {
   document.querySelectorAll<HTMLButtonElement>('.tabs [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === place)));
   document.body.dataset.tab = place;
-}
-function showPlace(p: Tab): void {
-  if (place === 'demo' && p !== 'demo') demoHash = /^#(z=|s=|\/x\/|\/edit)/.test(location.hash) ? location.hash : '';
-  if (place === 'learn' && p !== 'learn') {
-    tut.player.stop();
-    tut.showLegend(false);
-  }
-  if (p !== 'demo') main.showLegend(false);
-  place = p;
-  learn.hidden = p !== 'learn';
-  $('work').hidden = p !== 'demo';
-  $('lab').hidden = p !== 'lab';
-  const hash = p === 'learn' ? `#/t/${chapter.id}` : p === 'lab' ? '#/lab' : demoHash;
-  if (location.hash !== hash) history.replaceState(null, '', hash || location.pathname + location.search);
-  markTabs();
+  $('work').setAttribute('aria-label', place === 'learn' ? '학습' : '시연');
 }
 
-function openTutorial(id?: string): void {
-  const c = CHAPTERS.find((x) => x.id === id) ?? chapter;
-  chapter = c;
-  showPlace('learn');
-  if (c !== shown || !tut.tl) showChapter(c);
+/** Show one of the three screens. 학습 and 시연 put back the scene each had. */
+function showPlace(p: Tab): void {
+  // What the screen being left had on the stage.
+  if (place === 'demo') {
+    demoSrc = editing ? codeEdit.value : main.src;
+    demoK = main.player.k;
+    if (p !== 'demo') demoHash = /^#(z=|s=|\/x\/|\/edit)/.test(location.hash) ? location.hash : demoHash && location.hash === demoHash ? demoHash : '';
+  } else if (place === 'learn') {
+    lessonSrc = editing ? codeEdit.value : main.src;
+    lessonK = main.player.k;
+  }
+  main.player.stop();
+  main.showLegend(false);
+  setNav(false);
+  const from = place;
+  place = p;
+  $('work').hidden = p === 'lab';
+  $('lab').hidden = p !== 'lab';
+  markTabs();
+  if (p === 'lab') {
+    if (location.hash !== '#/lab') history.replaceState(null, '', '#/lab');
+    return;
+  }
+  if (from === p) return;
+  if (editing) setEditing(false);
+  if (p === 'learn') {
+    document.querySelectorAll<HTMLElement>('#tut-nav a[data-ch]').forEach((a) => a.classList.toggle('on', a.dataset.ch === chapter.id));
+    if (location.hash !== `#/t/${chapter.id}`) history.replaceState(null, '', `#/t/${chapter.id}`);
+    loadMain(lessonSrc ?? chapter.script);
+    if (lessonSrc) main.player.go(lessonK);
+    lessonSrc ??= chapter.script;
+  } else {
+    history.replaceState(null, '', demoHash || location.pathname + location.search);
+    if (demoSrc.trim()) {
+      loadMain(demoSrc);
+      main.player.go(demoK);
+    } else clearMain();
+  }
 }
 
 document.querySelectorAll<HTMLButtonElement>('.tabs [data-tab]').forEach((b) =>
@@ -435,38 +500,21 @@ document.querySelectorAll<HTMLButtonElement>('.tabs [data-tab]').forEach((b) =>
     showPlace(t);
   }),
 );
-$('tut-menu').addEventListener('click', () => setNav(!learn.classList.contains('nav-open')));
-$('tut-more').addEventListener('click', () => setIntro(!learn.classList.contains('intro-open')));
-$('tut-nav').addEventListener('click', (e) => {
-  if ((e.target as HTMLElement).closest('#tut-nav-close')) setNav(false);
-});
-$('tut-script').addEventListener('click', () => {
-  const box = $('tut-code');
-  box.hidden = !box.hidden;
-  $('tut-script').setAttribute('aria-pressed', String(!box.hidden));
-  learn.classList.toggle('with-code', !box.hidden);
-});
-$('tut-open').addEventListener('click', () => {
-  const src = chapter.script;
-  demoHash = '';
-  showPlace('demo');
-  loadMain(src);
-  setDrawer(true);
-  setEditing(true);
-});
-$('tut-nav').addEventListener('click', (e) => {
-  const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-ch]');
-  if (!a) return;
-  e.preventDefault();
-  openTutorial(a.dataset.ch);
-});
 
 // ------------------------------------------------------------------ routing & keys
 
 async function route(): Promise<void> {
   const h = location.hash;
   const t = h.match(/^#\/t\/([\w-]+)/);
-  if (t) return openTutorial(t[1]);
+  if (t) {
+    const c = CHAPTERS.find((x) => x.id === t[1]) ?? chapter;
+    if (place !== 'learn') {
+      chapter = c;
+      lessonSrc = null;
+      showPlace('learn');
+    } else if (c !== chapter || !main.tl) showChapter(c);
+    return;
+  }
   if (h === '#/lab') return showPlace('lab');
   if (place !== 'demo') {
     demoHash = h;
@@ -477,7 +525,10 @@ async function route(): Promise<void> {
   if (h.startsWith('#z=') || h.startsWith('#s=')) {
     try {
       const src = await decodeHash(h);
-      if (src) loadMain(src);
+      if (src) {
+        demoHash = h;
+        loadMain(src);
+      }
     } catch {
       toast('링크 속 대본을 읽지 못했어요');
     }
@@ -493,10 +544,8 @@ document.addEventListener('keydown', (e) => {
   // A button reached with Tab presses itself on Space and Enter.
   if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (place === 'lab') return;
-  const v = place === 'learn' ? tut : main;
-  if (!v.tl) return;
-  const p = v.player;
+  if (place === 'lab' || !main.tl) return;
+  const p = main.player;
   const act: Record<string, () => void> = {
     ' ': () => p.next(),
     ArrowRight: () => p.next(),
@@ -516,14 +565,14 @@ document.addEventListener('keydown', (e) => {
 
 renderNav();
 markTabs();
+paintHead(null);
 let last = performance.now();
 const start = last;
 function frame(now: number): void {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const clock = (now - start) / 1000;
-  if (place === 'learn') tut.tick(dt, clock);
-  else if (place === 'demo') main.tick(dt, clock);
+  if (place !== 'lab') main.tick(dt, clock);
   requestAnimationFrame(frame);
 }
 void route().then(() => requestAnimationFrame(frame));
@@ -534,14 +583,21 @@ declare global {
     chemvis: unknown;
   }
 }
-const api = (v: Viewer) => ({
-  seek: (k: number, t: number) => v.seek(k, t),
-  state: () => ({ k: v.player.k, t: v.player.t, n: v.player.n, title: v.tl?.title ?? null, atEnd: v.player.atEnd }),
-});
+const api = {
+  seek: (k: number, t: number) => main.seek(k, t),
+  state: () => ({ k: main.player.k, t: main.player.t, n: main.player.n, title: main.tl?.title ?? null, atEnd: main.player.atEnd }),
+};
 window.chemvis = {
   compile,
   chapters: CHAPTERS.map((c) => c.id),
   examples: EXAMPLES.map((e) => e.id),
-  main: { ...api(main), load: (src: string) => loadMain(src) },
-  tutorial: { ...api(tut), open: (id: string) => openTutorial(id), chapter: () => chapter.id },
+  // 학습 and 시연 share one stage: both handles act on it, each first showing its own screen.
+  main: {
+    ...api,
+    load: (src: string) => {
+      if (place !== 'demo') showPlace('demo');
+      return loadMain(src);
+    },
+  },
+  tutorial: { ...api, open: (id: string) => openTutorial(id), chapter: () => chapter.id },
 };

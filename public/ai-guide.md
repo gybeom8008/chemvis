@@ -66,6 +66,7 @@ AI는 HTML이나 SVG를 직접 만들지 않고 이 대본만 쓴다. 배치, �
 | 명령 | 뜻 |
 |---|---|
 | `scene "제목"` | 장면 제목 |
+| `intro "한두 문장"` | 이 장면이 무엇을 보여 주는지. 무대 위, 제목 아래에 나온다(없어도 된다) |
 | `stage solution` | 무대 |
 | `lens charge on/off` | 형식 전하 표시(기본 on) |
 | `lens attract on/off` | 분자 사이 인력(수소 결합 등) 표시(interface는 기본 on) |

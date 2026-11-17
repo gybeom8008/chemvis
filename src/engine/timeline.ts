@@ -115,6 +115,21 @@ export const REACH_STIFF: Reach = {
   ring: { amp: 0.26, damp: 5.5, freq: 17 },
 };
 
+/**
+ * As stiff, and the taker's pair is stiff too: it leans out a quarter of the way and no more (it
+ * is not drawn out long like something elastic), and the atom, once on it, hardly rings: the bond
+ * does not give, so the blow goes into the molecule as a whole (which is knocked and comes back).
+ */
+export const REACH_FIRM: Reach = {
+  ...REACH_STIFF, reachTo: 0.24, ring: { amp: 0.08, damp: 7, freq: 21 },
+};
+
+export type ReachKind = 'soft' | 'stiff' | 'firm';
+
+export function reachOf(kind: ReachKind): Reach {
+  return kind === 'firm' ? REACH_FIRM : kind === 'stiff' ? REACH_STIFF : REACH;
+}
+
 /** How far the atom has come from its old place (0) to its new one (1); a little over 1 as it presses in and springs back. */
 export function reachAt(f: number, k: Reach = REACH): number {
   const u = clamp(f, 0, 1);
@@ -264,7 +279,7 @@ export interface StepAnim {
    * atom lets go first, the atom crosses bare, and the taker's pair closes on it as it lands.
    * `t0`..`t1`: the part of the step in which that happens (the two pairs' part of the change window).
    */
-  handed?: { id: string; from: string; to: string; t0: number; t1: number; reach?: 'soft' | 'stiff' }[];
+  handed?: { id: string; from: string; to: string; t0: number; t1: number; reach?: ReachKind }[];
   /** The moment (step time) at which the reaction happens: the new bond closes, the two ions touch. */
   strike?: number;
   /** Heat given off (negative) or taken in (positive) at `strike`, in kJ per mole of this reaction. */

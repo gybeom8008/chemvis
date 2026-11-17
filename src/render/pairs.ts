@@ -12,7 +12,7 @@
  */
 import { ELECTRONEGATIVITY, METALS as METAL_ELS, element } from '../chem/elements';
 import { electronDomains } from '../chem/geometry';
-import { REACH, REACH_STIFF, plateSlot, reachPairs, snatchPairs, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
+import { plateSlot, reachOf, reachPairs, snatchPairs, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
 import { component, formalCharge, type Atom, type World } from '../engine/world';
 import { add, clamp, dist, fromAngle, lerp, lerpV, norm, perp, scale, smooth, sub, type Vec } from '../util/math';
 
@@ -1162,15 +1162,15 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     const other = S.kind !== 'bond' && D.kind === 'bond' ? (D.a === S.a ? D.b : D.a)
       : S.kind === 'bond' && D.kind === 'atom' ? (S.a === D.a ? S.b : S.a) : undefined;
     const h = other ? snatched.get(other) : undefined;
-    if (h) return h.reach ? reachPairs(lf, h.reach === 'stiff' ? REACH_STIFF : REACH) : snatchPairs(lf);
+    if (h) return h.reach ? reachPairs(lf, reachOf(h.reach)) : snatchPairs(lf);
     // An electron the handed atom keeps (it swings from the old partner to the new one, as when a
     // radical takes an H) goes across with the atom, in the snap: not ahead of it, where it would
     // cut across the pair that is reaching.
     if (S.kind === 'bond' && D.kind === 'bond') {
       const kept = [S.a, S.b!].find((x) => x === D.a || x === D.b);
       const hk = kept ? snatched.get(kept) : undefined;
-      if (hk?.reach === 'stiff') {
-        const c = reachPairs(lf, REACH_STIFF).charge;
+      if (hk?.reach && hk.reach !== 'soft') {
+        const c = reachPairs(lf, reachOf(hk.reach)).charge;
         return { take: c, let: c };
       }
     }

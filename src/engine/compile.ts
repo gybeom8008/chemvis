@@ -35,7 +35,7 @@ import {
 } from '../util/math';
 import { Rng } from '../util/rng';
 import type { ArrowAnim, Keyframe, NoteTarget, StepAnim, Timeline } from './timeline';
-import { REACH, REACH_STIFF, SNATCH, hopProgress, reachAt, snatchAt, tallyBox, trackAt as trackPos, type Reach } from './timeline';
+import { SNATCH, hopProgress, reachAt, reachOf, snatchAt, tallyBox, trackAt as trackPos, type Reach, type ReachKind } from './timeline';
 import {
   sameFormula,
   allComponents,
@@ -254,8 +254,21 @@ export interface CompileOptions {
    * molecules that come together both move, drawn to each other and turning to face each other,
    * instead of one travelling to the other while that one waits. 'stiff': the hand-over as
    * something stiff and springy (REACH_STIFF): the bond hardly gives, and the atom is across all but at once.
+   * 'firm': as stiff, and the taker's pair does not stretch either (REACH_FIRM).
    */
-  reach?: boolean | 'stiff';
+  reach?: boolean | 'stiff' | 'firm';
+  /**
+   * With `reach`: how two molecules get to each other. They are not flown across the stage:
+   *  - two that are going to react start near each other, wherever the script put them (as far
+   *    apart as lets each turn freely, and a little more);
+   *  - both mill about, turn where they are until the sides that attract face each other, and
+   *    close the distance that is left as two things that attract do: slowly, then faster and
+   *    faster, until they touch (the distance follows an inverse-square pull against drag);
+   *  - neither goes round the other. Where one has to be met on a certain side, it turns that side
+   *    to the other instead (condensation), and water that splits a bond comes from where it has a
+   *    straight way in (hydrolysis).
+   */
+  encounter?: boolean;
 }
 
 export function compile(src: string, opts: CompileOptions = {}): CompileResult {
@@ -263,15 +276,33 @@ export function compile(src: string, opts: CompileOptions = {}): CompileResult {
   // 해당 명령이 있을 때만 기존 배치로 선택 결과를 먼저 얻는다. 외부 상태는 바꾸지 않는다.
   const needsSelection = opts.tight && parse(src).steps.some((s) => s.cmds.some((c) => c.op === 'condensation' || c.op === 'hydrolysis'));
   const reference = needsSelection ? compileScene(src, opts, true).timeline : null;
+  if (opts.tight && opts.tangible && opts.reach && opts.encounter) {
+    // Who is going to react is known only once the steps are gone through: a pass notes which
+    // molecules should have started nearer each other (or another way round), the next starts
+    // them so, and that is repeated until nothing more is asked for (one change can call for another).
+    const start: Nearer = new Map();
+    for (let pass = 0; ; pass++) {
+      const asked: Nearer = new Map();
+      const got = compileScene(src, opts, false, reference, { record: asked, apply: start });
+      const more = [...asked.values()].some((v) => Math.hypot(v.by.x, v.by.y) > 1 || Math.abs(v.turn) > 0.02);
+      if (!more || !got.timeline || pass === 3) return got;
+      for (const [id, v] of asked) {
+        const had = start.get(id) ?? { by: { x: 0, y: 0 }, turn: 0 };
+        start.set(id, { by: add(had.by, v.by), turn: had.turn + v.turn });
+      }
+    }
+  }
   return compileScene(src, opts, false, reference);
 }
 
-function compileScene(src: string, opts: CompileOptions, selectionPass: boolean, reference: Timeline | null = null): CompileResult {
+function compileScene(src: string, opts: CompileOptions, selectionPass: boolean, reference: Timeline | null = null,
+  near: { record?: Nearer; apply?: Nearer } = {}): CompileResult {
   const ast = parse(src);
   const ctx = new Ctx();
   ctx.tight = !!opts.tight;
   ctx.tangible = !!opts.tight && !!opts.tangible && !selectionPass;
-  ctx.reach = !ctx.tangible || !opts.reach ? false : opts.reach === 'stiff' ? 'stiff' : 'soft';
+  ctx.reach = !ctx.tangible || !opts.reach ? false : opts.reach === 'stiff' || opts.reach === 'firm' ? opts.reach : 'soft';
+  ctx.encounter = !!ctx.reach && !!opts.encounter;
   ctx.selectionPass = selectionPass;
   ctx.reference = reference;
   ctx.errors.push(...ast.errors);
@@ -306,10 +337,22 @@ function compileScene(src: string, opts: CompileOptions, selectionPass: boolean,
       else throw e;
     }
   }
+  for (const [id, { by, turn }] of near.apply ?? []) {
+    if (!ctx.w.atoms.has(id)) continue;
+    const comp = component(ctx.w, id);
+    const c = centroid(comp.map((x) => ctx.w.atoms.get(x)!));
+    for (const x of ctx.group(comp)) {
+      const at = ctx.w.atoms.get(x)!;
+      Object.assign(at, add(add(c, rotate(sub(at, c), turn)), by));
+    }
+  }
   resolveOverlaps(ctx, new Set());
   arrangeHydrogenBonds(ctx);
   resolveOverlaps(ctx, new Set());
   const initial = cloneWorld(ctx.w);
+  ctx.placedAt = new Map([...ctx.w.atoms].map(([id, a]) => [id, { x: a.x, y: a.y }]));
+  ctx.placed = initial;
+  ctx.nearer = near.record ?? null;
   if (ast.steps.length === 0) {
     ctx.warnings.push({ line: 1, message: 'step이 하나도 없어서 처음 모습만 보여요.' });
   }
@@ -323,6 +366,12 @@ function compileScene(src: string, opts: CompileOptions, selectionPass: boolean,
     warnings: ctx.warnings,
   };
 }
+
+/**
+ * Molecules that should have started nearer another, and turned more nearly to face it
+ * (CompileOptions.encounter): their first atom → moved by `by`, turned by `turn` about their centre.
+ */
+type Nearer = Map<string, { by: Vec; turn: number }>;
 
 /** Shared step processing; legacy compile retains its original seed, layout and diagnostics. */
 function compileSteps(ctx: Ctx, input: StepAst[]): StepAnim[] {
@@ -427,8 +476,12 @@ class Ctx {
   /** See CompileOptions.tangible. */
   tangible = false;
   /** See CompileOptions.reach. */
-  reach: false | 'soft' | 'stiff' = false;
-  get reachBy(): Reach { return this.reach === 'stiff' ? REACH_STIFF : REACH; }
+  reach: false | ReachKind = false;
+  get reachBy(): Reach { return reachOf(this.reach || 'soft'); }
+  /** The hand-over as something stiff and springy ('stiff', 'firm'). */
+  get stiff(): boolean { return this.reach === 'stiff' || this.reach === 'firm'; }
+  /** See CompileOptions.encounter. */
+  encounter = false;
   /**
    * How a move covers its way in time. Without `tangible` every move starts and stops gently.
    * With it the way is covered as the force behind the move would have it (see Feel).
@@ -1574,6 +1627,7 @@ class Ctx {
     const ids = this.group(comp);
     const T = this.w.atoms.get(target)!;
     const M = this.w.atoms.get(mover)!;
+    if (this.nearer) this.startNearer(comp, component(this.w, target), mover);
     const tn = neighbors(this.w, target).map((n) => this.w.atoms.get(n.id)!);
     let dir: Vec;
     // Come in from the target's open side. If its bonds are spread evenly (no open side), come in
@@ -1591,7 +1645,8 @@ class Ctx {
       angs.forEach((a0, i) => {
         const a1 = i + 1 < angs.length ? angs[i + 1] : angs[0] + 2 * Math.PI;
         const mid = (a0 + a1) / 2;
-        const score = (a1 - a0) + 0.5 * angDiff(mid, away) - 0.2 * angDiff(mid, side);
+        // (With `encounter` the side the comer is on counts for more: the less the one come to has to turn round.)
+        const score = (a1 - a0) + 0.5 * angDiff(mid, away) - (this.encounter ? 0.9 : 0.2) * angDiff(mid, side);
         if (score > bestScore) {
           bestScore = score;
           best = mid;
@@ -1661,7 +1716,7 @@ class Ctx {
       const h = mn.find((x) => x.id === selected) ?? mn.filter((x) => x.el === 'H').sort((a, b) =>
         dist(add(ps.goal, rotate(sub(a, pivot), ps.rot)), oh) - dist(add(ps.goal, rotate(sub(b, pivot), ps.rot)), oh))[0];
       if (h) {
-        this.condensationApproach(target, mover, oh.id, h.id);
+        if (!(this.encounter && this.condensationMeet(target, mover, oh.id, h.id))) this.condensationApproach(target, mover, oh.id, h.id);
         this.focusMol(comp);
         this.focusMol(component(this.w, target));
         (this.A.pulls ??= []).push({ a: mover, b: target });
@@ -1707,7 +1762,10 @@ class Ctx {
       const t0 = prepared ? 0.3 : 0;
       const rotation = mn.length ? rot : 0;
       // With `reach` the two come to each other: neither waits for the other.
-      const both = this.reach && !prepared ? this.meet(comp, mover, target, pivot, dir, gap, rotation, want, yielding) : false;
+      // With `encounter` they are drawn together turning where they are; one that cannot move is come to straight.
+      const drawnIn = this.encounter && !prepared && (this.drawTogether(comp, mover, target, dir, gap, rotation, want, yielding, true)
+        || (angDiff(angleOf(dir), angleOf(sub(M, T))) < 1.05 && this.drawTogether(comp, mover, target, dir, gap, rotation, want, yielding, false)));
+      const both = drawnIn || (this.reach && !prepared && !this.encounter ? this.meet(comp, mover, target, pivot, dir, gap, rotation, want, yielding) : false);
       const { path, turnBy } = both ? { path: [], turnBy: 1 } : routeIn(pivot, goal, dir, around, clear);
       const route = both || !this.plannedMotion ? { path, turnBy } : this.clearRoute(ids, pivot, goal, rotation, t0, 1, { path, turnBy }, 'pull');
       if (!both) this.moveGroup(ids, pivot, route.path, rotation, t0, 1, route.turnBy, 'pull');
@@ -1815,6 +1873,327 @@ class Ctx {
         this.A.tracks.set(id, given.map((g, i) => ({ t: i / N, ...moved(add(y.pivot, rotate(off, y.rotation * g)), i / N) })));
       }
     }
+    return true;
+  }
+
+  /** Where the header left each atom (CompileOptions.encounter: to tell what has not moved since). */
+  placedAt = new Map<string, Vec>();
+  /** The world as the header left it. */
+  placed: World | null = null;
+  /** Molecules that should have started nearer another. Filled by the first pass. */
+  nearer: Nearer | null = null;
+
+  /**
+   * A molecule that has not moved since the scene began need not start turned right away from
+   * what it is going to meet: of the turn it would have to make, all but FACE_TURN is taken off
+   * its starting pose. (What is left is the turn that is seen: it comes round to face the other.)
+   */
+  noteTurn(ids: string[], angle: number): void {
+    const rec = this.nearer?.get([...ids].sort()[0]);
+    if (rec) rec.turn = angle - clamp(angle, -FACE_TURN, FACE_TURN);
+  }
+
+  /**
+   * Two molecules that are about to come together and have not moved since the scene began are
+   * noted to start nearer each other: as far apart as lets each turn freely, and NEAR_GAP more.
+   * What has moved, or is part of something that does not move, stays; one that several come to at once stays.
+   */
+  startNearer(a: string[], b: string[], mover: string): void {
+    const key = (ids: string[]) => [...ids].sort()[0];
+    const fixed = new Set([...this.w.crystals.values()].flat());
+    const loose = (id: string): boolean => {
+      const at = this.w.atoms.get(id);
+      return !!at && this.placedAt.has(id) && !at.crowd && !at.lattice && !at.sei && !fixed.has(id) && !this.pieceOf(id);
+    };
+    const unmoved = (ids: string[]): boolean => !this.nearer!.has(key(ids)) && ids.every((id) =>
+      !this.A.tracks.has(id) && loose(id) && dist(this.w.atoms.get(id)!, this.placedAt.get(id)!) < 3);
+    const ea = unmoved(a);
+    const eb = unmoved(b) && this.stepCmds.filter((c) => c.op === 'approach').length === 1;
+    // The comer is a part of a molecule that has come apart since the scene began (a radical, after
+    // light broke a bond): that molecule could as well have started the other way round, with this
+    // part on the side of what it is going to meet, so that it need not pass the other part.
+    const whole = this.placed && this.placed.atoms.has(mover) ? component(this.placed, mover) : [];
+    if (!ea && whole.length > 1 && !this.nearer!.has(key(whole)) && whole.every(loose)) {
+      const c = centroid(whole.map((id) => this.placedAt.get(id)!));
+      const turn = signedAng(angleOf(sub(this.placedAt.get(mover)!, c)), angleOf(sub(centroid(b.map((id) => this.w.atoms.get(id)!)), c)));
+      if (Math.abs(turn) > Math.PI / 2) {
+        // (How near the other should start is seen once this one starts turned round.)
+        this.nearer!.set(key(whole), { by: { x: 0, y: 0 }, turn });
+        return;
+      }
+    }
+    if (!ea && !eb) return;
+    if (ea) this.nearer!.set(key(a), { by: { x: 0, y: 0 }, turn: 0 });
+    if (eb) this.nearer!.set(key(b), { by: { x: 0, y: 0 }, turn: 0 });
+    const atoms = (ids: string[]) => ids.map((id) => this.w.atoms.get(id)!);
+    const ca = centroid(atoms(a)), cb = centroid(atoms(b));
+    const span = (ids: string[], c: Vec) => Math.max(...atoms(ids).map((x) => dist(x, c) + element(x.el).r));
+    const over = dist(ca, cb) - (span(a, ca) + span(b, cb) + NEAR_GAP);
+    if (over < 12) return;
+    const e = norm(sub(cb, ca));
+    // Not onto anything else that is there, at the start or now.
+    const others = [...this.w.atoms.values()].filter((x) => !x.crowd && !x.gone && !a.includes(x.id) && !b.includes(x.id));
+    const free = (ids: string[], by: Vec): boolean => atoms(ids).every((x) => others.every((o) => {
+      const min = element(x.el).r + element(o.el).r + 26;
+      const p = add(x, by);
+      return dist(p, o) >= min && dist(p, this.placedAt.get(o.id) ?? o) >= min;
+    }));
+    for (let part = 1; part > 0.05; part -= 0.1) {
+      const sa = scale(e, over * part * (ea ? (eb ? 0.5 : 1) : 0));
+      const sb = scale(e, -over * part * (eb ? (ea ? 0.5 : 1) : 0));
+      if ((ea && !free(a, sa)) || (eb && !free(b, sb))) continue;
+      if (ea) this.nearer!.get(key(a))!.by = sa;
+      if (eb) this.nearer!.get(key(b))!.by = sb;
+      return;
+    }
+  }
+
+  /**
+   * The way of one body to a meeting (CompileOptions.encounter). `shape(k, f)`: where its atoms
+   * are, relative to each other, when it has turned by the fraction k and the two have closed the
+   * fraction f of what was between them; at (0, 0) where they are now. Its centre goes to `c1` as
+   * `law` has it. On the way it mills about (the lighter it is the more, and less and less as the
+   * pull takes hold of it), and it has turned before the last stretch.
+   * `still`: the body itself stays where it is (`shape` gives where its atoms are, not only how
+   * they lie to each other). `span`: the part of the step this takes, from its start.
+   */
+  gather(ids: string[], shape: (k: number, f: number) => Map<string, Vec>, c1: Vec, law: (u: number) => number, weight: number,
+    still = false, span = 1): void {
+    const rng = new Rng(`mill ${[...ids].sort()[0]} ${this.A.index}`);
+    const wave = () => {
+      const parts = [[1, rng.range(0.9, 1.6)], [0.6, rng.range(1.9, 2.8)], [0.35, rng.range(3.2, 4.4)]].map(([a, v]) => ({ a, v, p: rng.range(0, 2 * Math.PI) }));
+      return (u: number) => parts.reduce((sum, q) => sum + q.a * Math.sin(2 * Math.PI * q.v * u + q.p), 0) / 1.6;
+    };
+    const nx = wave(), ny = wave(), na = wave();
+    const amp = clamp(MILL / Math.sqrt(weight), 1.5, MILL);
+    const wob = ids.length > 1 ? clamp(0.12 / Math.sqrt(weight), 0.03, 0.12) : 0;
+    const mid = (S: Map<string, Vec>) => centroid(ids.map((id) => S.get(id)!));
+    const c0 = mid(shape(0, 0));
+    const N = 240;
+    const tracks = new Map<string, Keyframe[]>(ids.map((id) => [id, []]));
+    for (let i = 0; i <= N; i++) {
+      const u = i / N;
+      const f = law(u);
+      // The milling dies down as the pull takes hold; nothing mills once the two have met.
+      const loose = still ? 0 : smooth(clamp(u / 0.12, 0, 1)) * Math.pow(clamp(1 - f, 0, 1), 0.7);
+      const S = shape(smooth(clamp(u / TURNED_BY, 0, 1)), clamp(f, 0, 1));
+      const m = mid(S);
+      const c = still ? m : add(lerpV(c0, c1, f), { x: amp * loose * nx(u), y: amp * loose * ny(u) });
+      const a = wob * loose * na(u);
+      for (const id of ids) tracks.get(id)!.push({ t: u * span, ...add(c, rotate(sub(S.get(id)!, m), a)) });
+    }
+    for (const id of ids) {
+      this.A.tracks.set(id, tracks.get(id)!);
+      const last = tracks.get(id)![N];
+      Object.assign(this.w.atoms.get(id)!, { x: last.x, y: last.y });
+    }
+  }
+
+  /**
+   * Two molecules are drawn together (CompileOptions.encounter). Each turns where it is until the
+   * sides that attract face each other, and they close what is between them along the line that
+   * joins them, the lighter one covering more of it: neither goes round the other. Where they end
+   * up relative to each other is exactly as `approach` laid it out.
+   * `mutual` false: the one come to stays as it is (part of a solid, or come to by several), and
+   * the comer does all of it. False if it cannot be done (then nothing has been changed).
+   */
+  drawTogether(comp: string[], mover: string, target: string, dir: Vec, gap: number, rot: number, want: number,
+    yielding: { ids: string[]; pivot: Vec; rotation: number; from: Map<string, Vec> }[], mutual: boolean): boolean {
+    const other = component(this.w, target);
+    const body = this.group(other);
+    const ids = this.group(comp);
+    const giving = new Set(yielding.flatMap((y) => y.ids));
+    if (ids.some((id) => this.A.tracks.has(id)) || body.some((id) => ids.includes(id))) return false;
+    if (mutual) {
+      const inSolid = [...this.w.crystals.values()].some((list) => list.some((id) => body.includes(id)));
+      if (inSolid || body.some((id) => this.w.atoms.get(id)!.lattice || this.w.atoms.get(id)!.sei || !!this.pieceOf(id))) return false;
+      if (this.stepCmds.filter((c) => c.op === 'approach').length > 1) return false;
+      if (body.some((id) => this.A.tracks.has(id) && !giving.has(id))) return false;
+    }
+    const now = new Map([...body, ...ids].map((id) => [id, { x: this.w.atoms.get(id)!.x, y: this.w.atoms.get(id)!.y }]));
+    const at = (id: string): Vec => now.get(id)!;
+    // Where everything is now (groups that will give way: where they were before they were turned).
+    const first = new Map([...body, ...ids].map((id) => [id, at(id)]));
+    for (const y of yielding) for (const id of y.ids) first.set(id, y.from.get(id)!);
+    const mid = (list: string[], P: (id: string) => Vec) => centroid(list.map(P));
+    const cT0 = mid(body, (id) => first.get(id)!), cM0 = mid(ids, (id) => first.get(id)!);
+    const e = norm(sub(cM0, cT0));
+    const turnT = mutual && other.length > 1;
+    // The two as they end up, the one come to turned by theta: V is from its centre to the comer's.
+    const place = (theta: number) => {
+      const FT = new Map(body.map((id) => [id, turnT ? rotate(at(id), theta) : at(id)]));
+      const rotM = comp.length > 1 ? signedAng(0, rot + theta) : 0;
+      const FM = new Map(ids.map((id) => [id, rotate(at(id), rotM)]));
+      const cT = centroid([...FT.values()]), cM = centroid([...FM.values()]);
+      const V = add(sub(sub(FT.get(target)!, cT), sub(FM.get(mover)!, cM)), scale(rotate(dir, theta), gap));
+      return { cT, cM, V, rotM };
+    };
+    // Turned so far that the comer's centre lies where it already is, as seen from the other: nothing goes round.
+    let theta = 0;
+    if (mutual) for (let i = 0; i < 4; i++) theta = signedAng(0, theta + signedAng(angleOf(place(theta).V), angleOf(e)));
+    const fin = place(theta);
+    this.noteTurn(comp, fin.rotM);
+    if (turnT) this.noteTurn(other, theta);
+    const weigh = (list: string[]) => list.reduce((sum, id) => sum + (this.w.atoms.get(id)!.el === 'H' ? 0.15 : 1), 0);
+    const wM = weigh(ids), wT = weigh(body);
+    const closing = dist(cM0, cT0) - Math.hypot(fin.V.x, fin.V.y);
+    let cT1 = mutual ? add(cT0, scale(e, closing * clamp(wM / (wM + wT), 0.2, 0.8))) : fin.cT;
+    let cM1 = add(cT1, fin.V);
+    const r0 = dist(first.get(mover)!, first.get(target)!);
+    const law = drawn(Math.abs(closing));
+    // What stands where the comer comes in gives way as far as it has come near.
+    const from = Math.min(r0, gap + 70);
+    const given = (f: number) => (from - gap < 1 ? 1 : smooth(clamp((from - lerp(r0, gap, f)) / (from - gap), 0, 1)));
+    const shapeT = (k: number, f: number): Map<string, Vec> => {
+      const P = new Map(body.map((id) => [id, at(id)]));
+      for (const y of yielding) for (const id of y.ids) P.set(id, add(y.pivot, rotate(sub(y.from.get(id)!, y.pivot), y.rotation * given(f))));
+      if (turnT) for (const [id, p] of P) P.set(id, rotate(p, theta * k));
+      return P;
+    };
+    const shapeM = (k: number): Map<string, Vec> => new Map(ids.map((id) => [id, rotate(at(id), fin.rotM * k)]));
+    // Something else in the way (not the water round about, which is pushed aside): the two meet
+    // beside it, each going straight to a place off the line that joins them. One that is come
+    // to where it is cannot do that: then this is not the way.
+    const others = [...this.w.atoms.values()].filter((x) => !x.crowd && !x.gone && !now.has(x.id));
+    const hits = (off: Vec): boolean => {
+      for (let i = 1; i <= 16; i++) {
+        const u = (PULL_MEET * i) / 16;
+        const f = clamp(law(u), 0, 1), k = smooth(clamp(u / TURNED_BY, 0, 1));
+        const parts: [string[], Map<string, Vec>, Vec, Vec][] = [[ids, shapeM(k), cM0, add(cM1, off)]];
+        if (mutual) parts.push([body, shapeT(k, f), cT0, add(cT1, off)]);
+        for (const [list, S, a0, a1] of parts) {
+          const m = centroid(list.map((id) => S.get(id)!));
+          const c = lerpV(a0, a1, f);
+          for (const id of list) {
+            const p = add(c, sub(S.get(id)!, m));
+            const r = element(this.w.atoms.get(id)!.el).r;
+            if (others.some((o) => dist(p, o) < r + element(o.el).r + 2)) return true;
+          }
+        }
+      }
+      return false;
+    };
+    if (others.length && hits({ x: 0, y: 0 })) {
+      if (!mutual) return false;
+      const n = { x: -e.y, y: e.x };
+      const off = [24, 40, 56, 72, 90, 110].flatMap((l) => [scale(n, l), scale(n, -l)]).find((o) => !hits(o));
+      if (off) {
+        cT1 = add(cT1, off);
+        cM1 = add(cM1, off);
+      }
+    }
+    if (mutual) this.gather(body, shapeT, cT1, law, wT);
+    else if (yielding.length) this.gather([...giving], shapeT, cT1, law, wT, true);
+    this.gather(ids, shapeM, cM1, law, wM);
+    // (A lone atom is not turned: its electrons face the other.)
+    if (comp.length === 1) this.w.atoms.get(mover)!.face = want + theta;
+    return true;
+  }
+
+  /**
+   * The same meeting for two that are about to condense (CompileOptions.encounter). The C that
+   * gives up its -OH is met on the side away from its other groups, with the H that leaves beside
+   * that -OH. Neither molecule goes round the other for that: each turns where it is, its groups
+   * swinging to where they are needed as it turns, and the two close in. Of that arrangement and
+   * its mirror image the one that asks for less turning is taken. False if it cannot be done.
+   */
+  condensationMeet(carbon: string, nitrogen: string, oxygen: string, hydrogen: string): boolean {
+    const ids1 = this.group(component(this.w, carbon)), ids2 = this.group(component(this.w, nitrogen));
+    const all = [...ids1, ...ids2];
+    const fixed = new Set([...this.w.crystals.values()].flat());
+    if (all.some((id) => this.A.tracks.has(id) || fixed.has(id) || this.w.atoms.get(id)!.lattice || !!this.pieceOf(id))) return false;
+    const A = (id: string) => this.w.atoms.get(id)!;
+    const first = new Map(all.map((id) => [id, { x: A(id).x, y: A(id).y }]));
+    const restore = () => { for (const [id, p] of first) Object.assign(A(id), p); };
+    type Op = { pivot: string; ids: string[]; angle: number };
+    const branch = (root: string, child: string): string[] | null => {
+      const got = new Set([child]);
+      const queue = [child];
+      for (const id of queue) for (const n of neighbors(this.w, id)) {
+        if (n.id === root) { if (id !== child) return null; continue; }
+        if (!got.has(n.id)) { got.add(n.id); queue.push(n.id); }
+      }
+      return [...got];
+    };
+    const turn = (ops: Op[], pivot: string, list: string[], angle: number) => {
+      const pv = { x: A(pivot).x, y: A(pivot).y };
+      for (const id of list) Object.assign(A(id), add(pv, rotate(sub(A(id), pv), angle)));
+      ops.push({ pivot, ids: list, angle });
+    };
+    const turnTo = (ops: Op[], root: string, child: string, angle: number, clear: boolean) => {
+      const list = branch(root, child);
+      if (!list) return;
+      const pv = A(root);
+      let rotation = signedAng(angleOf(sub(A(child), pv)), angle);
+      if (clear) {
+        const penalty = this.posePenalty(list);
+        const pose = (th: number) => new Map(list.map((id) => [id, add(pv, rotate(sub(A(id), pv), th))]));
+        const preferred = rotation;
+        let best = penalty(pose(rotation));
+        for (let degrees = 2; degrees <= 90 && best > 0; degrees += 2) for (const sign of [-1, 1]) {
+          const th = preferred + sign * degrees * Math.PI / 180;
+          const score = penalty(pose(th));
+          if (score < best) { best = score; rotation = th; }
+          if (best === 0) break;
+        }
+      }
+      turn(ops, root, list, rotation);
+    };
+    // The molecule as a whole first, by what its largest group needs; then each group the rest of its way.
+    const lead = (root: string, slot: (n: { id: string; order: number }) => number): number => {
+      const nb = neighbors(this.w, root).map((n) => ({ n, size: branch(root, n.id)?.length ?? 0 })).sort((p, q) => q.size - p.size)[0];
+      return nb && nb.size ? signedAng(angleOf(sub(A(nb.n.id), A(root))), slot(nb.n)) : 0;
+    };
+    const lay = (alpha: number, m: number) => {
+      restore();
+      const ops1: Op[] = [], ops2: Op[] = [];
+      const slotC = (n: { id: string; order: number }) => alpha + m * (n.id === oxygen ? Math.PI / 2 : n.order === 2 ? 0 : -Math.PI / 3);
+      turn(ops1, carbon, ids1, lead(carbon, slotC));
+      const nbC = neighbors(this.w, carbon).sort((p, q) => Number(p.id !== oxygen && p.order === 1) - Number(q.id !== oxygen && q.order === 1));
+      for (const n of nbC) turnTo(ops1, carbon, n.id, slotC(n), n.id !== oxygen && n.order === 1);
+      const oldH = neighbors(this.w, oxygen).find((n) => n.id !== carbon)!.id;
+      turnTo(ops1, oxygen, oldH, alpha + m * 14.5 * Math.PI / 180, false);
+      const slotN = (n: { id: string }) => alpha + (n.id === hydrogen ? m * Math.PI / 2 : A(n.id).el === 'H' ? -m * Math.PI / 2 : Math.PI);
+      turn(ops2, nitrogen, ids2, lead(nitrogen, slotN));
+      for (const n of neighbors(this.w, nitrogen)) turnTo(ops2, nitrogen, n.id, slotN(n), false);
+      const to = add(A(carbon), fromAngle(alpha + Math.PI, bondLength(A(carbon).el, A(nitrogen).el, 1)));
+      const by = sub(to, A(nitrogen));
+      for (const id of ids2) shift(A(id), by);
+      const V = sub(centroid(ids2.map(A)), centroid(ids1.map(A)));
+      const cost = [...ops1, ...ops2].reduce((sum, op) => sum + Math.abs(op.angle) * op.ids.length, 0);
+      return { ops1, ops2, V, cost };
+    };
+    const c10 = centroid(ids1.map((id) => first.get(id)!)), c20 = centroid(ids2.map((id) => first.get(id)!));
+    const e = norm(sub(c20, c10));
+    let best: { alpha: number; m: number; cost: number } | null = null;
+    for (const m of [1, -1]) {
+      let alpha = 0;
+      let got = lay(alpha, m);
+      for (let i = 0; i < 3; i++) {
+        alpha = signedAng(0, alpha + signedAng(angleOf(got.V), angleOf(e)));
+        got = lay(alpha, m);
+      }
+      if (!best || got.cost < best.cost) best = { alpha, m, cost: got.cost };
+    }
+    const fin = lay(best!.alpha, best!.m);
+    restore();
+    this.noteTurn(component(this.w, carbon), fin.ops1[0].angle);
+    this.noteTurn(component(this.w, nitrogen), fin.ops2[0].angle);
+    const posed = (ops: Op[], list: string[], k: number): Map<string, Vec> => {
+      const P = new Map(list.map((id) => [id, { ...first.get(id)! }]));
+      for (const op of ops) {
+        const pv = { ...P.get(op.pivot)! };
+        for (const id of op.ids) P.set(id, add(pv, rotate(sub(P.get(id)!, pv), op.angle * k)));
+      }
+      return P;
+    };
+    const weigh = (list: string[]) => list.reduce((sum, id) => sum + (A(id).el === 'H' ? 0.15 : 1), 0);
+    const w1 = weigh(ids1), w2 = weigh(ids2);
+    const closing = dist(c10, c20) - Math.hypot(fin.V.x, fin.V.y);
+    const c11 = add(c10, scale(e, closing * clamp(w2 / (w1 + w2), 0.2, 0.8)));
+    const law = drawn(Math.abs(closing));
+    this.gather(ids1, (k) => posed(fin.ops1, ids1, k), c11, law, w1);
+    this.gather(ids2, (k) => posed(fin.ops2, ids2, k), add(c11, fin.V), law, w2);
     return true;
   }
 
@@ -3666,6 +4045,56 @@ class Ctx {
     this.A.phase = { ...CHANGE };
   }
 
+  /** Whether the straight line from `from` to `to` is clear of the atoms `mol` for an O atom. */
+  wayIn(from: Vec, to: Vec, mol: Atom[]): boolean {
+    const d = sub(to, from);
+    const l2 = d.x * d.x + d.y * d.y;
+    return mol.every((x) => {
+      const u = l2 ? clamp(((x.x - from.x) * d.x + (x.y - from.y) * d.y) / l2, 0, 1) : 0;
+      return dist(x, add(from, scale(d, u))) >= element(x.el).r + element('O').r + 2;
+    });
+  }
+
+  /**
+   * The water that splits the bond A–B (CompileOptions.encounter): of the free water molecules the
+   * one that has the shortest straight way to where it goes in beside A, and has to turn least.
+   */
+  waterAtHand(A: string, B: string): string[] | null {
+    const Aat = this.w.atoms.get(A)!;
+    const Bpos = this.w.atoms.get(B)!;
+    const mol = component(this.w, A).map((id) => this.w.atoms.get(id)!);
+    const angs = neighbors(this.w, A).map((n) => angleOf(sub(this.w.atoms.get(n.id)!, Aat))).sort((p, q) => p - q);
+    const reach = element(Aat.el).r + element('O').r + 15;
+    // (The same place as `hydrolysis` chooses.)
+    let spot: Vec = add(Aat, scale(norm(sub(Aat, centroid(mol))), reach));
+    let bestScore = -Infinity;
+    angs.forEach((a0, i) => {
+      const a1 = i + 1 < angs.length ? angs[i + 1] : angs[0] + 2 * Math.PI;
+      const p = add(Aat, fromAngle((a0 + a1) / 2, reach));
+      const room = Math.min(...mol.filter((o) => o.id !== A).map((o) => dist(o, p) - element(o.el).r));
+      const score = Math.min(room, 34) - dist(p, Bpos) * 0.5;
+      if (score > bestScore) {
+        bestScore = score;
+        spot = p;
+      }
+    });
+    const attached = new Set([...this.w.attached.values()].flat());
+    let best: string[] | null = null;
+    let least = Infinity;
+    for (const c of allComponents(this.w)) {
+      if (formulaOf(this.w, c) !== 'H2O' || c.some((x) => attached.has(x) || this.A.tracks.has(x))) continue;
+      const O = c.map((id) => this.w.atoms.get(id)!).find((x) => x.el === 'O')!;
+      const H = c.map((id) => this.w.atoms.get(id)!).filter((x) => x.el === 'H').sort((p, q) => dist(p, Bpos) - dist(q, Bpos))[0];
+      const turn = Math.abs(signedAng(angleOf(sub(H, O)), angleOf(sub(Bpos, spot))));
+      const cost = dist(O, spot) + turn * 12 + (this.wayIn(O, spot, mol) ? 0 : 500);
+      if (cost < least) {
+        least = cost;
+        best = c;
+      }
+    }
+    return best;
+  }
+
   /** hydrolysis g1.C2~g2.N [with w] : a water molecule splits the bond: OH goes to the first atom, H to the second. */
   hydrolysis(a: string[]): void {
     const ref = a[0];
@@ -3676,7 +4105,9 @@ class Ctx {
     let water: string[];
     const referenceShifts = this.reference?.steps[this.A.index]?.shifts;
     const selectedO = referenceShifts?.find((s) => s.dst.kind === 'bond' && s.dst.b === A && s.src.kind === 'lp')?.src.a;
+    const atHand = withI < 0 && this.encounter ? this.waterAtHand(A, B) : null;
     if (withI >= 0 && a[withI + 1]) water = this.mol(a[withI + 1]);
+    else if (atHand) water = atHand;
     else if (selectedO && this.w.atoms.has(selectedO)) water = component(this.w, selectedO);
     else {
       // The nearest free water molecule: one released earlier counts as much as background water.
@@ -3719,11 +4150,20 @@ class Ctx {
       });
       const from = { x: O.x, y: O.y };
       const rot = signedAng(angleOf(sub(hToB, O)), angleOf(sub(Bpos, spot)));
-      const around = centroid(mol);
-      const clear = Math.max(...mol.map((x) => dist(x, around) + element(x.el).r)) + 34;
-      const { path, turnBy } = routeIn(from, spot, norm(sub(spot, Aat)), around, clear);
-      const route = this.plannedMotion ? this.clearRoute(water, from, spot, rot, 0, 0.36, { path, turnBy }, 'pull') : { path, turnBy };
-      this.moveGroup(water, from, route.path, rot, 0, 0.36, route.turnBy, 'pull');
+      if (this.encounter && this.wayIn(from, spot, mol)) {
+        // Drawn straight in, turning as it comes: nothing goes round the molecule.
+        const was = new Map(water.map((id) => [id, { x: this.w.atoms.get(id)!.x, y: this.w.atoms.get(id)!.y }]));
+        const mid = centroid([...was.values()]);
+        const weight = water.reduce((sum, id) => sum + (this.w.atoms.get(id)!.el === 'H' ? 0.15 : 1), 0);
+        this.gather(water, (k) => new Map(water.map((id) => [id, add(from, rotate(sub(was.get(id)!, from), rot * k))])),
+          add(spot, rotate(sub(mid, from), rot)), drawn(dist(from, spot)), weight, false, 0.36);
+      } else {
+        const around = centroid(mol);
+        const clear = Math.max(...mol.map((x) => dist(x, around) + element(x.el).r)) + 34;
+        const { path, turnBy } = routeIn(from, spot, norm(sub(spot, Aat)), around, clear);
+        const route = this.plannedMotion ? this.clearRoute(water, from, spot, rot, 0, 0.36, { path, turnBy }, 'pull') : { path, turnBy };
+        this.moveGroup(water, from, route.path, rot, 0, 0.36, route.turnBy, 'pull');
+      }
     }
     // Where each electron pair ends up: a lone pair of the water's O joins A, the A–B pair stays
     // on B, a lone pair of B takes the H, and the O–H pair stays on O.
@@ -4155,7 +4595,7 @@ class Ctx {
       const now = Math.min(was, 0.27);
       A.phase.b1 = A.phase.b0 + now;
       // Stiff: what the hand-over sets off starts the moment the atom lands, like something let go under tension.
-      A.phase.c0 = this.reach === 'stiff' ? A.phase.b0 + now * REACH_STIFF.hit : A.phase.b1;
+      A.phase.c0 = this.stiff ? A.phase.b0 + now * this.reachBy.hit : A.phase.b1;
       if (A.phase.c1 !== undefined) A.phase.c1 = Math.max(A.phase.c0 + 0.2, A.phase.c1 - (was - now) - (A.phase.b1 - A.phase.c0));
     }
     const c0 = A.phase?.c0 ?? 0, c1 = A.phase?.c1 ?? 1;
@@ -4251,7 +4691,7 @@ class Ctx {
         // The taker gives a little under the blow and comes back.
         const dir = norm(scale(o0, -1));
         const body = component(before, partner).filter((x) => !handed.has(x));
-        const springy = this.reach === 'stiff';
+        const springy = this.stiff;
         jolts.push({ ids: [...this.group(body.filter((x) => this.w.atoms.has(x))), id], dir, hit, amp: springy ? 4.2 : 3.2, springy });
         // Stiff: the molecule that held it was under tension too, and springs back the other way when it lets go.
         if (springy && was) {
@@ -4932,6 +5372,36 @@ function pulled(u: number, give: number): number {
   if (t < PULL_MEET) return Math.pow(t / PULL_MEET, 2.2);
   const y = (t - PULL_MEET) / (1 - PULL_MEET);
   return 1 + give * (y / 0.22) * Math.exp(1 - y / 0.22) * (1 - y);
+}
+
+/** How far apart (px, beyond what lets each turn freely) two that are going to react start (CompileOptions.encounter). */
+const NEAR_GAP = 64;
+/** How far (px) the lightest body mills about before a pull takes hold of it. */
+const MILL = 5;
+/** The part of a meeting's time by which the two have turned to face each other (well before they meet). */
+const TURNED_BY = PULL_MEET * 0.72;
+
+/** The most (radians) a molecule that could have started any way round is left to turn to face what it meets. */
+const FACE_TURN = Math.PI / 3;
+/** Where two that are drawn together touch, as a part of how far apart they were when the pull took hold. */
+const DRAWN_FROM = 0.31;
+
+/**
+ * How two things that attract close the way between them: the fraction closed after the fraction
+ * u of the time. The pull grows as the inverse square of the distance and the water drags, so the
+ * cube of the distance falls evenly: little at first, then faster and faster (they meet at about
+ * five times their mean speed). They meet at PULL_MEET; what they are made of gives a little:
+ * they press in (by about 2.4 px of the `way` they came), come back, and are still.
+ */
+function drawn(way: number): (u: number) => number {
+  const give = Math.min(0.06, 2.4 / Math.max(1, way));
+  const k = 1 - DRAWN_FROM ** 3;
+  return (u) => {
+    const t = clamp(u, 0, 1);
+    if (t < PULL_MEET) return (1 - Math.cbrt(1 - k * (t / PULL_MEET))) / (1 - DRAWN_FROM);
+    const y = (t - PULL_MEET) / (1 - PULL_MEET);
+    return 1 + give * Math.exp(-4.5 * y) * Math.sin(10 * y) * (1 - y);
+  };
 }
 
 function pushed(u: number): number {

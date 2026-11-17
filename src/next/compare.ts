@@ -127,7 +127,7 @@ app.innerHTML = `
         <div id="old"></div>
       </figure>
       <figure>
-        <figcaption>검토할 방식 <small>뻣뻣하게 버티다가 한순간에 건너가고, 튕겨서 자리 잡음</small>
+        <figcaption>검토할 방식 <small>가까이 있던 둘이 제자리에서 돌아서며 끌려 붙음, 받는 전자쌍은 늘어나지 않음</small>
           <span class="seg" role="group" aria-label="전하 색">전하 색
             <button data-palette="red-positive" aria-pressed="true">빨강이 +</button><button data-palette="red-negative" aria-pressed="false">빨강이 −</button>
           </span></figcaption>
@@ -151,17 +151,18 @@ const $ = <T extends HTMLElement = HTMLElement>(s: string) => app.querySelector(
 const oldStage = new Stage($('#old'));
 const newStage = new Stage($('#new'));
 const leftSel = $<HTMLSelectElement>('#left');
-// Left: the state just before the change under review (the first reach, soft), or an older way.
+// Left: the state just before the change under review (stiff hand-over; molecules flown to each other), or an older way.
 const setLeft = (v: string) => {
   const which = v === 'lines' || v === 'pairs' ? v : 'prev';
   oldStage.style = which === 'lines' ? 'lines' : 'pairs';
-  oldStage.look = which === 'prev' ? 'reach' : 'color';
+  oldStage.look = which === 'prev' ? 'snap' : 'color';
   leftSel.value = which;
 };
 setLeft(new URLSearchParams(location.search).get('left') ?? 'prev');
-// Right: under review. The hand-over stiff and springy: the bond hardly gives, the atom is across all but at once.
+// Right: under review. Two that react start near each other, turn where they are and are drawn
+// together (nothing flies across or goes round); the pair that takes an atom does not stretch.
 newStage.style = 'pairs';
-newStage.look = 'snap';
+newStage.look = 'meet';
 
 // Which colour means which charge. The choice is kept for the next visit.
 const keyBox = $('.key');

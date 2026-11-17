@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../src/engine/compile';
-import { REACH, REACH_STIFF, SNATCH, reachAt, reachPairs, snatchAt, snatchPairs, trackAt, type StepAnim } from '../../src/engine/timeline';
+import { REACH, REACH_FIRM, REACH_STIFF, SNATCH, reachAt, reachPairs, snatchAt, snatchPairs, trackAt, type StepAnim } from '../../src/engine/timeline';
 import { component, neighbors } from '../../src/engine/world';
 import { element } from '../../src/chem/elements';
 import { CHAPTERS } from '../../src/tutorial/chapters';
@@ -434,5 +434,186 @@ describe('motion by stiff reach', () => {
       const kick = Math.max(...Array.from({ length: 30 }, (_, i) => dist(pos(s, h.from, at(REACH_STIFF.snap) + (i + 1) * 0.004), from0)));
       expect(kick, `${id} recoil`).toBeGreaterThan(1.5);
     }
+  });
+});
+
+describe('the firm reach', () => {
+  it('the pair that takes the atom leans out a little and no more, and the atom hardly rings on it', () => {
+    const before = (k: typeof REACH_FIRM) => reachPairs(k.snap - 1e-6, k).take;
+    expect(before(REACH_FIRM)).toBeLessThan(0.25);
+    expect(before(REACH_STIFF)).toBeGreaterThan(0.6);
+    expect(reachPairs(REACH_FIRM.hit, REACH_FIRM).take).toBeCloseTo(1, 6);
+    const ring = (k: typeof REACH_FIRM) => Math.max(...Array.from({ length: 200 }, (_, i) => Math.abs(reachAt(k.hit + (1 - k.hit) * (i / 200), k) - 1)));
+    expect(ring(REACH_FIRM)).toBeLessThan(0.08);
+    expect(ring(REACH_FIRM)).toBeGreaterThan(0.02);
+    expect(ring(REACH_STIFF)).toBeGreaterThan(0.15);
+    // The rest is as stiff: the bond hardly gives, and the atom is across as fast.
+    expect(REACH_FIRM.tug).toBe(REACH_STIFF.tug);
+    expect(REACH_FIRM.hit - REACH_FIRM.snap).toBe(REACH_STIFF.hit - REACH_STIFF.snap);
+  });
+});
+
+describe('motion by encounter', () => {
+  const made = new Map<string, ReturnType<typeof stiff>>();
+  const meet = (id: string) => {
+    if (!made.has(id)) made.set(id, compile(scene(id), { tight: true, tangible: true, reach: 'firm', encounter: true }).timeline!);
+    return made.get(id)!;
+  };
+  const far = new Map<string, ReturnType<typeof stiff>>();
+  const was = (id: string) => {
+    if (!far.has(id)) far.set(id, stiff(id));
+    return far.get(id)!;
+  };
+  const mid = (s: StepAnim, ids: string[], t: number): Vec => {
+    const ps = ids.map((id) => pos(s, id, t));
+    return { x: ps.reduce((sum, p) => sum + p.x, 0) / ps.length, y: ps.reduce((sum, p) => sum + p.y, 0) / ps.length };
+  };
+  const way = (s: StepAnim, ids: string[]): number => {
+    let sum = 0;
+    for (let i = 1; i <= 200; i++) sum += dist(mid(s, ids, (i - 1) / 200), mid(s, ids, i / 200));
+    return sum;
+  };
+  const first = (id: string, tl = meet(id)) => tl.steps.find((x) => x.pulls?.length && !x.phase)!;
+  const pair = (s: StepAnim) => [component(s.before, s.pulls![0].a), component(s.before, s.pulls![0].b)] as const;
+  const together = ['acid-hcl', 'base-nh3', 'neutralization', 'substitution', 'addition', 'condensation', 'redox', 'radical'];
+
+  it('ends every step in the world it says it ends in, with bonds kept at length', { timeout: 120000 }, () => {
+    for (const id of scenes) {
+      for (const s of meet(id).steps) {
+        for (const [aid, at] of s.after.atoms) expect(dist(pos(s, aid, 1), at), `${id} step ${s.index + 1} ${aid}`).toBeLessThan(0.6);
+        const kept = [...s.before.bonds.values()].filter((bd) => s.after.bonds.has(bd.a < bd.b ? `${bd.a}|${bd.b}` : `${bd.b}|${bd.a}`));
+        for (let i = 0; i <= 50; i++) for (const bd of kept) {
+          const A = s.before.atoms.get(bd.a)!;
+          const B = s.before.atoms.get(bd.b)!;
+          if (A.crowd || !s.after.atoms.has(bd.a) || !s.after.atoms.has(bd.b)) continue;
+          const d0 = dist(A, B);
+          const d1 = dist(s.after.atoms.get(bd.a)!, s.after.atoms.get(bd.b)!);
+          const d = dist(pos(s, bd.a, i / 50), pos(s, bd.b, i / 50));
+          expect(d, `${id} step ${s.index + 1} ${bd.a}-${bd.b} at ${i / 50}`).toBeGreaterThan(Math.min(d0, d1) - 1.5);
+          expect(d, `${id} step ${s.index + 1} ${bd.a}-${bd.b} at ${i / 50}`).toBeLessThan(Math.max(d0, d1) + 1.5);
+        }
+      }
+    }
+  });
+
+  it('two that are going to react start near each other: neither flies across the stage', { timeout: 120000 }, () => {
+    for (const id of together) {
+      const s = first(id);
+      const s0 = first(id, was(id));
+      const [A, B] = pair(s);
+      const now = way(s, A) + way(s, B);
+      const then = way(s0, A) + way(s0, B);
+      expect(now, `${id} way`).toBeLessThan(240);
+      expect(now, `${id} way, against before`).toBeLessThan(0.75 * then);
+      for (const g of [A, B]) expect(way(s, g), `${id} each`).toBeLessThan(130);
+    }
+    // What it was before: hundreds of px, and in the condensation a way round the other molecule.
+    expect(way(first('neutralization', was('neutralization')), pair(first('neutralization'))[0])).toBeGreaterThan(200);
+    expect(way(first('condensation', was('condensation')), pair(first('condensation'))[0])).toBeGreaterThan(1000);
+  });
+
+  it('neither goes round the other: each stays on its side, and its way is as good as straight', { timeout: 120000 }, () => {
+    for (const id of [...together, 'coordination']) {
+      const s = first(id);
+      for (const pl of s.pulls!) {
+        const A = component(s.before, pl.a), B = component(s.before, pl.b);
+        const angle = (t: number) => {
+          const a = mid(s, A, t), b = mid(s, B, t);
+          return Math.atan2(a.y - b.y, a.x - b.x);
+        };
+        for (let i = 0; i <= 100; i++) {
+          let d = Math.abs(angle(i / 100) - angle(0));
+          if (d > Math.PI) d = 2 * Math.PI - d;
+          expect(d * 180 / Math.PI, `${id} ${pl.a} at ${i / 100}`).toBeLessThan(15);
+        }
+        // (The milling about adds a little to the way.)
+        for (const g of [A, B]) expect(way(s, g), `${id} ${g[0]}`).toBeLessThan(1.3 * dist(mid(s, g, 0), mid(s, g, 1)) + 22);
+      }
+    }
+  });
+
+  it('they turn to face each other first, then close faster and faster until they touch', () => {
+    for (const id of together) {
+      const s = first(id);
+      const [A, B] = pair(s);
+      const d = (t: number) => dist(mid(s, A, t), mid(s, B, t));
+      const closed = d(0) - d(0.8);
+      expect(closed, `${id} closed`).toBeGreaterThan(15);
+      // (Little in the first half: a little more or less with the milling about.)
+      expect(d(0) - d(0.4), `${id} first half`).toBeLessThan(0.45 * closed);
+      expect(d(0.7) - d(0.8), `${id} last stretch`).toBeGreaterThan(0.25 * closed);
+      // Turned by the time the last stretch begins (two atoms of the molecule lie as they will at the end).
+      for (const g of [A, B]) {
+        if (g.length < 2) continue;
+        const lie = (t: number) => {
+          const p = pos(s, g[0], t), q = pos(s, g[1], t);
+          return Math.atan2(q.y - p.y, q.x - p.x);
+        };
+        let left = Math.abs(lie(0.6) - lie(1));
+        if (left > Math.PI) left = 2 * Math.PI - left;
+        // (But for the wobble it has until the two touch.)
+        expect(left * 180 / Math.PI, `${id} ${g[0]} still to turn at 0.6`).toBeLessThan(8);
+      }
+    }
+  });
+
+  it('a molecule that could have started any way round has at most a sixth of a turn to make', () => {
+    for (const id of ['acid-hcl', 'base-nh3', 'neutralization', 'substitution', 'coordination']) {
+      const s = first(id);
+      for (const pl of s.pulls!) for (const g of [component(s.before, pl.a), component(s.before, pl.b)]) {
+        if (g.length < 2) continue;
+        const p0 = s.before.atoms.get(g[0])!, q0 = s.before.atoms.get(g[1])!;
+        const p1 = s.after.atoms.get(g[0])!, q1 = s.after.atoms.get(g[1])!;
+        let turn = Math.abs(Math.atan2(q1.y - p1.y, q1.x - p1.x) - Math.atan2(q0.y - p0.y, q0.x - p0.x));
+        if (turn > Math.PI) turn = 2 * Math.PI - turn;
+        expect(turn * 180 / Math.PI, `${id} ${g[0]}`).toBeLessThan(70);
+      }
+    }
+  });
+
+  it('nothing is run into on the way', { timeout: 120000 }, () => {
+    for (const id of [...together, 'coordination']) {
+      for (const s of meet(id).steps) {
+        if (!s.pulls?.length || s.phase) continue;
+        const named = [...s.before.atoms.values()].filter((a) => !a.crowd && !a.gone);
+        const group = new Map(named.map((a) => [a.id, component(s.before, a.id).sort()[0]]));
+        for (let i = 0; i <= 120; i++) for (let p = 0; p < named.length; p++) for (let q = p + 1; q < named.length; q++) {
+          const a = named[p], b = named[q];
+          if (group.get(a.id) === group.get(b.id)) continue;
+          const least = element(a.el).r + element(b.el).r - 1;
+          expect(dist(pos(s, a.id, i / 120), pos(s, b.id, i / 120)), `${id} step ${s.index + 1} ${a.id}-${b.id} at ${i / 120}`).toBeGreaterThan(least);
+        }
+      }
+    }
+  });
+
+  it('the water that splits a bond comes straight in from where it is', () => {
+    const s = meet('condensation').steps.find((x) => /가수분해/.test(x.text))!;
+    const s0 = was('condensation').steps.find((x) => /가수분해/.test(x.text))!;
+    const water = (st: StepAnim) => {
+      const o = st.shifts![0].src.a;
+      return component(st.before, o);
+    };
+    const w = water(s);
+    const end = 0.36;
+    let sum = 0;
+    for (let i = 1; i <= 100; i++) sum += dist(mid(s, w, end * (i - 1) / 100), mid(s, w, end * i / 100));
+    const net = dist(mid(s, w, 0), mid(s, w, end));
+    expect(net).toBeGreaterThan(10);
+    expect(net).toBeLessThan(100);
+    expect(sum).toBeLessThan(1.3 * net + 16);
+    // Before: it went a longer way than it had come nearer.
+    const w0 = water(s0);
+    let sum0 = 0;
+    for (let i = 1; i <= 100; i++) sum0 += dist(mid(s0, w0, end * (i - 1) / 100), mid(s0, w0, end * i / 100));
+    expect(sum0).toBeGreaterThan(sum);
+  });
+
+  it('leaves the motion without it as it was', () => {
+    const a = stiff('acid-hcl').steps[0];
+    const b = compile(scene('acid-hcl'), { tight: true, tangible: true, reach: 'stiff', encounter: false }).timeline!.steps[0];
+    for (const [id, tr] of a.tracks) expect(b.tracks.get(id)).toEqual(tr);
+    expect(dist(a.before.atoms.get('a.H')!, a.before.atoms.get('w.O')!)).toBeGreaterThan(250);
+    expect(dist(first('acid-hcl').before.atoms.get('a.H')!, first('acid-hcl').before.atoms.get('w.O')!)).toBeLessThan(160);
   });
 });

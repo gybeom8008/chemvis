@@ -127,7 +127,7 @@ app.innerHTML = `
         <div id="old"></div>
       </figure>
       <figure>
-        <figcaption>검토할 방식 <small>가까이 있던 둘이 제자리에서 돌아서며 끌려 붙음, 받는 전자쌍은 늘어나지 않음</small>
+        <figcaption>검토할 방식 <small>모든 반응이 한 사건: 버티다가 한순간에 전자·원자·전하·열이 함께 바뀜</small>
           <span class="seg" role="group" aria-label="전하 색">전하 색
             <button data-palette="red-positive" aria-pressed="true">빨강이 +</button><button data-palette="red-negative" aria-pressed="false">빨강이 −</button>
           </span></figcaption>
@@ -155,14 +155,14 @@ const leftSel = $<HTMLSelectElement>('#left');
 const setLeft = (v: string) => {
   const which = v === 'lines' || v === 'pairs' ? v : 'prev';
   oldStage.style = which === 'lines' ? 'lines' : 'pairs';
-  oldStage.look = which === 'prev' ? 'snap' : 'color';
+  oldStage.look = which === 'prev' ? 'meet' : 'color';
   leftSel.value = which;
 };
 setLeft(new URLSearchParams(location.search).get('left') ?? 'prev');
 // Right: under review. Two that react start near each other, turn where they are and are drawn
 // together (nothing flies across or goes round); the pair that takes an atom does not stretch.
 newStage.style = 'pairs';
-newStage.look = 'meet';
+newStage.look = 'force';
 
 // Which colour means which charge. The choice is kept for the next visit.
 const keyBox = $('.key');

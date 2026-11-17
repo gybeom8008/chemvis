@@ -33,10 +33,22 @@ export function trackAt(kf: Keyframe[], t: number): Vec {
   return last;
 }
 
+/**
+ * A single electron that goes from one atom to another, over its turn (0..1). Plainly it glides.
+ * `instant` (CompileOptions.instant): it stays where it is for most of its turn and is then across
+ * in a few frames, like everything else that changes hands.
+ */
+export const HOP_WAIT = 0.86;
+export function hopFlight(x: number, instant = false): number {
+  const u = clamp(x, 0, 1);
+  if (!instant) return smooth(u);
+  return u <= HOP_WAIT ? 0 : 1 - Math.pow(1 - (u - HOP_WAIT) / (1 - HOP_WAIT), 2.5);
+}
+
 /** pairs 렌더러가 같은 원자에서 출발하는 홑전자를 차례로 보내는 진행률이다. */
-export function hopProgress(phase: { b0: number; b1: number }, index: number, count: number, t: number): number {
+export function hopProgress(phase: { b0: number; b1: number }, index: number, count: number, t: number, instant = false): number {
   const fraction = clamp((t - phase.b0) / Math.max(1e-9, phase.b1 - phase.b0), 0, 1);
-  return smooth(clamp((fraction * count - index) / 0.8, 0, 1));
+  return hopFlight((fraction * count - index) / 0.8, instant);
 }
 
 /**
@@ -282,6 +294,14 @@ export interface StepAnim {
   handed?: { id: string; from: string; to: string; t0: number; t1: number; reach?: ReachKind }[];
   /** The moment (step time) at which the reaction happens: the new bond closes, the two ions touch. */
   strike?: number;
+  /**
+   * Every change of bonds in this step is one event (CompileOptions.instant): what will change is
+   * under strain until the instant, and then pairs, atoms, charge and heat all change at once, by
+   * this profile (reachOf). Every pair of the step keeps this one clock.
+   */
+  instant?: ReachKind;
+  /** When the step has several such instants (single electrons that leap one after another): each of them. */
+  strikes?: number[];
   /** Heat given off (negative) or taken in (positive) at `strike`, in kJ per mole of this reaction. */
   heat?: number;
 }

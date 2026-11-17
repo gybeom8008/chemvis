@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from '../../src/engine/compile';
-import { REACH, REACH_FIRM, REACH_STIFF, SNATCH, reachAt, reachPairs, snatchAt, snatchPairs, trackAt, type StepAnim } from '../../src/engine/timeline';
+import { HOP_WAIT, REACH, REACH_FIRM, REACH_STIFF, SNATCH, hopFlight, reachAt, reachPairs, snatchAt, snatchPairs, trackAt, type StepAnim } from '../../src/engine/timeline';
 import { component, neighbors } from '../../src/engine/world';
 import { element } from '../../src/chem/elements';
 import { CHAPTERS } from '../../src/tutorial/chapters';
@@ -615,5 +615,111 @@ describe('motion by encounter', () => {
     for (const [id, tr] of a.tracks) expect(b.tracks.get(id)).toEqual(tr);
     expect(dist(a.before.atoms.get('a.H')!, a.before.atoms.get('w.O')!)).toBeGreaterThan(250);
     expect(dist(first('acid-hcl').before.atoms.get('a.H')!, first('acid-hcl').before.atoms.get('w.O')!)).toBeLessThan(160);
+  });
+});
+
+describe('one event (instant)', () => {
+  const made = new Map<string, ReturnType<typeof stiff>>();
+  const force = (id: string) => {
+    if (!made.has(id)) made.set(id, compile(scene(id), { tight: true, tangible: true, reach: 'firm', encounter: true, instant: true }).timeline!);
+    return made.get(id)!;
+  };
+  const K = REACH_FIRM;
+  const snapAt = (s: StepAnim) => s.phase!.b0 + (s.phase!.b1 - s.phase!.b0) * K.snap;
+  const hitAt = (s: StepAnim) => s.phase!.b0 + (s.phase!.b1 - s.phase!.b0) * K.hit;
+
+  it('ends every step in the world it says it ends in, with bonds kept at length', { timeout: 120000 }, () => {
+    for (const id of scenes) {
+      for (const s of force(id).steps) {
+        for (const [aid, at] of s.after.atoms) expect(dist(pos(s, aid, 1), at), `${id} step ${s.index + 1} ${aid}`).toBeLessThan(0.6);
+        const kept = [...s.before.bonds.values()].filter((bd) => s.after.bonds.get(bd.a < bd.b ? `${bd.a}|${bd.b}` : `${bd.b}|${bd.a}`)?.order === bd.order);
+        for (let i = 0; i <= 50; i++) for (const bd of kept) {
+          const A = s.before.atoms.get(bd.a)!;
+          const B = s.before.atoms.get(bd.b)!;
+          if (A.crowd || !s.after.atoms.has(bd.a) || !s.after.atoms.has(bd.b)) continue;
+          const d0 = dist(A, B);
+          const d1 = dist(s.after.atoms.get(bd.a)!, s.after.atoms.get(bd.b)!);
+          const d = dist(pos(s, bd.a, i / 50), pos(s, bd.b, i / 50));
+          expect(d, `${id} step ${s.index + 1} ${bd.a}-${bd.b} at ${i / 50}`).toBeGreaterThan(Math.min(d0, d1) - 2.5);
+          expect(d, `${id} step ${s.index + 1} ${bd.a}-${bd.b} at ${i / 50}`).toBeLessThan(Math.max(d0, d1) + 2.5);
+        }
+      }
+    }
+  });
+
+  it('every step in which bonds change has its instant, and the heat comes in it', { timeout: 120000 }, () => {
+    for (const id of scenes) {
+      for (const s of force(id).steps) {
+        if (!s.phase) continue;
+        expect(s.instant, `${id} step ${s.index + 1}`).toBe('firm');
+        expect(s.strike, `${id} step ${s.index + 1}`).toBeGreaterThanOrEqual(s.phase.b0);
+        expect(s.strike!).toBeLessThanOrEqual(Math.max(s.phase.b1, s.phase.c1 ?? 1));
+      }
+    }
+  });
+
+  it('a group that takes the place of another: the new bond closes in the instant, and the one let go is thrown off in it', () => {
+    const s = force('substitution').steps.find((x) => x.phase)!;
+    expect(s.strike).toBeCloseTo(hitAt(s), 6);
+    const d = (t: number) => dist(pos(s, 'n.N', t), pos(s, 'm.C', t));
+    const end = dist(s.after.atoms.get('n.N')!, s.after.atoms.get('m.C')!);
+    const gap = d(s.phase!.b0) - end;
+    expect(gap).toBeGreaterThan(4);
+    // Held until the snap (a little give), then closed within the crossing, in under two frames.
+    expect(d(snapAt(s)) - end).toBeGreaterThan(0.75 * gap);
+    expect(Math.abs(d(hitAt(s)) - end)).toBeLessThan(0.12 * gap + 0.5);
+    expect((hitAt(s) - snapAt(s)) * s.duration).toBeLessThan(2 / 60);
+    // Br: where it was until the instant, well away soon after (fastest at the start).
+    const br = (t: number) => dist(pos(s, 'm.Br', t), pos(s, 'm.Br', snapAt(s)));
+    expect(dist(pos(s, 'm.Br', snapAt(s)), pos(s, 'm.Br', s.phase!.b0))).toBeLessThan(3);
+    expect(br(hitAt(s) + 0.08)).toBeGreaterThan(8);
+    expect(br(hitAt(s) + 0.08)).toBeGreaterThan(br(1) * 0.3);
+  });
+
+  it('a bond that changes its order has its new length in the instant', () => {
+    const s = force('addition').steps.find((x) => x.phase)!;
+    const d = (t: number) => dist(pos(s, 'e.C1', t), pos(s, 'e.C2', t));
+    const d0 = dist(s.before.atoms.get('e.C1')!, s.before.atoms.get('e.C2')!);
+    const d1 = dist(s.after.atoms.get('e.C1')!, s.after.atoms.get('e.C2')!);
+    expect(Math.abs(d1 - d0)).toBeGreaterThan(1);
+    expect(Math.abs(d(snapAt(s)) - d0)).toBeLessThan(0.25 * Math.abs(d1 - d0) + 0.3);
+    expect(Math.abs(d(hitAt(s)) - d1)).toBeLessThan(0.15 * Math.abs(d1 - d0) + 0.3);
+  });
+
+  it('a net reaction is one event: both exchanges in the same instant, and the water is thrown off at once', () => {
+    const tl = force('condensation');
+    const s = tl.steps.find((x) => x.shifts?.length === 4)!;
+    expect(s.strike).toBeCloseTo(hitAt(s), 6);
+    for (const h of s.handed ?? []) {
+      expect(h.t0).toBeCloseTo(s.phase!.b0, 6);
+      expect(h.t1).toBeCloseTo(s.phase!.b1, 6);
+    }
+    const o = s.shifts![1].dst.a;
+    const moved = (t: number) => dist(pos(s, o, t), pos(s, o, hitAt(s)));
+    expect(moved(hitAt(s) + 0.1)).toBeGreaterThan(8);
+    expect((hitAt(s) - snapAt(s)) * s.duration).toBeLessThan(2 / 60);
+  });
+
+  it('single electrons leap, each in a few frames, and each landing is an instant of the heat', () => {
+    expect(hopFlight(HOP_WAIT, true)).toBe(0);
+    expect(hopFlight(HOP_WAIT + 0.5 * (1 - HOP_WAIT), true)).toBeGreaterThan(0.8);
+    expect(hopFlight(1, true)).toBe(1);
+    expect(hopFlight(0.5)).toBeCloseTo(0.5, 6);
+    const s = force('redox').steps.find((x) => x.phase && x.energy)!;
+    expect(s.strikes?.length).toBe(2);
+    expect(s.strikes![0]).toBeLessThan(s.strikes![1]);
+    for (const at of s.strikes!) {
+      expect(at).toBeGreaterThan(s.phase!.b0);
+      expect(at).toBeLessThanOrEqual(s.phase!.b1 + 1e-9);
+    }
+    // The leap itself: a seventh of each electron's turn.
+    const turn = (s.phase!.b1 - s.phase!.b0) * 0.8 / 2 * s.duration;
+    expect(turn * (1 - HOP_WAIT)).toBeLessThan(0.09);
+  });
+
+  it('leaves the motion without it as it was', () => {
+    const a = compile(scene('substitution'), { tight: true, tangible: true, reach: 'firm', encounter: true }).timeline!.steps.find((x) => x.phase)!;
+    expect(a.instant).toBeUndefined();
+    expect(a.strikes).toBeUndefined();
   });
 });

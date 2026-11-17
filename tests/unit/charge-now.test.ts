@@ -26,12 +26,12 @@ const scene = (id: string) => CHAPTERS.find((c) => c.id === id)!.script;
 // Scenes whose electrons move as pairs that stay on atoms (single electrons in flight are not on any atom).
 const scenes = ['acid-hcl', 'base-nh3', 'neutralization', 'substitution', 'addition', 'condensation', 'coordination'];
 
-for (const look of ['cause', 'tangible', 'reach', 'snap', 'meet'] as const) {
+for (const look of ['cause', 'tangible', 'reach', 'snap', 'meet', 'force'] as const) {
   describe(`charge that follows the electrons (${look})`, () => {
     it('adds up to the same at every moment of a step', { timeout: 120000 }, () => {
       const worst: string[] = [];
       for (const id of scenes) {
-        const tl = compile(scene(id), { tight: true, tangible: look !== 'cause', reach: look === 'meet' ? 'firm' : look === 'snap' ? 'stiff' : look === 'reach', encounter: look === 'meet' }).timeline!;
+        const tl = compile(scene(id), { tight: true, tangible: look !== 'cause', reach: look === 'meet' || look === 'force' ? 'firm' : look === 'snap' ? 'stiff' : look === 'reach', encounter: look === 'meet' || look === 'force', instant: look === 'force' }).timeline!;
         const view = new StageView(fakeSvg());
         view.setTimeline(tl);
         tl.steps.forEach((s, k) => {

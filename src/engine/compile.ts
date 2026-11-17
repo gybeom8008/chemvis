@@ -269,6 +269,15 @@ export interface CompileOptions {
    *    straight way in (hydrolysis).
    */
   encounter?: boolean;
+  /**
+   * With `encounter`: one law for every change of bonds, whatever the reaction (an atom handed
+   * over, a group that takes another's place, a bond that changes its order, a net reaction, a
+   * single electron that leaps). Nothing is given or carried: what will change is under strain
+   * and holds, stiffly, and in one instant everything the event consists of happens together:
+   * the pairs change hands, the atoms are at their new distance (they clack together, and ring a
+   * little), what is let go is thrown off, the charge changes and the heat flashes (StepAnim.instant).
+   */
+  instant?: boolean;
 }
 
 export function compile(src: string, opts: CompileOptions = {}): CompileResult {
@@ -303,6 +312,7 @@ function compileScene(src: string, opts: CompileOptions, selectionPass: boolean,
   ctx.tangible = !!opts.tight && !!opts.tangible && !selectionPass;
   ctx.reach = !ctx.tangible || !opts.reach ? false : opts.reach === 'stiff' || opts.reach === 'firm' ? opts.reach : 'soft';
   ctx.encounter = !!ctx.reach && !!opts.encounter;
+  ctx.instant = ctx.encounter && !!opts.instant;
   ctx.selectionPass = selectionPass;
   ctx.reference = reference;
   ctx.errors.push(...ast.errors);
@@ -482,6 +492,8 @@ class Ctx {
   get stiff(): boolean { return this.reach === 'stiff' || this.reach === 'firm'; }
   /** See CompileOptions.encounter. */
   encounter = false;
+  /** See CompileOptions.instant. */
+  instant = false;
   /**
    * How a move covers its way in time. Without `tangible` every move starts and stops gently.
    * With it the way is covered as the force behind the move would have it (see Feel).
@@ -1660,7 +1672,7 @@ class Ctx {
     // and no pair has to reach over it.
     const snatch = this.tangible && T.el === 'H' && tn.length === 1 && (M.lp > 0 || M.rad > 0);
     // (With `reach` a little nearer: the taker's pair has to reach the H across what is left.)
-    const gap = snatch ? bondLength(M.el, T.el, 1) * (this.reach ? 1.5 : 1.7) : element(T.el).r + element(M.el).r + (this.tight ? 15 : 58);
+    const gap = snatch ? bondLength(M.el, T.el, 1) * (this.reach ? 1.5 : 1.7) : this.contact(M.el, T.el, element(T.el).r + element(M.el).r + (this.tight ? 15 : 58));
     const mn = neighbors(this.w, mover).map((n) => this.w.atoms.get(n.id)!);
     const pivot = { x: M.x, y: M.y };
     // Where the mover ends up when it comes in from `d`, and how far it turns: its unpaired
@@ -2156,7 +2168,7 @@ class Ctx {
       const slotN = (n: { id: string }) => alpha + (n.id === hydrogen ? m * Math.PI / 2 : A(n.id).el === 'H' ? -m * Math.PI / 2 : Math.PI);
       turn(ops2, nitrogen, ids2, lead(nitrogen, slotN));
       for (const n of neighbors(this.w, nitrogen)) turnTo(ops2, nitrogen, n.id, slotN(n), false);
-      const to = add(A(carbon), fromAngle(alpha + Math.PI, bondLength(A(carbon).el, A(nitrogen).el, 1)));
+      const to = add(A(carbon), fromAngle(alpha + Math.PI, this.contact(A(carbon).el, A(nitrogen).el, bondLength(A(carbon).el, A(nitrogen).el, 1))));
       const by = sub(to, A(nitrogen));
       for (const id of ids2) shift(A(id), by);
       const V = sub(centroid(ids2.map(A)), centroid(ids1.map(A)));
@@ -3759,12 +3771,12 @@ class Ctx {
           let lo = phase.b0, hi = phase.b1;
           for (let i = 0; i < 50; i++) {
             const mid = (lo + hi) / 2;
-            if (hopProgress(phase, 0, count, mid) <= 0.02) lo = mid;
+            if (hopProgress(phase, 0, count, mid, this.instant) <= 0.02) lo = mid;
             else hi = mid;
           }
           const samples = [...new Set([lo, phase.b0, phase.b1, 0.90, ...Array.from({ length: 401 }, (_, i) => i / 400)])].sort((a, b) => a - b);
           for (const t of samples) {
-            const gone = hops.reduce((sum, _, j) => sum + clamp((hopProgress(phase, j, count, t) - 0.02) / 0.98, 0, 1), 0) / count;
+            const gone = hops.reduce((sum, _, j) => sum + clamp((hopProgress(phase, j, count, t, this.instant) - 0.02) / 0.98, 0, 1), 0) / count;
             const drift = gentle(clamp((t - phase.b1) / Math.max(1e-9, 0.90 - phase.b1), 0, 1));
             const fraction = (4 / Math.max(4, dist(start, goal))) * gone;
             tr.push({ t, ...lerpV(start, goal, fraction + (1 - fraction) * drift) });
@@ -4064,7 +4076,7 @@ class Ctx {
     const Bpos = this.w.atoms.get(B)!;
     const mol = component(this.w, A).map((id) => this.w.atoms.get(id)!);
     const angs = neighbors(this.w, A).map((n) => angleOf(sub(this.w.atoms.get(n.id)!, Aat))).sort((p, q) => p - q);
-    const reach = element(Aat.el).r + element('O').r + 15;
+    const reach = this.contact(Aat.el, 'O', element(Aat.el).r + element('O').r + 15);
     // (The same place as `hydrolysis` chooses.)
     let spot: Vec = add(Aat, scale(norm(sub(Aat, centroid(mol))), reach));
     let bestScore = -Infinity;
@@ -4135,7 +4147,7 @@ class Ctx {
       const angs = neighbors(this.w, A)
         .map((n) => angleOf(sub(this.w.atoms.get(n.id)!, Aat)))
         .sort((p, q) => p - q);
-      const reach = element(Aat.el).r + element('O').r + 15;
+      const reach = this.contact(Aat.el, 'O', element(Aat.el).r + element('O').r + 15);
       let spot: Vec = add(Aat, scale(norm(sub(Aat, centroid(mol))), reach));
       let bestScore = -Infinity;
       angs.forEach((a0, i) => {
@@ -4525,7 +4537,41 @@ class Ctx {
   // ------------------------------------------------------------ end of step
 
   /** 남아 있는 결합으로 연결된 조각을 보존하고 새 결합점만 맞춘다. */
+  /**
+   * How near two atoms that are about to bond come before they do. Plainly: as near as `plain`.
+   * One event (CompileOptions.instant): they stop further off, at 1.4 bond lengths, where each
+   * holds against the pull; the bond then closes that gap in the instant, as a magnet takes a piece of iron.
+   */
+  contact(a: string, b: string, plain: number): number {
+    if (!this.instant || METALS.has(a) || METALS.has(b)) return plain;
+    return Math.max(plain, bondLength(a, b, 1) * 1.4);
+  }
+
   tightLayout(before: World): void {
+    // One event: a bond whose order has changed has the length of its new order (a double bond is
+    // shorter than a single one), so that the two atoms spring to it in the instant. The lighter side moves more.
+    if (this.instant) for (const [k, b] of this.w.bonds) {
+      const was = before.bonds.get(k);
+      if (!was || was.order === b.order) continue;
+      const P = this.w.atoms.get(b.a)!, Q = this.w.atoms.get(b.b)!;
+      const d = dist(P, Q);
+      const by = bondLength(P.el, Q.el, b.order) - d;
+      if (Math.abs(by) < 0.5 || d < 1) continue;
+      const side = (from: string, block: string): string[] | null => {
+        const got = new Set([from]);
+        const queue = [from];
+        for (const id of queue) for (const n of neighbors(this.w, id)) {
+          if (n.id === block) { if (id !== from) return null; continue; }
+          if (before.atoms.has(n.id) && !got.has(n.id) && !!getBond(before, id, n.id)) { got.add(n.id); queue.push(n.id); }
+        }
+        return [...got];
+      };
+      const sp = side(b.a, b.b), sq = side(b.b, b.a);
+      if (!sp || !sq) continue;
+      const u = norm(sub(Q, P));
+      for (const id of sp) shift(this.w.atoms.get(id)!, scale(u, -by * sq.length / (sp.length + sq.length)));
+      for (const id of sq) shift(this.w.atoms.get(id)!, scale(u, by * sp.length / (sp.length + sq.length)));
+    }
     const retained = cloneWorld(this.w);
     for (const key of retained.bonds.keys()) if (!before.bonds.has(key)) retained.bonds.delete(key);
     const groups = allComponents(retained);
@@ -4568,8 +4614,14 @@ class Ctx {
       if (!original || !received) continue;
       const O = this.w.atoms.get(oxygen)!;
       const angle = angleOf(sub(this.w.atoms.get(received.id)!, O));
-      const targetAngle = angle - 104.5 * Math.PI / 180;
       const H = this.w.atoms.get(original.id)!;
+      // (One event: the water has its shape at once, so its other H goes to the side where there is room for it.)
+      const room = (a: number) => {
+        const p = add(O, fromAngle(a, dist(H, O)));
+        return Math.min(...[...this.w.atoms.values()].filter((x) => !x.crowd && !x.gone && !d.ids.includes(x.id)).map((x) => dist(x, p) - element(x.el).r));
+      };
+      const bend = 104.5 * Math.PI / 180;
+      const targetAngle = this.instant && room(angle + bend) > room(angle - bend) ? angle + bend : angle - bend;
       this.waterTurns.push({ oxygen, hydrogen: H.id, angle: signedAng(angleOf(sub(H, O)), targetAngle) });
       Object.assign(H, add(O, fromAngle(targetAngle, dist(H, O))));
     }
@@ -4590,7 +4642,12 @@ class Ctx {
     }
     // A hand-over by reach is quick: reaching, snapping across and settling take about three
     // quarters of a second, and what it sets off (the ion left behind going its way) follows at once.
-    if (this.reach && A.phase && handed.size && !A.shifts?.length && !this.drift.length) {
+    // One event (CompileOptions.instant): the same for every step in which pairs change hands.
+    const pairs = A.arrows.some((ar) => ar.kind === 'pair' && ar.src && ar.dst) || !!A.shifts?.length
+      || A.arrows.some((ar) => ar.kind === 'single' && ar.src && ar.dst && (ar.src.kind === 'bond' || ar.dst.kind === 'bond'));
+    const event = this.instant && !!A.phase && pairs;
+    if (this.instant && A.phase) A.instant = this.reach || 'firm';
+    if ((this.reach && A.phase && handed.size && !A.shifts?.length && !this.drift.length) || (event && A.phase)) {
       const was = A.phase.b1 - A.phase.b0;
       const now = Math.min(was, 0.27);
       A.phase.b1 = A.phase.b0 + now;
@@ -4600,6 +4657,28 @@ class Ctx {
     }
     const c0 = A.phase?.c0 ?? 0, c1 = A.phase?.c1 ?? 1;
     const prefix = new Map([...A.tracks].map(([id, tr]) => [id, tr.map((k) => ({ ...k }))]));
+    // One event: the atoms of a molecule in which a bond is new, or has changed its order, are at
+    // their new places in the instant (they clack to the new distance and ring a little), by the
+    // clock of the pairs. Not a molecule that has far to go: that one is moved as before.
+    const clack = new Set<string>();
+    if (event) {
+      const done = new Set<string>();
+      for (const [k, b] of this.w.bonds) {
+        if ((before.bonds.get(k)?.order ?? 0) === b.order || done.has(b.a)) continue;
+        const comp = component(this.w, b.a);
+        comp.forEach((x) => done.add(x));
+        const body = comp.filter((x) => before.atoms.has(x) && !handed.has(x) && !this.causalMotion.has(x));
+        if (body.every((x) => dist(start.get(x)!, this.w.atoms.get(x)!) < 30 && !(prefix.get(x) && prefix.get(x)!.at(-1)!.t > A.phase!.b0 + 1e-6))) body.forEach((x) => clack.add(x));
+      }
+    }
+    const clackTrack = (id: string, at: (f: number, t: number) => Vec, end: Vec): void => {
+      const { b0, b1 } = A.phase!;
+      const old = prefix.get(id);
+      const tr: Keyframe[] = old ? old.filter((k) => k.t < b0) : [{ t: 0, x: before.atoms.get(id)!.x, y: before.atoms.get(id)!.y }];
+      for (let i = 0; i <= 400; i++) tr.push({ t: b0 + (b1 - b0) * i / 400, ...at(reachAt(i / 400, this.reachBy), b0 + (b1 - b0) * i / 400) });
+      if (b1 < 1) tr.push({ t: 1, ...end });
+      A.tracks.set(id, tr);
+    };
     for (const [id, at] of this.w.atoms) {
       const b = before.atoms.get(id);
       if (!b || handed.has(id)) continue;
@@ -4608,6 +4687,10 @@ class Ctx {
       const p = start.get(id)!;
       const end = { x: at.x, y: at.y };
       if (!old && dist(b, end) < 1e-9) continue;
+      if (clack.has(id)) {
+        clackTrack(id, (f) => lerpV(p, end, f), end);
+        continue;
+      }
       if (old && old.at(-1)!.t > c0 + 1e-6) {
         // 전체 단계 경로를 유지하면서 끝점 보정도 같은 완만한 시간 곡선으로 더한다.
         const correction = sub(end, old.at(-1)!);
@@ -4632,12 +4715,16 @@ class Ctx {
         if (id === pivot) continue;
         const off = sub(start.get(id)!, start.get(pivot)!);
         const initial = before.atoms.get(id)!;
+        const end = this.w.atoms.get(id)!;
+        if (clack.has(id) && clack.has(pivot)) {
+          clackTrack(id, (f, t) => add(centerAt(t), rotate(off, angle * f)), { x: end.x, y: end.y });
+          continue;
+        }
         const tr = prefix.get(id)?.filter((k) => k.t < c0) ?? [{ t: 0, x: initial.x, y: initial.y }];
         for (let i = 0; i <= 160; i++) {
           const t = c0 + (c1 - c0) * i / 160;
           tr.push({ t, ...add(centerAt(t), rotate(off, angle * gentle(i / 160))) });
         }
-        const end = this.w.atoms.get(id)!;
         tr.push({ t: 1, x: end.x, y: end.y });
         A.tracks.set(id, tr);
       }
@@ -4659,7 +4746,7 @@ class Ctx {
         // pair that lets it go a part of the window (pairs.ts, `span`): the atom keeps that clock.
         let { b0, b1 } = A.phase;
         const shifts = A.shifts ?? [];
-        if (shifts.length === 4) {
+        if (shifts.length === 4 && !event) {
           const taking = shifts.findIndex((sh) => sh.dst.kind === 'bond' && (sh.dst.a === id || sh.dst.b === id));
           const [f0, f1] = taking >= 2 ? [0.3, 1] : taking >= 0 ? [0, 0.62] : [0, 1];
           [b0, b1] = [b0 + (b1 - b0) * f0, b0 + (b1 - b0) * f1];
@@ -4709,15 +4796,25 @@ class Ctx {
       tr.push({ t: 1, x: at.x, y: at.y });
       A.tracks.set(id, tr);
     }
+    // (One event: the other H of the water swings to its place from the instant on, quickly, while the water is already thrown off.)
+    const swinging = new Map<string, { oxygen: string; off: Vec; angle: number }>();
+    const swung = (t: number): number => {
+      const from = A.phase!.b0 + (A.phase!.b1 - A.phase!.b0) * this.reachBy.snap;
+      return 1 - Math.pow(1 - clamp((t - from) / Math.max(1e-9, Math.max(A.phase!.b1, c1) + 0.1 - from), 0, 1), 2);
+    };
     for (const { oxygen, hydrogen, angle } of this.waterTurns) {
       const O = start.get(oxygen)!;
       const off = sub(start.get(hydrogen)!, O);
       const tr: Keyframe[] = [{ t: 0, ...start.get(hydrogen)! }];
-      for (let i = 0; i <= 80; i++) {
-        const t = c0 + (c1 - c0) * i / 80;
+      // (One event: the water has its shape in the instant it is made.)
+      const [w0, w1] = event ? [A.phase!.b0, Math.min(1, Math.max(A.phase!.b1, c1) + 0.1)] : [c0, c1];
+      const n = event ? 400 : 80;
+      for (let i = 0; i <= n; i++) {
+        const t = w0 + (w1 - w0) * i / n;
         const center = A.tracks.has(oxygen) ? trackPos(A.tracks.get(oxygen)!, t) : this.w.atoms.get(oxygen)!;
-        tr.push({ t, ...add(center, rotate(off, angle * gentle(i / 80))) });
+        tr.push({ t, ...add(center, rotate(off, angle * (event ? swung(t) : gentle(i / n)))) });
       }
+      if (event) swinging.set(hydrogen, { oxygen, off, angle });
       A.tracks.set(hydrogen, tr);
     }
     this.waterTurns = [];
@@ -4739,13 +4836,21 @@ class Ctx {
     for (const d of this.drift) {
       const c = centerOf(this.w, d.ids);
       const delta = scale(norm(sub(c, d.from)), 60);
-      const t0 = Math.max(c1, A.phase?.b1 ?? 0);
+      // (One event: what the reaction lets go is thrown off as it happens, not after everything has settled.)
+      const t0 = event ? c0 + 0.015 : Math.max(c1, A.phase?.b1 ?? 0);
+      const formedAt = new Map(d.ids.map((id) => [id, { x: this.w.atoms.get(id)!.x, y: this.w.atoms.get(id)!.y }]));
       for (const id of d.ids) {
         const at = this.w.atoms.get(id)!;
         const formed = { x: at.x, y: at.y };
         const tr = (A.tracks.get(id) ?? [{ t: 0, ...formed }]).filter((k) => k.t < t0);
         const leave = this.tangible ? pushed : gentle;
-        for (let i = 0; i <= 80; i++) tr.push({ t: t0 + (1 - t0) * i / 80, ...add(formed, scale(delta, leave(i / 80))) });
+        const sw = swinging.get(id);
+        const Of = sw ? formedAt.get(sw.oxygen) ?? formed : formed;
+        const n = sw ? 240 : 80;
+        for (let i = 0; i <= n; i++) {
+          const t = t0 + (1 - t0) * i / n;
+          tr.push({ t, ...add(sw ? add(Of, rotate(sw.off, sw.angle * swung(t))) : formed, scale(delta, leave(i / n))) });
+        }
         shift(at, delta);
         A.tracks.set(id, tr);
       }
@@ -4756,6 +4861,22 @@ class Ctx {
     if (!this.mid) A.mid = A.before;
     // The reaction happens when the electrons have arrived, unless something more particular said when.
     // (Single electrons go over one after another: when the last has arrived.)
+    if (this.instant && A.phase) {
+      // Single electrons that leap from one atom to another, one after another: each landing is an instant.
+      const leaps = A.arrows.filter((ar) => ar.kind === 'single' && ar.src && ar.dst && ar.src.kind !== 'bond' && ar.dst.kind === 'atom' && ar.dst.a !== ar.src.a);
+      const per = new Map<string, number>();
+      for (const ar of leaps) per.set(ar.src!.a, (per.get(ar.src!.a) ?? 0) + 1);
+      const seen = new Map<string, number>();
+      const at = leaps.map((ar) => {
+        const i = seen.get(ar.src!.a) ?? 0;
+        seen.set(ar.src!.a, i + 1);
+        return A.phase!.b0 + (A.phase!.b1 - A.phase!.b0) * Math.min(1, (i + 0.8) / per.get(ar.src!.a)!);
+      }).sort((p, q) => p - q);
+      if (at.length) {
+        A.strikes = at;
+        if (A.strike === undefined) A.strike = at[at.length - 1];
+      } else if (event && A.strike === undefined) A.strike = A.phase.b0 + (A.phase.b1 - A.phase.b0) * this.reachBy.hit;
+    }
     if (this.tangible && A.phase && A.strike === undefined) A.strike = A.phase.b0 + (A.phase.b1 - A.phase.b0) * (A.arrows.some((ar) => ar.kind !== 'pair') ? 1 : 0.62);
     if (this.tangible) this.heat(before);
   }

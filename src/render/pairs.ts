@@ -12,7 +12,7 @@
  */
 import { ELECTRONEGATIVITY, METALS as METAL_ELS, element } from '../chem/elements';
 import { electronDomains } from '../chem/geometry';
-import { plateSlot, reachOf, reachPairs, snatchPairs, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
+import { hopFlight, plateSlot, reachOf, reachPairs, snatchPairs, type ArrowAnim, type ElectronEnd, type StepAnim, type Timeline } from '../engine/timeline';
 import { component, formalCharge, type Atom, type World } from '../engine/world';
 import { add, clamp, dist, fromAngle, lerp, lerpV, norm, perp, scale, smooth, sub, type Vec } from '../util/math';
 
@@ -927,7 +927,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
       const slot = plateSlot(el, f.slot);
       const p0 = f.dir === 'toPlate' ? ar.p0 : slot;
       const p1 = f.dir === 'toPlate' ? slot : ar.p1;
-      const u = win.pre ? 0 : win.post ? 1 : smooth(clamp(((win.frac - i / n) * n) / 0.8, 0, 1));
+      const u = win.pre ? 0 : win.post ? 1 : hopFlight(((win.frac - i / n) * n) / 0.8, !!step.instant);
       const gone = u > 0.02;
       const there = u >= 0.999;
       if (!charges.has(f.atom)) charges.set(f.atom, formalCharge(step.before, a0));
@@ -1041,6 +1041,8 @@ export function drawPairs(inp: PairsInput): PairsOutput {
   /** Part of the change window in which a move happens (the whole of it unless said otherwise). */
   const span = new Map<ArrowAnim, [number, number]>();
   const nShift = step?.shifts?.length ?? 0;
+  // One event (StepAnim.instant): every pair of the step holds until the same instant and changes in it.
+  const K = step?.instant ? reachOf(step.instant) : null;
   for (const [i, sh] of (step?.shifts ?? []).entries()) {
     // The source's lone pair is chosen by the direction of p0: toward the atom it will join.
     const other = sh.dst.kind === 'bond' ? (sh.dst.a === sh.src.a ? sh.dst.b! : sh.dst.a) : sh.dst.a;
@@ -1049,7 +1051,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     const ar: ArrowAnim = { kind: 'pair', p0, c: p0, p1: p0, line: 0, src: sh.src, dst: sh.dst };
     // A net reaction's four pairs change as one movement: the second exchange begins while the
     // first is still letting go, so that no piece (an OH, say) is seen cut loose and waiting.
-    if (nShift === 4) span.set(ar, i < 2 ? [0, 0.62] : [0.3, 1]);
+    if (nShift === 4 && !K) span.set(ar, i < 2 ? [0, 0.62] : [0.3, 1]);
     bound.push(ar);
   }
   if (!step || !bound.length || step.events.length) {
@@ -1148,7 +1150,12 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     moves.push({ ar, pair, from, to, side0: nextSide(fromCount, sk), side1: nextSide(toCount, dk) });
   }
 
-  const e = win.during ? win.prog : win.post ? 1 : 0;
+  // (What does not itself move but changes with the event, such as the strands that stay in a bond
+  // whose order changes, changes in the instant too.)
+  const e = win.during ? (K ? reachPairs(win.frac, K).charge : win.prog) : win.post ? 1 : 0;
+  // The pairs an atom keeps make room for what has come or close up after what has gone: set off by
+  // the instant, quickly, but turning (they are pushed round, they do not change places).
+  const eTurn = win.during && K ? 1 - Math.pow(1 - clamp((win.frac - K.snap) / (1 - K.snap), 0, 1), 2.2) : e;
   // Within a move's part of the window, a pouch that takes hold of a new atom goes first and one
   // that lets go of an atom follows, so that in between the atom is held from both sides. An atom
   // that is snatched from one molecule by another (step.handed) is the other way round: it is let
@@ -1173,6 +1180,11 @@ export function drawPairs(inp: PairsInput): PairsOutput {
         const c = reachPairs(lf, reachOf(hk.reach)).charge;
         return { take: c, let: c };
       }
+    }
+    if (K) {
+      // A pair that swings from one partner to another leans toward the new one, then is over in the instant.
+      const r = reachPairs(lf, K);
+      return S.kind === 'bond' && D.kind === 'bond' ? { take: r.take, let: r.take, charge: r.charge } : r;
     }
     return { take: smooth(clamp(lf / 0.62, 0, 1)), let: smooth(clamp((lf - 0.38) / 0.62, 0, 1)) };
   };
@@ -1222,7 +1234,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
     list.forEach((m, i) => {
       const t0 = i / list.length;
       // Each flight ends a little before the next begins: a beat in which the charges can be read.
-      flight.set(m, win.during ? smooth(clamp(((win.frac - t0) * list.length) / 0.8, 0, 1)) : e);
+      flight.set(m, win.during ? hopFlight(((win.frac - t0) * list.length) / 0.8, !!K) : e);
     });
   }
   const left = (m: Move) => (flight.get(m) ?? 0) > 0.02;
@@ -1466,7 +1478,7 @@ export function drawPairs(inp: PairsInput): PairsOutput {
         }
         for (let i = 0; i < n; i++) {
           const q = y[(i + bestShift) % n];
-          lone(a.id, angLerp(x[i].angle + turnB(a.id), q.angle + turnA(a.id), e), Math.min(x[i].left, q.left), '', op);
+          lone(a.id, angLerp(x[i].angle + turnB(a.id), q.angle + turnA(a.id), eTurn), Math.min(x[i].left, q.left), '', op);
         }
       }
     }

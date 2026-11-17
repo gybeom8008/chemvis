@@ -42,7 +42,7 @@ export class Stage {
   /** How electrons are drawn: as pairs in pouches, or the earlier way (lines and curved arrows). */
   style: 'lines' | 'pairs' = 'pairs';
   /** How atoms and charge look: element colours and badges, or plain atoms with charge as light. */
-  look: 'color' | 'glow' | 'cause' | 'tangible' | 'reach' | 'snap' | 'meet' = 'color';
+  look: 'color' | 'glow' | 'cause' | 'tangible' | 'reach' | 'snap' | 'meet' | 'force' = 'color';
   /** Which colour means which charge (glow look). */
   palette: 'red-positive' | 'red-negative' = 'red-positive';
   /** Runs after each drawn frame. */
@@ -69,9 +69,10 @@ export class Stage {
     const pairs = this.style === 'pairs';
     const res = compile(src, {
       tight: pairs,
-      tangible: pairs && (this.look === 'tangible' || this.look === 'reach' || this.look === 'snap' || this.look === 'meet'),
-      reach: !pairs ? false : this.look === 'meet' ? 'firm' : this.look === 'snap' ? 'stiff' : this.look === 'reach',
-      encounter: pairs && this.look === 'meet',
+      tangible: pairs && this.look !== 'color' && this.look !== 'glow' && this.look !== 'cause',
+      reach: !pairs ? false : this.look === 'meet' || this.look === 'force' ? 'firm' : this.look === 'snap' ? 'stiff' : this.look === 'reach',
+      encounter: pairs && (this.look === 'meet' || this.look === 'force'),
+      instant: pairs && this.look === 'force',
     });
     if (res.timeline) {
       this.src = src;

@@ -64,7 +64,6 @@ const icons: [string, string][] = [
   ['tut-view', 'sliders'],
   ['tut-script', 'code'],
   ['tut-open', 'openIn'],
-  ['tut-close', 'close'],
   ['tut-menu', 'menu'],
 ];
 for (const [id, name] of icons) $(id).innerHTML = icon(name);
@@ -334,9 +333,10 @@ function openExample(id: string): void {
 
 // ------------------------------------------------------------------ tutorial popup
 
-const dlg = $<HTMLDialogElement>('tutorial');
+const learn = $('tutorial');
 let chapter: Chapter = CHAPTERS[0];
-let hashBeforeTutorial = '';
+/** The chapter on the stage of 학습. */
+let shown: Chapter | null = null;
 
 function renderNav(): void {
   // On phones the list opens over the page; this row closes it again.
@@ -353,18 +353,20 @@ function renderNav(): void {
 }
 
 function setNav(open: boolean): void {
-  dlg.classList.toggle('nav-open', open);
+  learn.classList.toggle('nav-open', open);
   $('tut-menu').setAttribute('aria-expanded', String(open));
 }
 
 function setIntro(open: boolean): void {
-  dlg.classList.toggle('intro-open', open);
+  learn.classList.toggle('intro-open', open);
   $('tut-more').setAttribute('aria-expanded', String(open));
   $('tut-more').textContent = open ? '설명 접기' : '설명 더 보기';
 }
 
 function showChapter(c: Chapter, play = false): void {
   chapter = c;
+  shown = c;
+  if (place === 'learn' && location.hash !== `#/t/${c.id}`) history.replaceState(null, '', `#/t/${c.id}`);
   const n = CHAPTERS.indexOf(c) + 1;
   $('tut-part').innerHTML = `<span class="pt">${esc(PARTS.find((p) => p.id === c.part)?.title ?? '')}</span><span class="cnt">${n} / ${CHAPTERS.length}</span>`;
   setNav(false);
@@ -387,76 +389,67 @@ tut.player.onEnd = () => {
   return true;
 };
 
-function openTutorial(id?: string): void {
-  const c = CHAPTERS.find((x) => x.id === id) ?? chapter;
-  main.showLegend(false);
-  if (!dlg.open) {
-    hashBeforeTutorial = location.hash.startsWith('#/t/') ? '' : location.hash;
-    dlg.showModal();
-  }
-  if (location.hash !== `#/t/${c.id}`) history.replaceState(null, '', `#/t/${c.id}`);
-  showChapter(c);
-  markTabs();
-}
-
-function closeTutorial(): void {
-  if (dlg.open) dlg.close();
-}
-dlg.addEventListener('close', () => {
-  tut.player.stop();
-  history.replaceState(null, '', hashBeforeTutorial || location.pathname + location.search);
-});
-dlg.addEventListener('click', (e) => {
-  if (e.target === dlg) closeTutorial();
-});
-
-// ------------------------------------------------------------------ tabs
+// ------------------------------------------------------------------ the three screens
 
 /**
- * Three screens: 배우기 (the lessons, for now the tutorial), 실험실 (to come), AI 장면 (the
- * workspace). The tutorial still opens over the workspace; its tab is marked while it is open.
+ * Three screens, one shown at a time, switched by the tabs: 학습 (the lessons), 시연 (a scene an
+ * AI wrote, or an example: the workspace) and 실험실 (to come). The address says which: #/t/… for
+ * a lesson, #/lab for the lab, anything else is 시연.
  */
-type Tab = 'learn' | 'lab' | 'ai';
-let place: 'lab' | 'ai' = 'ai';
+type Tab = 'learn' | 'demo' | 'lab';
+let place: Tab = 'demo';
+/** The address 시연 had (a shared scene, an example) while another screen is shown. */
+let demoHash = '';
 function markTabs(): void {
-  const on: Tab = dlg.open ? 'learn' : place;
-  document.querySelectorAll<HTMLButtonElement>('.tabs [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === on)));
-  document.body.dataset.tab = on;
+  document.querySelectorAll<HTMLButtonElement>('.tabs [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === place)));
+  document.body.dataset.tab = place;
 }
-function showPlace(p: 'lab' | 'ai'): void {
+function showPlace(p: Tab): void {
+  if (place === 'demo' && p !== 'demo') demoHash = /^#(z=|s=|\/x\/|\/edit)/.test(location.hash) ? location.hash : '';
+  if (place === 'learn' && p !== 'learn') {
+    tut.player.stop();
+    tut.showLegend(false);
+  }
+  if (p !== 'demo') main.showLegend(false);
   place = p;
+  learn.hidden = p !== 'learn';
+  $('work').hidden = p !== 'demo';
   $('lab').hidden = p !== 'lab';
-  $('work').hidden = p !== 'ai';
-  if (p === 'lab') {
-    main.showLegend(false);
-    if (location.hash !== '#/lab') history.replaceState(null, '', '#/lab');
-  } else if (location.hash === '#/lab') history.replaceState(null, '', location.pathname + location.search);
+  const hash = p === 'learn' ? `#/t/${chapter.id}` : p === 'lab' ? '#/lab' : demoHash;
+  if (location.hash !== hash) history.replaceState(null, '', hash || location.pathname + location.search);
   markTabs();
 }
+
+function openTutorial(id?: string): void {
+  const c = CHAPTERS.find((x) => x.id === id) ?? chapter;
+  chapter = c;
+  showPlace('learn');
+  if (c !== shown || !tut.tl) showChapter(c);
+}
+
 document.querySelectorAll<HTMLButtonElement>('.tabs [data-tab]').forEach((b) =>
   b.addEventListener('click', () => {
     const t = b.dataset.tab as Tab;
+    if (t === place) return;
     if (t === 'learn') return openTutorial();
-    closeTutorial();
     showPlace(t);
   }),
 );
-dlg.addEventListener('close', markTabs);
-$('tut-menu').addEventListener('click', () => setNav(!dlg.classList.contains('nav-open')));
-$('tut-more').addEventListener('click', () => setIntro(!dlg.classList.contains('intro-open')));
+$('tut-menu').addEventListener('click', () => setNav(!learn.classList.contains('nav-open')));
+$('tut-more').addEventListener('click', () => setIntro(!learn.classList.contains('intro-open')));
 $('tut-nav').addEventListener('click', (e) => {
   if ((e.target as HTMLElement).closest('#tut-nav-close')) setNav(false);
 });
-$('tut-close').addEventListener('click', closeTutorial);
 $('tut-script').addEventListener('click', () => {
   const box = $('tut-code');
   box.hidden = !box.hidden;
   $('tut-script').setAttribute('aria-pressed', String(!box.hidden));
-  dlg.classList.toggle('with-code', !box.hidden);
+  learn.classList.toggle('with-code', !box.hidden);
 });
 $('tut-open').addEventListener('click', () => {
   const src = chapter.script;
-  closeTutorial();
+  demoHash = '';
+  showPlace('demo');
   loadMain(src);
   setDrawer(true);
   setEditing(true);
@@ -475,7 +468,10 @@ async function route(): Promise<void> {
   const t = h.match(/^#\/t\/([\w-]+)/);
   if (t) return openTutorial(t[1]);
   if (h === '#/lab') return showPlace('lab');
-  if (place === 'lab') showPlace('ai');
+  if (place !== 'demo') {
+    demoHash = h;
+    showPlace('demo');
+  }
   const x = h.match(/^#\/x\/([\w-]+)/);
   if (x) return openExample(x[1]);
   if (h.startsWith('#z=') || h.startsWith('#s=')) {
@@ -497,8 +493,9 @@ document.addEventListener('keydown', (e) => {
   // A button reached with Tab presses itself on Space and Enter.
   if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const v = dlg.open ? tut : main;
-  if (!v.tl || (!dlg.open && place !== 'ai')) return;
+  if (place === 'lab') return;
+  const v = place === 'learn' ? tut : main;
+  if (!v.tl) return;
   const p = v.player;
   const act: Record<string, () => void> = {
     ' ': () => p.next(),
@@ -518,14 +515,15 @@ document.addEventListener('keydown', (e) => {
 // ------------------------------------------------------------------ loop
 
 renderNav();
+markTabs();
 let last = performance.now();
 const start = last;
 function frame(now: number): void {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const clock = (now - start) / 1000;
-  if (dlg.open) tut.tick(dt, clock);
-  else if (place === 'ai') main.tick(dt, clock);
+  if (place === 'learn') tut.tick(dt, clock);
+  else if (place === 'demo') main.tick(dt, clock);
   requestAnimationFrame(frame);
 }
 void route().then(() => requestAnimationFrame(frame));

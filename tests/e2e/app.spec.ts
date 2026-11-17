@@ -43,7 +43,7 @@ test('the workspace opens as an empty canvas with controls waiting', async ({ pa
   expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('radial-gradient');
   await expect(page.locator('#main-viewer .pill')).toBeVisible();
   await expect(page.locator('#main-viewer [data-act="next"]')).toBeDisabled();
-  await expect(page.locator('#tutorial')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#tutorial')).toBeHidden();
   // Loading a scene turns the controls on.
   await page.evaluate(() =>
     (window as unknown as { chemvis: Api }).chemvis.main.load('stage solution\nmol w = H2O\nstep "물"\n  wait\n'),
@@ -55,7 +55,7 @@ test('every tutorial chapter plays through without errors', async ({ page }) => 
   const errors = collectErrors(page);
   await page.goto('./?still');
   await page.locator('#btn-tutorial').click();
-  await expect(page.locator('#tutorial')).toHaveAttribute('open', '');
+  await expect(page.locator('#tutorial')).toBeVisible();
   const c = cv(page);
   const ids = await c.chapters();
   expect(ids.length).toBeGreaterThanOrEqual(10);
@@ -128,12 +128,13 @@ test('HCl chapter ends with H3O+ and Cl- charges drawn', async ({ page }) => {
   await expect(page.locator('#tut-viewer .charge.neg')).toHaveCount(1);
 });
 
-test('Escape closes the tutorial', async ({ page }) => {
+test('a lesson is a screen, not a window over another: Escape leaves it where it is', async ({ page }) => {
   await page.goto('./?still#/t/forces');
-  await expect(page.locator('#tutorial')).toHaveAttribute('open', '');
+  await expect(page.locator('#tutorial')).toBeVisible();
+  await expect(page.locator('#work')).toBeHidden();
   await page.keyboard.press('Escape');
-  await expect(page.locator('#tutorial')).not.toHaveAttribute('open', '');
-  await expect(page).not.toHaveURL(/#\/t\//);
+  await expect(page.locator('#tutorial')).toBeVisible();
+  await expect(page).toHaveURL(/#\/t\/forces$/);
 });
 
 test('a #z= link made the way the AI guide describes opens in the workspace', async ({ page }) => {
@@ -202,7 +203,7 @@ test('phone width: no sideways scrolling in workspace or tutorial', async ({ pag
   await page.goto('./?still');
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.goto('./?still#/t/leaching');
-  await expect(page.locator('#tutorial')).toHaveAttribute('open', '');
+  await expect(page.locator('#tutorial')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
@@ -228,7 +229,7 @@ test('examples open in the workspace like ready-made documents and play through'
   await items.first().click();
   await expect(page.locator('#examples-pop')).toBeHidden();
   await expect(page).toHaveURL(new RegExp(`#/x/${ids[0]}$`));
-  await expect(page.locator('#tutorial')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#tutorial')).toBeHidden();
   const c = cv(page);
   for (const id of ids) {
     await page.evaluate((id) => (location.hash = `#/x/${id}`), id);
@@ -364,26 +365,40 @@ test('electron pairs are the drawing; the heat of a reaction can be turned off a
   await expect(page.locator('#tut-view-pop [data-heat]')).not.toBeChecked();
 });
 
-test('three tabs: learn opens the lessons, the lab is a place of its own, AI 장면 is the workspace', async ({ page }) => {
+test('three tabs in a row, each a screen of its own: 학습, 시연, 실험실', async ({ page }) => {
   await page.goto('./?still');
   const tab = (name: string) => page.locator(`.tabs [role="tab"]:text-is("${name}")`);
-  await expect(tab('AI 장면')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.tabs [role="tab"]')).toHaveText(['학습', '시연', '실험실']);
+  const shows = async (on: string) => {
+    for (const [name, id] of [['학습', '#tutorial'], ['시연', '#work'], ['실험실', '#lab']]) {
+      await expect(tab(name)).toHaveAttribute('aria-selected', String(name === on));
+      if (name === on) await expect(page.locator(id)).toBeVisible();
+      else await expect(page.locator(id)).toBeHidden();
+    }
+  };
+  await shows('시연');
+  // A scene in 시연 is kept while the other screens are looked at.
+  await cv(page).main.load('stage solution\nmol w = H2O\nstep "물"\n  wait\n');
   await tab('실험실').click();
-  await expect(tab('실험실')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('#lab')).toBeVisible();
-  await expect(page.locator('#work')).toBeHidden();
+  await shows('실험실');
   await expect(page).toHaveURL(/#\/lab$/);
-  await tab('배우기').click();
-  await expect(page.locator('#tutorial')).toHaveAttribute('open', '');
-  await expect(tab('배우기')).toHaveAttribute('aria-selected', 'true');
-  // Closing the lessons goes back to where one was.
-  await page.keyboard.press('Escape');
-  await expect(tab('실험실')).toHaveAttribute('aria-selected', 'true');
-  await tab('AI 장면').click();
-  await expect(page.locator('#work')).toBeVisible();
-  await expect(page).not.toHaveURL(/#\/lab/);
+  await tab('학습').click();
+  await shows('학습');
+  await expect(page).toHaveURL(/#\/t\/[\w-]+$/);
+  await tab('시연').click();
+  await shows('시연');
+  await expect(page).not.toHaveURL(/#\//);
+  expect((await cv(page).main.state()).n).toBe(1);
+  // An example in 시연 keeps its address across a visit to 학습.
+  await page.goto('./?still#/x/root');
+  await tab('학습').click();
+  await tab('시연').click();
+  await expect(page).toHaveURL(/#\/x\/root$/);
+  // Each screen can be opened by its address.
   await page.goto('./?still#/lab');
-  await expect(page.locator('#lab')).toBeVisible();
+  await shows('실험실');
+  await page.goto('./?still#/t/atoms');
+  await shows('학습');
 });
 
 test('the legend of the electron-pair drawing: light for charge, pouches for pairs, the heat while it is shown', async ({ page }) => {

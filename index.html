@@ -13,9 +13,9 @@
     <header class="bar">
       <div class="brand"><span class="logo">chemvis</span></div>
       <nav class="tabs" role="tablist" aria-label="화면">
-        <button role="tab" id="btn-tutorial" data-tab="learn" aria-selected="false">배우기</button>
+        <button role="tab" id="btn-tutorial" data-tab="learn" aria-selected="false">학습</button>
+        <button role="tab" data-tab="demo" aria-selected="true">시연</button>
         <button role="tab" data-tab="lab" aria-selected="false">실험실</button>
-        <button role="tab" data-tab="ai" aria-selected="true">AI 장면</button>
       </nav>
       <span class="scene-title" id="scene-title"></span>
       <div class="tools">
@@ -40,7 +40,7 @@
       </div>
     </main>
 
-    <main class="work" id="work" role="tabpanel" aria-label="AI 장면">
+    <main class="work" id="work" role="tabpanel" aria-label="시연">
       <div class="viewer-host" id="main-viewer"></div>
       <aside class="drawer" id="drawer" aria-label="대본" hidden>
         <div class="drawer-head">
@@ -56,10 +56,10 @@
       </aside>
     </main>
 
-    <dialog class="tut" id="tutorial" aria-label="튜토리얼">
+    <main class="tut" id="tutorial" role="tabpanel" aria-label="학습" hidden>
       <div class="tut-shell">
         <nav class="tut-nav" id="tut-nav"></nav>
-        <section class="tut-main" tabindex="-1" autofocus>
+        <section class="tut-main" tabindex="-1">
           <header class="tut-head">
             <button class="icon" id="tut-menu" aria-label="목차" title="목차" aria-expanded="false"></button>
             <div class="tut-heading">
@@ -72,8 +72,7 @@
                 <div class="popover" id="tut-view-pop" hidden></div>
               </div>
               <button class="icon" id="tut-script" aria-label="대본" title="대본" aria-pressed="false"></button>
-              <button class="icon" id="tut-open" aria-label="작업 공간에서 고쳐 보기" title="작업 공간에서 고쳐 보기"></button>
-              <button class="icon" id="tut-close" aria-label="닫기" title="닫기 (Esc)"></button>
+              <button class="icon" id="tut-open" aria-label="시연에서 고쳐 보기" title="시연에서 고쳐 보기"></button>
             </div>
           </header>
           <div class="tut-intro" id="tut-intro"></div>
@@ -87,7 +86,7 @@
           </div>
         </section>
       </div>
-    </dialog>
+    </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/src/main.ts"></script>

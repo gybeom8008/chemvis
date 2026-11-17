@@ -212,7 +212,7 @@ code {
   text-overflow: ellipsis;
 }
 
-/* Three screens: 배우기, 실험실, AI 장면. */
+/* Three screens: 학습, 시연, 실험실. */
 .tabs {
   display: flex;
   gap: 2px;
@@ -245,8 +245,9 @@ code {
 }
 
 /* The script, view and link tools belong to a scene: not on the lab screen. */
-body[data-tab='lab'] .tools,
-body[data-tab='lab'] .scene-title {
+/* The workspace's tools (examples, script, view, link) and its scene title belong to 시연 only. */
+body:not([data-tab='demo']) .tools,
+body:not([data-tab='demo']) .scene-title {
   visibility: hidden;
 }
 
@@ -1002,36 +1003,20 @@ body[data-tab='lab'] .scene-title {
   color: var(--warn-ink);
 }
 
-/* ================================================================ tutorial dialog */
+/* ================================================================ 학습 (lessons): a screen of its own, like 시연 and 실험실 */
 
 .tut {
-  width: min(1180px, 94vw);
-  height: min(840px, 92dvh);
-  max-width: none;
-  max-height: none;
-  padding: 0;
-  border: 0;
+  min-height: 0;
+  margin: 8px 16px 16px;
   border-radius: 20px;
   background: var(--surface);
   color: var(--ink);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
-.tut::backdrop {
-  background: rgba(12, 12, 14, 0.36);
-  backdrop-filter: blur(3px);
-}
-
-.tut[open] {
-  animation: pop 0.18s ease-out;
-}
-
-@keyframes pop {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.99);
-  }
+.tut[hidden] {
+  display: none;
 }
 
 .tut-shell {
@@ -1500,9 +1485,8 @@ body[data-tab='lab'] .scene-title {
     box-shadow: var(--shadow-lg);
   }
   .tut {
-    width: 100vw;
-    height: 100dvh;
-    border-radius: 0;
+    margin: 4px 0 0;
+    border-radius: 18px 18px 0 0;
   }
   /* The chapter list opens over the page from the list button, instead of scrolling sideways. */
   .tut-shell {

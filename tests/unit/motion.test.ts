@@ -3,7 +3,7 @@ import { compile } from '../../src/engine/compile';
 import { hopProgress, trackAt, type StepAnim, type Timeline } from '../../src/engine/timeline';
 import { allComponents, bondKey, cloneWorld, component, formalCharge, neighbors, type World } from '../../src/engine/world';
 import { bondLength, element } from '../../src/chem/elements';
-import { CHAPTERS } from '../../src/tutorial/chapters';
+import { CHAPTERS, sceneOf } from '../../src/tutorial/chapters';
 import { trackAt as renderedTrackAt } from '../../src/render/view';
 import { centroid, dist, sub, type Vec } from '../../src/util/math';
 
@@ -104,7 +104,7 @@ step "물 분자가 둘러싸요"
  solvate all
 `;
   for (const chapter of ['dissolving', 'precipitation']) it(`preserves chemistry across the complete ${chapter} scene`, () => {
-    const src = CHAPTERS.find((c) => c.id === chapter)!.script;
+    const src = sceneOf(CHAPTERS.find((c) => c.id === chapter)!.script);
     const tl = run(src);
     unchangedChemistry(src, tl);
     endpoints(tl);
@@ -334,7 +334,7 @@ function violations(tl: Timeline, criterion: Criterion): string[] {
 describe('tight motion', () => {
   for (const name of scenes) describe(name, () => {
     const chapter = CHAPTERS.find((c) => c.id === name)!;
-    const result = compile(chapter.script, { tight: true });
+    const result = compile(sceneOf(chapter.script), { tight: true });
     const tl = result.timeline!;
     it('compiles and preserves the recorded chemical states', async () => {
       expect(result.errors).toEqual([]);
@@ -343,7 +343,7 @@ describe('tight motion', () => {
     it('keeps the default and explicit legacy outputs identical', () => {
       // 무대가 만드는 함수 인스턴스는 제외하고 기존 legacy 검사와 같은 출력 형식을 쓴다.
       const encode = (value: unknown) => JSON.stringify(value, (_, v) => v instanceof Map || v instanceof Set ? [...v] : v);
-      expect(encode(compile(chapter.script))).toBe(encode(compile(chapter.script, { tight: false })));
+      expect(encode(compile(sceneOf(chapter.script)))).toBe(encode(compile(sceneOf(chapter.script), { tight: false })));
     });
     for (const criterion of ['retained', 'contact', 'handoff', 'gentle', 'clear', 'rotation'] as const) {
       it(criterion, () => expect(violations(tl, criterion)).toEqual([]));
@@ -372,7 +372,7 @@ describe('tight motion', () => {
   });
 
   it('prepares both condensation contacts and releases completed water by exactly 60', () => {
-    const tl = compile(CHAPTERS.find((c) => c.id === 'condensation')!.script, { tight: true }).timeline!;
+    const tl = compile(sceneOf(CHAPTERS.find((c) => c.id === 'condensation')!.script), { tight: true }).timeline!;
     const s = tl.steps.find((s) => s.shifts?.some((x) => x.src.kind === 'lp' && x.src.a === 'g2.N'))!;
     const formed = s.phase!.c1!;
     expect(dist(pos(s, 'g1.C2', 0), pos(s, 'g2.N', 0))).toBeCloseTo(bondLength('C', 'N', 1), 6);
@@ -390,7 +390,7 @@ describe('tight motion', () => {
   });
 
   it('keeps the hydrolysis approach, then transfers H and keeps the remaining OH together', () => {
-    const tl = compile(CHAPTERS.find((c) => c.id === 'condensation')!.script, { tight: true }).timeline!;
+    const tl = compile(sceneOf(CHAPTERS.find((c) => c.id === 'condensation')!.script), { tight: true }).timeline!;
     const s = tl.steps.at(-1)!;
     const O = '~H2O#15.O', H = '~H2O#15.H1', otherH = '~H2O#15.H2';
     expect(s.tracks.get(H)!.some((k) => k.t === 0.36)).toBe(true);
@@ -402,7 +402,7 @@ describe('tight motion', () => {
   });
 
   it('prepares substitution opposite Br and keeps the methyl branches after bonding', () => {
-    const tl = compile(CHAPTERS.find((c) => c.id === 'substitution')!.script, { tight: true }).timeline!;
+    const tl = compile(sceneOf(CHAPTERS.find((c) => c.id === 'substitution')!.script), { tight: true }).timeline!;
     const s = tl.steps.find((s) => s.arrows.length > 0)!;
     const entry = sub(pos(s, 'n.N', 0), pos(s, 'm.C', 0));
     const exit = sub(pos(s, 'm.Br', 0), pos(s, 'm.C', 0));

@@ -336,13 +336,11 @@ function compileScene(src: string, opts: CompileOptions, selectionPass: boolean,
   }
 
   let title = '';
-  let intro = '';
   for (const cmd of ast.header) {
     if (cmd.op === 'stage') continue;
     ctx.line = cmd.line;
     try {
       if (cmd.op === 'scene') title = cmd.args.join(' ');
-      else if (cmd.op === 'intro') intro = cmd.args.join(' ');
       else ctx.header(cmd);
     } catch (e) {
       if (e instanceof ScriptError || e instanceof SmilesError) ctx.errors.push({ line: cmd.line, message: e.message });
@@ -373,7 +371,7 @@ function compileScene(src: string, opts: CompileOptions, selectionPass: boolean,
 
   if (ctx.errors.length) return { timeline: null, errors: ctx.errors, warnings: ctx.warnings };
   return {
-    timeline: { title: title || '제목 없는 장면', ...(intro ? { intro } : {}), stage, initial, steps, warnings: ctx.warnings },
+    timeline: { title: title || '제목 없는 장면', stage, initial, steps, warnings: ctx.warnings },
     errors: [],
     warnings: ctx.warnings,
   };
@@ -4995,9 +4993,12 @@ class Ctx {
     }
     this.hopCount.clear();
     this.lastHopLine = 0;
-    if (!this.plannedMotion || (!A.pulls?.length && !A.phase)) separateSolutes(this);
-    resolveOverlaps(this, new Set(A.focus));
-    keepInside(this);
+    // A step that only tells (a caption and no command) moves nothing: what needs room is given it by the next step that acts.
+    if (this.stepCmds.length) {
+      if (!this.plannedMotion || (!A.pulls?.length && !A.phase)) separateSolutes(this);
+      resolveOverlaps(this, new Set(A.focus));
+      keepInside(this);
+    }
 
     // Light comes first: what it sets off starts only once it has been absorbed.
     if (A.phase && A.photons.length) {

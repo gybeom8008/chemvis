@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { compile } from '../../src/engine/compile';
 import { neighbors } from '../../src/engine/world';
 import { bystanders } from '../../src/render/pairs';
-import { CHAPTERS } from '../../src/tutorial/chapters';
+import { CHAPTERS, sceneOf } from '../../src/tutorial/chapters';
 
-const chapter = (id: string) => compile(CHAPTERS.find((c) => c.id === id)!.script).timeline!;
+const chapter = (id: string) => compile(sceneOf(CHAPTERS.find((c) => c.id === id)!.script)).timeline!;
 const cross = (o: { x: number; y: number }, p: { x: number; y: number }, q: { x: number; y: number }) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
 
 describe('condensation: the molecule that comes up brings its H beside the -OH', () => {

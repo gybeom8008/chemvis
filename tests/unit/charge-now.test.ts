@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { compile } from '../../src/engine/compile';
 import { formalCharge } from '../../src/engine/world';
 import { StageView } from '../../src/render/view';
-import { CHAPTERS } from '../../src/tutorial/chapters';
+import { CHAPTERS, sceneOf } from '../../src/tutorial/chapters';
 
 /**
  * Charge that follows the electrons (looks 'cause', 'tangible' and 'reach') must not make charge from
@@ -22,7 +22,7 @@ const fakeSvg = () => {
   } as unknown as SVGSVGElement;
 };
 const lens = { charge: true, attract: false, numbers: false, oxidation: false, arrows: false };
-const scene = (id: string) => CHAPTERS.find((c) => c.id === id)!.script;
+const scene = (id: string) => sceneOf(CHAPTERS.find((c) => c.id === id)!.script);
 // Scenes whose electrons move as pairs that stay on atoms (single electrons in flight are not on any atom).
 const scenes = ['acid-hcl', 'base-nh3', 'neutralization', 'substitution', 'addition', 'condensation', 'coordination'];
 

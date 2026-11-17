@@ -442,7 +442,8 @@ body[data-tab='lab'] .tools {
   background-image: radial-gradient(circle, var(--grid-dot) 1.1px, transparent 1.5px);
   background-size: 22px 22px;
   background-position: center;
-  box-shadow: inset 0 0 0 1px var(--line);
+  box-sizing: border-box;
+  border: 1px solid var(--line);
 }
 
 .dock {
@@ -685,18 +686,32 @@ body[data-tab='lab'] .tools {
   cursor: default;
 }
 
+/* The caption: a framed box under the stage, as wide as the bar, as tall as the longest caption. */
 .caption {
+  display: grid;
+  align-items: center;
+  box-sizing: border-box;
+  width: min(720px, 100%);
+  min-height: 3.2em;
   margin: 0;
-  max-width: 44em;
-  min-height: 3em;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  text-align: center;
-  font-size: 17px;
-  line-height: 1.5;
-  text-wrap: balance;
+  padding: 10px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  font-size: 16.5px;
+  line-height: 1.55;
   word-break: keep-all;
+}
+
+.caption > .text,
+.caption > .sizer,
+.caption > .sizer > span {
+  grid-area: 1 / 1;
+}
+
+.caption > .sizer {
+  display: grid;
+  visibility: hidden;
 }
 
 /*
@@ -1087,39 +1102,17 @@ body[data-tab='learn'] .tut-nav {
   color: var(--ink);
 }
 
-/* Title and text above the stage, the same in 학습 and 시연; the text has room kept for it. */
+/* The title above the stage, the same in 학습 and 시연; the stage and its captions take the rest. */
 .tut-main {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   padding: 10px 0 0;
 }
 
-/* (Rows by name: the stage takes what is left whether the text toggle is shown or not.) */
-.tut-main > .tut-head {
-  grid-row: 1;
-}
-
-.tut-main > .tut-intro {
-  grid-row: 2;
-}
-
-.tut-main > .tut-more {
-  grid-row: 3;
-}
-
-.tut-main > .viewer-host {
-  grid-row: 4;
-}
-
-.tut-head,
-.tut-intro {
+.tut-head {
   padding: 0 24px;
-}
-
-.tut-intro {
-  min-height: 3.1em;
 }
 
 /* The dialog lands focus here (not on the first chapter link), so no stray focus ring shows. */
@@ -1154,26 +1147,13 @@ body[data-tab='learn'] .tut-nav {
   gap: 2px;
 }
 
-/* Phone-only parts of the tutorial (chapter list button, intro toggle, chapter count). */
+/* Phone-only parts of 학습 (list button, count). */
 #tut-menu,
-.tut-more,
 .tut-nav .nav-top,
 .tut-part .cnt {
   display: none;
 }
 
-.tut-intro {
-  max-width: 60em;
-  margin-top: 6px;
-  color: var(--ink-2);
-  font-size: 14.5px;
-}
-
-.tut-intro p {
-  margin: 0;
-}
-
-.tut-intro code,
 .tryit code {
   background: var(--hl);
   padding: 1px 5px;
@@ -1509,8 +1489,7 @@ body[data-tab='learn'] .tut-nav {
   .tut-main {
     padding: 6px 0 0;
   }
-  .tut-head,
-  .tut-intro {
+  .tut-head {
     padding: 0 12px;
   }
   /* Header: list button with part and count on one row (학습); the title on its own row below. */
@@ -1551,37 +1530,6 @@ body[data-tab='learn'] .tut-nav {
     font-size: 19px;
     line-height: 1.35;
   }
-  /* The intro starts folded to two lines so the scene gets the screen; it unfolds on request. */
-  .tut-main {
-    grid-template-rows: auto auto auto minmax(0, 1fr);
-  }
-  .tut-intro {
-    min-height: 0;
-    margin: 6px 4px 0;
-    font-size: 14px;
-    max-height: 2.9em;
-    overflow: hidden;
-    -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent);
-    mask-image: linear-gradient(to bottom, #000 45%, transparent);
-  }
-  body.intro-open .tut-intro {
-    max-height: 42dvh;
-    overflow: auto;
-    -webkit-mask-image: none;
-    mask-image: none;
-  }
-  .tut-more {
-    display: block;
-    justify-self: start;
-    margin: 2px 12px 0;
-    padding: 4px 4px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--muted);
-  }
-  .no-intro .tut-more {
-    display: none;
-  }
 }
 
 /* Phones: the scene gets the screen. The legend button sits inside the canvas frame at its
@@ -1612,7 +1560,8 @@ body[data-tab='learn'] .tut-nav {
   }
   .caption {
     grid-area: caption;
-    margin: 8px 12px 0;
+    width: auto;
+    margin: 8px 10px 0;
   }
   .pill {
     grid-area: pill;

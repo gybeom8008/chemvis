@@ -3,7 +3,7 @@ import { compile } from '../../src/engine/compile';
 import { allComponents, cloneWorld, emptyWorld, formulaOf } from '../../src/engine/world';
 import { formationEnthalpy, stepEnthalpy, FORMATION_ENTHALPIES, UNAVAILABLE_FORMATION_ENTHALPIES } from '../../src/chem/enthalpy';
 import { LIBRARY } from '../../src/chem/library';
-import { CHAPTERS } from '../../src/tutorial/chapters';
+import { CHAPTERS, sceneOf } from '../../src/tutorial/chapters';
 import { EXAMPLES } from '../../src/tutorial/examples';
 import compareSource from '../../src/next/compare.ts?raw';
 
@@ -13,7 +13,7 @@ const timeline = (script: string) => {
   expect(result.timeline).not.toBeNull();
   return result.timeline!;
 };
-const chapter = (id: string) => CHAPTERS.find((c) => c.id === id)!.script;
+const chapter = (id: string) => sceneOf(CHAPTERS.find((c) => c.id === id)!.script);
 const results = (script: string) => {
   const t = timeline(script);
   return t.steps.map((s) => stepEnthalpy(s.before, s.after, t.stage));

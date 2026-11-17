@@ -4,7 +4,7 @@
  */
 import '../render/stage.css';
 import './compare.css';
-import { CHAPTERS } from '../tutorial/chapters';
+import { CHAPTERS, sceneOf } from '../tutorial/chapters';
 import { icon } from '../ui/icons';
 import { Stage } from './stage';
 import { PAIRS_LAW, pairsKeyRows, type Palette } from '../ui/pairs-key';
@@ -62,7 +62,7 @@ step "조각의 전자가 하나씩 은 이온으로 건너가요. 전자를 받
 step "전자 둘을 내준 만큼, 아연 원자 하나가 이온(Zn2+)이 되어 물속으로 나와요"
   leave m4 from m
 `;
-const chapter = (id: string) => CHAPTERS.find((c) => c.id === id)!.script;
+const chapter = (id: string) => sceneOf(CHAPTERS.find((c) => c.id === id)!.script);
 const SCENES: { id: string; name: string; src: string }[] = [
   { id: 'acid', name: '산: HCl과 물', src: ACID },
   { id: 'base', name: '염기: NH₃와 물', src: chapter('base-nh3') },

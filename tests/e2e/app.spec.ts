@@ -7,7 +7,7 @@ type Api = {
   chapters: string[];
   examples: string[];
   main: V & { load: (src: string) => boolean };
-  tutorial: V & { open: (id: string) => void; chapter: () => string };
+  tutorial: V & { open: (id: string) => void; chapter: () => string; opening: () => number };
 };
 
 const cv = (page: Page) => ({
@@ -16,6 +16,12 @@ const cv = (page: Page) => ({
     open: (id: string) => page.evaluate((id) => (window as unknown as { chemvis: Api }).chemvis.tutorial.open(id), id),
     seek: (k: number, t: number) =>
       page.evaluate(([k, t]) => (window as unknown as { chemvis: Api }).chemvis.tutorial.seek(k, t), [k, t] as const),
+    /** The k-th step of the lesson's scene (after the captions it opens with). */
+    seekScene: (k: number, t: number) =>
+      page.evaluate(([k, t]) => {
+        const tut = (window as unknown as { chemvis: Api }).chemvis.tutorial;
+        tut.seek(tut.opening() + k, t);
+      }, [k, t] as const),
     state: () => page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.tutorial.state()),
     chapter: () => page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.tutorial.chapter()),
   },
@@ -123,7 +129,7 @@ test('three step buttons, three different jobs; no play button to confuse them',
 
 test('HCl chapter ends with H3O+ and Cl- charges drawn', async ({ page }) => {
   await page.goto('./?still#/t/acid-hcl');
-  await cv(page).tut.seek(1, 1);
+  await cv(page).tut.seekScene(1, 1);
   await expect(page.locator('#main-viewer .charge.pos')).toHaveCount(1);
   await expect(page.locator('#main-viewer .charge.neg')).toHaveCount(1);
 });
@@ -163,11 +169,26 @@ test('학습 is 시연 with the list of lessons: one stage, the same tools in th
   await expect(page.locator('#main-viewer .caption .text')).toHaveText('물.');
 });
 
-test('a scene says what it is about above the stage (intro), in the room kept for it', async ({ page }) => {
-  await page.goto('./?still');
-  await cv(page).main.load('scene "소개 시험"\nintro "물 분자 하나를 본다."\nstage solution\nmol w = H2O\nstep "물."\n  wait\n');
-  await expect(page.locator('#tut-title')).toHaveText('소개 시험');
-  await expect(page.locator('#tut-intro')).toHaveText('물 분자 하나를 본다.');
+test('a lesson tells what it is about in its captions: the first ones only tell, in a framed box that keeps its size', async ({ page }) => {
+  await page.goto('./?still#/t/acid-hcl');
+  const c = cv(page);
+  const n = await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.tutorial.opening());
+  expect(n).toBeGreaterThan(0);
+  const cap = page.locator('#main-viewer .caption');
+  await expect(cap).toHaveCSS('border-top-style', 'solid');
+  await expect(page.locator('#main-viewer svg.stage')).toHaveCSS('border-top-style', 'solid');
+  const sizes = new Set<number>();
+  const stage = new Set<number>();
+  for (let k = 0; k < (await c.tut.state()).n; k++) {
+    await c.tut.seek(k, 0.5);
+    sizes.add(Math.round((await cap.boundingBox())!.height));
+    stage.add(Math.round((await page.locator('#main-viewer svg.stage').boundingBox())!.height));
+  }
+  // The box (and so the stage) is the same size at every step, long caption or short.
+  expect(sizes.size).toBe(1);
+  expect(stage.size).toBe(1);
+  // Nothing above the stage but the title.
+  await expect(page.locator('#tut-intro')).toHaveCount(0);
 });
 
 test('every lesson caption ends with a full stop', async ({ page }) => {
@@ -226,7 +247,7 @@ test('the script drawer opens and closes from its icon', async ({ page }) => {
 
 test('note boxes stay put while molecules jiggle', async ({ page }) => {
   await page.goto('./#/t/atoms');
-  await cv(page).tut.seek(2, 1);
+  await cv(page).tut.seekScene(2, 1);
   const offsets: number[][] = [];
   for (let i = 0; i < 12; i++) {
     offsets.push(
@@ -346,33 +367,29 @@ test('the old drawing (?style=lines): electrons light up, travel drawing the arr
   const c = cv(page);
   const v = page.locator('#main-viewer');
   // Before the change: the lone pair about to move is marked where it sits; no arrow yet.
-  await c.tut.seek(2, 0.08);
+  await c.tut.seekScene(2, 0.08);
   await expect(v.locator('circle.e.cue')).toHaveCount(2);
   await expect(v.locator('g.arrow')).toHaveCount(0);
   // On the way: the pair travels and the arrow is drawn behind it, the new bond growing.
-  await c.tut.seek(2, 0.3);
+  await c.tut.seekScene(2, 0.3);
   await expect(v.locator('circle.e.fly')).toHaveCount(2);
   await expect(v.locator('g.arrow')).toHaveCount(1);
   await expect(v.locator('g.arrow polygon')).toHaveCount(0);
   // Arrived: the arrow has its head; the electrons have become the bond.
-  await c.tut.seek(2, 0.6);
+  await c.tut.seekScene(2, 0.6);
   await expect(v.locator('g.arrow polygon')).toHaveCount(1);
   await expect(v.locator('circle.e.fly')).toHaveCount(0);
   // Settled: only the new structure remains.
-  await c.tut.seek(2, 1);
+  await c.tut.seekScene(2, 1);
   await expect(v.locator('g.arrow')).toHaveCount(0);
   await expect(v.locator('line.bond.hot')).toHaveCount(0);
 });
 
-test('phone tutorial: chapter list opens over the page, the intro unfolds on request', async ({ page }) => {
+test('phone 학습: the list of lessons opens over the page from its button', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('./?still#/t/acid-hcl');
   await expect(page.locator('#tut-nav')).toBeHidden();
   await expect(page.locator('#tut-part .cnt')).toHaveText(/\d+ \/ \d+/);
-  const intro = page.locator('#tut-intro');
-  const folded = (await intro.boundingBox())!.height;
-  await page.locator('#tut-more').click();
-  expect((await intro.boundingBox())!.height).toBeGreaterThan(folded);
   await page.locator('#tut-menu').click();
   await expect(page.locator('#tut-nav')).toBeVisible();
   await page.locator('#tut-nav a[data-ch="redox"]').click();
@@ -386,14 +403,14 @@ test('electron pairs are the drawing; the heat of a reaction can be turned off a
   const c = cv(page);
   const v = page.locator('#main-viewer');
   // Pairs, not lines and arrows.
-  await c.tut.seek(2, 0.5);
+  await c.tut.seekScene(2, 0.5);
   await expect(v.locator('svg.stage')).toHaveAttribute('data-look', 'glow');
   expect(await v.locator('line.pouch').count()).toBeGreaterThan(4);
   await expect(v.locator('g.arrow')).toHaveCount(0);
   // The heat comes at the moment the H crosses: find a moment where the ring is drawn.
   const ringSeen = async () => {
     for (let i = 0; i <= 40; i++) {
-      await c.tut.seek(2, i / 40);
+      await c.tut.seekScene(2, i / 40);
       if (await v.locator('g.heat circle.ring').count()) return true;
     }
     return false;

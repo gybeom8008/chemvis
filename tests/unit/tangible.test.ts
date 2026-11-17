@@ -3,7 +3,7 @@ import { compile } from '../../src/engine/compile';
 import { HOP_WAIT, REACH, REACH_FIRM, REACH_STIFF, SNATCH, hopFlight, reachAt, reachPairs, snatchAt, snatchPairs, trackAt, type StepAnim } from '../../src/engine/timeline';
 import { component, neighbors } from '../../src/engine/world';
 import { element } from '../../src/chem/elements';
-import { CHAPTERS } from '../../src/tutorial/chapters';
+import { CHAPTERS, sceneOf } from '../../src/tutorial/chapters';
 import { dist, type Vec } from '../../src/util/math';
 
 /**
@@ -11,7 +11,7 @@ import { dist, type Vec } from '../../src/util/math';
  * the paths in numbers: what is pulled speeds up until it meets, an atom handed over is let go
  * before it is taken, what is in the way gives as the other comes near and not before.
  */
-const scene = (id: string) => CHAPTERS.find((c) => c.id === id)!.script;
+const scene = (id: string) => sceneOf(CHAPTERS.find((c) => c.id === id)!.script);
 const tangible = (id: string) => compile(scene(id), { tight: true, tangible: true }).timeline!;
 const plain = (id: string) => compile(scene(id), { tight: true }).timeline!;
 const pos = (s: StepAnim, id: string, t: number): Vec => {
@@ -721,5 +721,26 @@ describe('one event (instant)', () => {
     const a = compile(scene('substitution'), { tight: true, tangible: true, reach: 'firm', encounter: true }).timeline!.steps.find((x) => x.phase)!;
     expect(a.instant).toBeUndefined();
     expect(a.strikes).toBeUndefined();
+  });
+});
+
+describe('the opening captions of a lesson', () => {
+  it('only tell: nothing moves and nothing changes in them, and the scene after is as without them', { timeout: 120000 }, () => {
+    for (const c of CHAPTERS) {
+      const full = compile(c.script, { tight: true, tangible: true, reach: 'firm', encounter: true, instant: true }).timeline!;
+      const bare = compile(sceneOf(c.script), { tight: true, tangible: true, reach: 'firm', encounter: true, instant: true }).timeline!;
+      const opening = full.steps.length - bare.steps.length;
+      expect(opening, c.id).toBeGreaterThan(0);
+      for (const st of full.steps.slice(0, opening)) {
+        // (Nothing is moved by them; the first step of a scene may still settle what the header placed too close.)
+        for (const [id, a] of st.after.atoms) {
+          const b = st.before.atoms.get(id);
+          if (b && !a.crowd) expect(dist(a, b), `${c.id} ${id} in: ${st.text}`).toBeLessThan(0.5);
+        }
+        expect(st.arrows.length).toBe(0);
+        expect([...st.after.bonds.keys()].sort()).toEqual([...st.before.bonds.keys()].sort());
+      }
+      expect(full.steps.slice(opening).map((x) => x.text)).toEqual(bare.steps.map((x) => x.text));
+    }
   });
 });

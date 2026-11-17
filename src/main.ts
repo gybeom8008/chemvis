@@ -4,7 +4,7 @@ import { compile } from './engine/compile';
 import type { Diag } from './dsl/parser';
 import type { Timeline } from './engine/timeline';
 import { decodeHash, encodeScript } from './share';
-import { CHAPTERS, PARTS, type Chapter } from './tutorial/chapters';
+import { CHAPTERS, PARTS, sceneOf, type Chapter } from './tutorial/chapters';
 import { EXAMPLES } from './tutorial/examples';
 import { icon } from './ui/icons';
 import { Viewer, type Settings } from './ui/viewer';
@@ -47,7 +47,6 @@ document.body.dataset.style = settings.style ?? 'pairs';
 document.body.dataset.palette = settings.palette ?? 'red-positive';
 
 const PLACEHOLDER = `scene "제목"
-intro "이 장면이 보여 주는 것"
 stage solution
 mol w = H2O at center
 step "설명 문장"
@@ -135,22 +134,19 @@ const codeView = $('code-view');
 const codeEdit = $<HTMLTextAreaElement>('code-edit');
 let editing = false;
 
-/** The heading and text above the stage: the lesson's in 학습, the scene's own in 시연. */
+/** The heading above the stage: the lesson's in 학습, the scene's in 시연. (What it is about is told in the captions.) */
 function paintHead(tl: Timeline | null): void {
   if (place === 'learn') {
     const n = CHAPTERS.indexOf(chapter) + 1;
     $('tut-part').innerHTML = `<span class="pt">${esc(PARTS.find((p) => p.id === chapter.part)?.title ?? '')}</span><span class="cnt">${n} / ${CHAPTERS.length}</span>`;
     $('tut-title').textContent = chapter.title;
-    $('tut-intro').innerHTML = chapter.intro;
     $('tryit').innerHTML = chapter.tryIt;
     $('tryit').hidden = false;
   } else {
     $('tut-part').innerHTML = '';
     $('tut-title').textContent = tl?.title ?? '';
-    $('tut-intro').innerHTML = tl?.intro ? `<p>${esc(tl.intro)}</p>` : '';
     $('tryit').hidden = true;
   }
-  $('work').classList.toggle('no-intro', !$('tut-intro').innerHTML);
 }
 
 main.onLoad = (tl) => {
@@ -396,18 +392,11 @@ function setNav(open: boolean): void {
   $('tut-menu').setAttribute('aria-expanded', String(open));
 }
 
-function setIntro(open: boolean): void {
-  document.body.classList.toggle('intro-open', open);
-  $('tut-more').setAttribute('aria-expanded', String(open));
-  $('tut-more').textContent = open ? '설명 접기' : '설명 더 보기';
-}
-
 /** Put a lesson on the stage (in 학습). */
 function showChapter(c: Chapter, play = false): void {
   chapter = c;
   lessonSrc = c.script;
   setNav(false);
-  setIntro(false);
   document.querySelectorAll<HTMLElement>('#tut-nav a[data-ch]').forEach((a) => a.classList.toggle('on', a.dataset.ch === c.id));
   if (location.hash !== `#/t/${c.id}`) history.replaceState(null, '', `#/t/${c.id}`);
   if (editing) setEditing(false);
@@ -435,7 +424,6 @@ function openTutorial(id?: string): void {
 }
 
 $('tut-menu').addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
-$('tut-more').addEventListener('click', () => setIntro(!document.body.classList.contains('intro-open')));
 $('tut-nav').addEventListener('click', (e) => {
   if ((e.target as HTMLElement).closest('#tut-nav-close')) return setNav(false);
   const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-ch]');
@@ -599,5 +587,11 @@ window.chemvis = {
       return loadMain(src);
     },
   },
-  tutorial: { ...api, open: (id: string) => openTutorial(id), chapter: () => chapter.id },
+  tutorial: {
+    ...api,
+    open: (id: string) => openTutorial(id),
+    chapter: () => chapter.id,
+    /** How many captions the lesson opens with before its scene begins. */
+    opening: () => CHAPTERS.find((c) => c.id === chapter.id)!.script.split('\n').filter((l) => /^step "/.test(l)).length - sceneOf(chapter.script).split('\n').filter((l) => /^step "/.test(l)).length,
+  },
 };

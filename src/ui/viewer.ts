@@ -72,7 +72,7 @@ export class Viewer {
             <div class="legend-pop" role="dialog" aria-label="범례" hidden></div>
           </div>
           <div class="dock-main">
-            <p class="caption" aria-live="polite"><span class="text"></span></p>
+            <p class="caption" aria-live="polite"><span class="text"></span><span class="sizer" aria-hidden="true"></span></p>
             <div class="pill">
               <div class="pg">
                 <div class="segs" role="slider" aria-label="단계" title="눌러서 원하는 순간 보기" tabindex="0"></div>
@@ -179,6 +179,7 @@ export class Viewer {
   clear(): void {
     this.tl = null;
     this.src = '';
+    this.caption.querySelector('.sizer')!.innerHTML = '';
     this.view.clear();
     this.player.unload();
     this.root.classList.add('is-empty');
@@ -223,6 +224,9 @@ export class Viewer {
 
   private buildSegs(): void {
     const n = this.tl?.steps.length ?? 0;
+    // Every caption of the scene laid over one another, unseen: the box is as tall as the tallest,
+    // so it does not grow and shrink (and the stage with it) from one step to the next.
+    this.caption.querySelector('.sizer')!.innerHTML = (this.tl?.steps ?? []).map((s) => `<span>${esc(s.text)}</span>`).join('');
     this.segs.innerHTML = Array.from({ length: n }, (_, i) => `<span class="seg" title="${i + 1}. ${esc(this.tl!.steps[i].text)}"><i></i></span>`).join('');
   }
 

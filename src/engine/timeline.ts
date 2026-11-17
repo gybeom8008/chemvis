@@ -319,8 +319,6 @@ export function tallyBox(stageWidth: number): { x: number; y: number; w: number;
 
 export interface Timeline {
   title: string;
-  /** What the scene is about, in a sentence or two (`intro "…"`), shown above the stage. */
-  intro?: string;
   stage: StageDef;
   initial: World;
   steps: StepAnim[];

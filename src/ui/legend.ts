@@ -8,6 +8,7 @@
 import { ELEMENTS } from '../chem/elements';
 import type { Timeline } from '../engine/timeline';
 import { formalCharge, type Lens, type World } from '../engine/world';
+import { PAIRS_LAW, pairsKeyRows, type Palette } from './pairs-key';
 
 interface Item {
   key: string;
@@ -253,6 +254,17 @@ export function legendHtml(tl: Timeline | null, lens: Lens): string {
   }
   if (!showAll) html += `<button class="lg-more" type="button" aria-pressed="false">전체 범례 보기</button>`;
   return html;
+}
+
+/**
+ * Legend panel HTML for the electron-pair drawing (the app's way, docs/plan/depiction.md): charge
+ * as light, pairs as pouches, the heat of a reaction (when it is shown).
+ */
+export function pairsLegendHtml(palette: Palette, heat: boolean): string {
+  let html = '<p class="lg-title">범례</p><ul class="lg-list lg-pairs">';
+  for (const [svg, text] of pairsKeyRows(palette, heat)) html += `<li>${svg}<span>${esc(text)}</span></li>`;
+  const law = heat ? PAIRS_LAW : '빛은 전자를 센 결과예요. 전자가 간 곳은 −, 떠난 곳은 +가 돼요.';
+  return html + `</ul><p class="lg-law">${esc(law)}</p>`;
 }
 
 /** Start (or stop) the animations in one legend row. */

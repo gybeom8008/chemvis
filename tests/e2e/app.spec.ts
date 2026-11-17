@@ -242,8 +242,8 @@ test('examples open in the workspace like ready-made documents and play through'
   expect(errors).toEqual([]);
 });
 
-test('the legend button lists the marks of the current scene', async ({ page }) => {
-  await page.goto('./?still');
+test('the old drawing (?style=lines): the legend button lists the marks of the current scene', async ({ page }) => {
+  await page.goto('./?still&style=lines');
   const btn = page.locator('#main-viewer .legend-btn');
   const pop = page.locator('#main-viewer .legend-pop');
   // No scene yet: every mark is listed.
@@ -294,8 +294,8 @@ test('phone: the legend button sits inside the canvas, menus stay on screen, ele
     .toBeGreaterThanOrEqual(7);
 });
 
-test('a reaction is one motion: electrons light up, travel drawing the arrow, then the atoms settle', async ({ page }) => {
-  await page.goto('./?still#/t/arrows');
+test('the old drawing (?style=lines): electrons light up, travel drawing the arrow, then the atoms settle', async ({ page }) => {
+  await page.goto('./?still&style=lines#/t/arrows');
   const c = cv(page);
   const v = page.locator('#tut-viewer');
   // Before the change: the lone pair about to move is marked where it sits; no arrow yet.
@@ -333,3 +333,70 @@ test('phone tutorial: chapter list opens over the page, the intro unfolds on req
   await expect(page.locator('#tut-title')).toContainText('산화와 환원');
 });
 
+
+test('electron pairs are the drawing; the heat of a reaction can be turned off and stays off', async ({ page }) => {
+  await page.goto('./?still#/t/neutralization');
+  const c = cv(page);
+  const v = page.locator('#tut-viewer');
+  // Pairs, not lines and arrows.
+  await c.tut.seek(2, 0.5);
+  await expect(v.locator('svg.stage')).toHaveAttribute('data-look', 'glow');
+  expect(await v.locator('line.pouch').count()).toBeGreaterThan(4);
+  await expect(v.locator('g.arrow')).toHaveCount(0);
+  // The heat comes at the moment the H crosses: find a moment where the ring is drawn.
+  const ringSeen = async () => {
+    for (let i = 0; i <= 40; i++) {
+      await c.tut.seek(2, i / 40);
+      if (await v.locator('g.heat circle.ring').count()) return true;
+    }
+    return false;
+  };
+  expect(await ringSeen()).toBe(true);
+  await page.locator('#tut-view').click();
+  const sw = page.locator('#tut-view-pop [data-heat]');
+  await expect(sw).toBeChecked();
+  await sw.uncheck();
+  expect(await ringSeen()).toBe(false);
+  // Kept for the next visit.
+  await page.reload();
+  expect(await ringSeen()).toBe(false);
+  await page.locator('#tut-view').click();
+  await expect(page.locator('#tut-view-pop [data-heat]')).not.toBeChecked();
+});
+
+test('three tabs: learn opens the lessons, the lab is a place of its own, AI 장면 is the workspace', async ({ page }) => {
+  await page.goto('./?still');
+  const tab = (name: string) => page.locator(`.tabs [role="tab"]:text-is("${name}")`);
+  await expect(tab('AI 장면')).toHaveAttribute('aria-selected', 'true');
+  await tab('실험실').click();
+  await expect(tab('실험실')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#lab')).toBeVisible();
+  await expect(page.locator('#work')).toBeHidden();
+  await expect(page).toHaveURL(/#\/lab$/);
+  await tab('배우기').click();
+  await expect(page.locator('#tutorial')).toHaveAttribute('open', '');
+  await expect(tab('배우기')).toHaveAttribute('aria-selected', 'true');
+  // Closing the lessons goes back to where one was.
+  await page.keyboard.press('Escape');
+  await expect(tab('실험실')).toHaveAttribute('aria-selected', 'true');
+  await tab('AI 장면').click();
+  await expect(page.locator('#work')).toBeVisible();
+  await expect(page).not.toHaveURL(/#\/lab/);
+  await page.goto('./?still#/lab');
+  await expect(page.locator('#lab')).toBeVisible();
+});
+
+test('the legend of the electron-pair drawing: light for charge, pouches for pairs, the heat while it is shown', async ({ page }) => {
+  await page.goto('./?still&heat=on');
+  const btn = page.locator('#main-viewer .legend-btn');
+  const pop = page.locator('#main-viewer .legend-pop');
+  await btn.click();
+  await expect(pop).toContainText('전자가 모자란 곳(+)');
+  await expect(pop).toContainText('두 원자가 함께 가진 전자쌍(결합)');
+  await expect(pop).toContainText('열이 나올 때');
+  await page.keyboard.press('Escape');
+  await page.goto('./?still&heat=off');
+  await btn.click();
+  await expect(pop).toContainText('지금 움직이는 전자쌍');
+  await expect(pop).not.toContainText('열이 나올 때');
+});

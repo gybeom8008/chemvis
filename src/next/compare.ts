@@ -7,6 +7,7 @@ import './compare.css';
 import { CHAPTERS } from '../tutorial/chapters';
 import { icon } from '../ui/icons';
 import { Stage } from './stage';
+import { PAIRS_LAW, pairsKeyRows, type Palette } from '../ui/pairs-key';
 
 const ACID = `scene "염화수소가 물에 녹을 때"
 stage solution
@@ -79,40 +80,6 @@ const SCENES: { id: string; name: string; src: string }[] = [
   { id: 'metal', name: '금속 조각', src: METAL },
 ];
 
-const POUCH = (hot: boolean, shared: boolean, tint = '') => {
-  const c = hot ? tint || 'rgba(240,140,0,.62)' : 'rgba(70,78,96,.2)';
-  const e = hot && !tint ? '#e8890c' : '#17233a';
-  const w = shared ? 74 : 48;
-  return `<svg width="${w}" height="30" viewBox="0 0 ${w} 30" aria-hidden="true">
-    <line x1="20" y1="15" x2="${shared ? 56 : 33}" y2="15" stroke="${c}" stroke-width="15" stroke-linecap="round"/>
-    <circle cx="13" cy="15" r="11.500" fill="#fdfdfb" stroke="#2b3140" stroke-width="1.500"/>
-    ${shared ? '<circle cx="63" cy="15" r="8.500" fill="#fdfdfb" stroke="#2b3140" stroke-width="1.500"/>' : ''}
-    <circle cx="${shared ? 40 : 33}" cy="11.200" r="2.700" fill="${e}"/><circle cx="${shared ? 40 : 33}" cy="18.800" r="2.700" fill="${e}"/>
-  </svg>`;
-};
-
-type Palette = 'red-positive' | 'red-negative';
-const LIGHT = (pos: boolean, strong: boolean, palette: Palette) => {
-  const col = pos === (palette === 'red-positive') ? '#ff4b3e' : '#2f7df6';
-  const id = `k${pos ? 'p' : 'n'}${strong ? 's' : 'w'}`;
-  return `<svg width="46" height="40" viewBox="0 0 46 40" aria-hidden="true">
-    <defs><radialGradient id="${id}"><stop offset="0.25" stop-color="${col}" stop-opacity="0.95"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient></defs>
-    <circle cx="23" cy="20" r="${strong ? 20 : 15}" fill="url(#${id})" opacity="${strong ? 0.85 : 0.45}"/>
-    <circle cx="23" cy="20" r="9" fill="#fdfdfb" stroke="#2b3140" stroke-width="1.500"/>
-  </svg>`;
-};
-
-// Heat at the moment of a reaction: a ring that spreads (given off) or closes in (taken in).
-const HEAT = (out: boolean) => {
-  const c = out ? '#2b3140' : '#2a9fd6';
-  const tip = (x: number, d: number) => `<path d="M${x} 20 l${-4 * d} -3.5 v7 z" fill="${c}"/>`;
-  return `<svg width="46" height="40" viewBox="0 0 46 40" aria-hidden="true">
-    <circle cx="23" cy="20" r="15" fill="none" stroke="${c}" stroke-width="1.6" opacity="0.8"/>
-    <circle cx="23" cy="20" r="8" fill="${out ? '#fff' : '#5ecbf5'}" stroke="#2b3140" stroke-width="1.2" stroke-opacity="${out ? 0.25 : 0.6}"/>
-    ${out ? tip(45, 1) + tip(1, -1) : tip(33, -1) + tip(13, 1)}
-  </svg>`;
-};
-
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <main class="cmp">
@@ -170,19 +137,8 @@ const setPalette = (v: string | null, redraw = true) => {
   const palette: Palette = v === 'red-negative' ? 'red-negative' : 'red-positive';
   newStage.palette = palette;
   oldStage.palette = palette;
-  const neg = palette === 'red-positive' ? '47,125,246' : '255,75,62';
   app.querySelectorAll<HTMLElement>('[data-palette]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.palette === palette)));
-  keyBox.innerHTML = `
-      <b>오른쪽 화면의 표시</b>
-      <span>${LIGHT(true, true, palette)}전자가 모자란 곳(+)</span>
-      <span>${LIGHT(false, true, palette)}전자가 많은 곳(−)</span>
-      <span>${LIGHT(true, false, palette)}${LIGHT(false, false, palette)}조금 +, 조금 −</span>
-      <span>${POUCH(false, false)}한 원자가 가진 전자쌍</span>
-      <span>${POUCH(false, true)}두 원자가 함께 가진 전자쌍(결합)</span>
-      <span>${POUCH(true, false, `rgba(${neg},.34)`)}지금 움직이는 전자쌍</span>
-      <span>${HEAT(true)}열이 나올 때: 하얗게 번쩍이고 고리가 퍼져요</span>
-      <span>${HEAT(false)}열을 흡수할 때: 파랗게 되고 고리가 줄어들어요</span>
-      <span class="law">빛은 전자를 센 결과예요. 전자가 간 곳은 −, 떠난 곳은 +가 돼요. 번쩍임과 고리는 열이 클수록 뚜렷해요.</span>`;
+  keyBox.innerHTML = `<b>오른쪽 화면의 표시</b>${pairsKeyRows(palette).map(([svg, text]) => `<span>${svg}${text}</span>`).join('')}<span class="law">${PAIRS_LAW}</span>`;
   try {
     localStorage.setItem('chemvis.palette', palette);
   } catch {

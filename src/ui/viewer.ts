@@ -2,12 +2,12 @@
  * A stage with its caption and playback controls. The main workspace and the
  * tutorial popup each own one.
  */
-import { compile, type CompileResult } from '../engine/compile';
+import { compile, type CompileOptions, type CompileResult } from '../engine/compile';
 import type { Timeline } from '../engine/timeline';
 import type { Lens } from '../engine/world';
 import { StageView } from '../render/view';
 import { icon } from './icons';
-import { legendHtml, playSwatch } from './legend';
+import { legendHtml, pairsLegendHtml, playSwatch } from './legend';
 import { Player } from './player';
 
 export interface Settings {
@@ -18,6 +18,19 @@ export interface Settings {
   motion: boolean;
   /** How electrons are drawn (see DrawOptions.style). */
   style?: 'lines' | 'pairs';
+  /** Which colour means which charge (DrawOptions.palette). */
+  palette?: 'red-positive' | 'red-negative';
+  /** The heat of a reaction shown at the moment it happens (DrawOptions.heat). */
+  heat?: boolean;
+}
+
+/**
+ * How a scene is laid out and drawn. 'pairs' is the way decided on (docs/plan/depiction.md 2.9):
+ * electron pairs as pouches, charge as light, and every change of bonds one event forced by the
+ * law behind it. 'lines' is the old way (bonds as lines, curved arrows), kept for `?style=lines`.
+ */
+export function compileOptions(style: Settings['style']): CompileOptions {
+  return style === 'lines' ? {} : { tight: true, tangible: true, reach: 'firm', encounter: true, instant: true };
 }
 
 /** What the forward button does on the last step. */
@@ -135,7 +148,7 @@ export class Viewer {
 
   /** Compile and show a script. Keeps the previous scene if the new one has errors. */
   load(src: string): CompileResult {
-    const res = compile(src);
+    const res = compile(src, compileOptions(this.settings.style));
     this.src = src;
     if (res.timeline) {
       this.tl = res.timeline;
@@ -155,7 +168,8 @@ export class Viewer {
   /** Open or close the legend; it is rebuilt from the current scene each time it opens. */
   showLegend(open: boolean): void {
     if (open) {
-      this.legendPop.innerHTML = legendHtml(this.tl, this.settings.lens);
+      const s = this.settings;
+      this.legendPop.innerHTML = s.style === 'lines' ? legendHtml(this.tl, s.lens) : pairsLegendHtml(s.palette ?? 'red-positive', s.heat !== false);
       this.legendPop.classList.remove('show-all');
     }
     this.legendPop.hidden = !open;
@@ -179,15 +193,27 @@ export class Viewer {
     this.player.tick(dt);
     if (!this.tl) return;
     const m = this.settings.motion;
-    this.view.draw(this.player.k, this.player.t, { lens: this.settings.lens, clock: m ? clock : 0, motion: m, dt: m ? dt : 0, style: this.settings.style });
+    this.view.draw(this.player.k, this.player.t, { lens: this.settings.lens, clock: m ? clock : 0, motion: m, dt: m ? dt : 0, ...this.drawn() });
     this.paintSegs();
   }
 
   /** Draw immediately at a position (tests, scrubbing while paused). */
   seek(k: number, t: number): void {
     this.player.seek(k, t);
-    if (this.tl) this.view.draw(this.player.k, this.player.t, { lens: this.settings.lens, clock: 0, motion: false, style: this.settings.style });
+    if (this.tl) this.view.draw(this.player.k, this.player.t, { lens: this.settings.lens, clock: 0, motion: false, ...this.drawn() });
     this.paintSegs();
+  }
+
+  /** Draw the current moment again (after a setting changed while paused). */
+  redraw(): void {
+    if (this.tl) this.seek(this.player.k, this.player.t);
+  }
+
+  private drawn() {
+    const s = this.settings;
+    return s.style === 'lines'
+      ? { style: 'lines' as const }
+      : { style: 'pairs' as const, look: 'force' as const, palette: s.palette, heat: s.heat !== false };
   }
 
   private setEnabled(on: boolean): void {

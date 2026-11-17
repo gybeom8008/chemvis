@@ -81,6 +81,8 @@ export interface DrawOptions {
    * potential maps and molecule viewers usually have it.
    */
   palette?: 'red-positive' | 'red-negative';
+  /** The heat of a reaction at the moment it happens (flash, ring, the shaking round about). On unless false. */
+  heat?: boolean;
 }
 
 /** Where an ion's charge is written: an offset from one of its atoms, in the world's coordinates. */
@@ -375,7 +377,7 @@ export class StageView {
         const c = centroid(ids.map((i) => pos.get(i)!));
         const temp = this.tempAt(c, step, t);
         const h = hashString(root);
-        const warm = (opt.look === 'tangible' || opt.look === 'reach' || opt.look === 'snap' || opt.look === 'meet' || opt.look === 'force') && step ? heatOf(step) : null;
+        const warm = opt.heat !== false && (opt.look === 'tangible' || opt.look === 'reach' || opt.look === 'snap' || opt.look === 'meet' || opt.look === 'force') && step ? heatOf(step) : null;
         const amp = warm ? 1.3 * temp * stillness(warm, c, step!, t) + shaking(warm, c, step!, t)
           : 1.3 * temp + (opt.look === 'cause' ? this.kick(c, step, t, w1, basePos) : 0);
         const fq = 0.8 * Math.sqrt(temp);
@@ -800,7 +802,7 @@ export class StageView {
     out.push(...moving.over);
     if (pairs) out.push(...pairs.over);
     // Heat, at the moment of the reaction and on the molecules that react.
-    if (tangible && step) out.push(drawHeat(step, t, pos, cam.w / 1000));
+    if (tangible && step && opt.heat !== false) out.push(drawHeat(step, t, pos, cam.w / 1000));
 
     // Electrode stage: electrons waiting in each plate, and electrons running through the wire.
     if (tl.stage.electrodes) {

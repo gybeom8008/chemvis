@@ -15,13 +15,36 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const params = new URLSearchParams(location.search);
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
+/** A choice kept for the next visit (nothing is kept in a private window). */
+const kept = (key: string): string | null => {
+  try {
+    return localStorage.getItem(`chemvis.${key}`);
+  } catch {
+    return null;
+  }
+};
+const keep = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(`chemvis.${key}`, value);
+  } catch {
+    /* not kept */
+  }
+};
+
 const settings: Settings = {
   lens: { charge: true, attract: false, numbers: false, oxidation: false, arrows: false },
   speed: 1,
   continuous: false,
   motion: !params.has('still') && !reducedMotion,
-  style: params.get('style') === 'pairs' ? 'pairs' : 'lines',
+  // Electron pairs (docs/plan/depiction.md 2.9) unless the old drawing is asked for.
+  style: params.get('style') === 'lines' ? 'lines' : 'pairs',
+  palette: (params.get('palette') ?? kept('palette')) === 'red-negative' ? 'red-negative' : 'red-positive',
+  heat: (params.get('heat') ?? kept('heat')) !== 'off',
 };
+
+// (The page's own pictures, such as the small legends in the lessons, follow the drawing.)
+document.body.dataset.style = settings.style ?? 'pairs';
+document.body.dataset.palette = settings.palette ?? 'red-positive';
 
 const PLACEHOLDER = `scene "제목"
 stage solution
@@ -32,7 +55,6 @@ step "설명 문장"
 // ------------------------------------------------------------------ icons
 
 const icons: [string, string][] = [
-  ['btn-tutorial', 'book'],
   ['btn-examples', 'examples'],
   ['btn-script', 'code'],
   ['btn-view', 'sliders'],
@@ -214,6 +236,12 @@ function buildSettings(pop: HTMLElement): void {
     <label class="sw"><input type="checkbox" data-lens="attract"><span>분자 사이 인력</span></label>
     <label class="sw"><input type="checkbox" data-lens="oxidation"><span>산화수</span></label>
     <label class="sw"><input type="checkbox" data-lens="numbers"><span>원자 일련번호</span></label>
+    <label class="sw" title="반응하는 순간 열이 나오면 하얗게 번쩍이고 고리가 퍼져요. 열을 흡수하면 파랗게 되고 고리가 줄어들어요"><input type="checkbox" data-heat><span>반응열 효과</span></label>
+    <hr>
+    <p class="pop-label">전하 색</p>
+    <div class="speed" role="radiogroup" aria-label="전하 색">
+      <button data-palette="red-positive" role="radio">빨강이 +</button><button data-palette="red-negative" role="radio">빨강이 −</button>
+    </div>
     <hr>
     <p class="pop-label">속도</p>
     <div class="speed" role="radiogroup" aria-label="속도">
@@ -232,6 +260,21 @@ function buildSettings(pop: HTMLElement): void {
       syncSettings();
     }),
   );
+  pop.querySelector<HTMLInputElement>('[data-heat]')!.addEventListener('change', (e) => {
+    settings.heat = (e.target as HTMLInputElement).checked;
+    keep('heat', settings.heat ? 'on' : 'off');
+    syncSettings();
+  });
+  pop.querySelectorAll<HTMLButtonElement>('[data-palette]').forEach((b) =>
+    b.addEventListener('click', () => {
+      settings.palette = b.dataset.palette === 'red-negative' ? 'red-negative' : 'red-positive';
+      keep('palette', settings.palette);
+      document.body.dataset.palette = settings.palette;
+      syncSettings();
+      main.redraw();
+      tut.redraw();
+    }),
+  );
   pop.querySelector<HTMLInputElement>('[data-cont]')!.addEventListener('change', (e) => {
     settings.continuous = (e.target as HTMLInputElement).checked;
     syncSettings();
@@ -242,6 +285,8 @@ function syncSettings(): void {
   document.querySelectorAll<HTMLInputElement>('.popover [data-lens]').forEach((i) => (i.checked = settings.lens[i.dataset.lens as 'charge']));
   document.querySelectorAll<HTMLButtonElement>('.popover [data-speed]').forEach((b) => b.setAttribute('aria-checked', String(+b.dataset.speed! === settings.speed)));
   document.querySelectorAll<HTMLInputElement>('.popover [data-cont]').forEach((i) => (i.checked = settings.continuous));
+  document.querySelectorAll<HTMLInputElement>('.popover [data-heat]').forEach((i) => (i.checked = settings.heat !== false));
+  document.querySelectorAll<HTMLButtonElement>('.popover [data-palette]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.palette === settings.palette)));
 }
 
 function bindPopover(btnId: string, popId: string, build: (pop: HTMLElement) => void = buildSettings): void {
@@ -351,6 +396,7 @@ function openTutorial(id?: string): void {
   }
   if (location.hash !== `#/t/${c.id}`) history.replaceState(null, '', `#/t/${c.id}`);
   showChapter(c);
+  markTabs();
 }
 
 function closeTutorial(): void {
@@ -364,7 +410,38 @@ dlg.addEventListener('click', (e) => {
   if (e.target === dlg) closeTutorial();
 });
 
-$('btn-tutorial').addEventListener('click', () => openTutorial());
+// ------------------------------------------------------------------ tabs
+
+/**
+ * Three screens: 배우기 (the lessons, for now the tutorial), 실험실 (to come), AI 장면 (the
+ * workspace). The tutorial still opens over the workspace; its tab is marked while it is open.
+ */
+type Tab = 'learn' | 'lab' | 'ai';
+let place: 'lab' | 'ai' = 'ai';
+function markTabs(): void {
+  const on: Tab = dlg.open ? 'learn' : place;
+  document.querySelectorAll<HTMLButtonElement>('.tabs [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === on)));
+  document.body.dataset.tab = on;
+}
+function showPlace(p: 'lab' | 'ai'): void {
+  place = p;
+  $('lab').hidden = p !== 'lab';
+  $('work').hidden = p !== 'ai';
+  if (p === 'lab') {
+    main.showLegend(false);
+    if (location.hash !== '#/lab') history.replaceState(null, '', '#/lab');
+  } else if (location.hash === '#/lab') history.replaceState(null, '', location.pathname + location.search);
+  markTabs();
+}
+document.querySelectorAll<HTMLButtonElement>('.tabs [data-tab]').forEach((b) =>
+  b.addEventListener('click', () => {
+    const t = b.dataset.tab as Tab;
+    if (t === 'learn') return openTutorial();
+    closeTutorial();
+    showPlace(t);
+  }),
+);
+dlg.addEventListener('close', markTabs);
 $('tut-menu').addEventListener('click', () => setNav(!dlg.classList.contains('nav-open')));
 $('tut-more').addEventListener('click', () => setIntro(!dlg.classList.contains('intro-open')));
 $('tut-nav').addEventListener('click', (e) => {
@@ -397,6 +474,8 @@ async function route(): Promise<void> {
   const h = location.hash;
   const t = h.match(/^#\/t\/([\w-]+)/);
   if (t) return openTutorial(t[1]);
+  if (h === '#/lab') return showPlace('lab');
+  if (place === 'lab') showPlace('ai');
   const x = h.match(/^#\/x\/([\w-]+)/);
   if (x) return openExample(x[1]);
   if (h.startsWith('#z=') || h.startsWith('#s=')) {
@@ -419,7 +498,7 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const v = dlg.open ? tut : main;
-  if (!v.tl) return;
+  if (!v.tl || (!dlg.open && place !== 'ai')) return;
   const p = v.player;
   const act: Record<string, () => void> = {
     ' ': () => p.next(),
@@ -446,7 +525,7 @@ function frame(now: number): void {
   last = now;
   const clock = (now - start) / 1000;
   if (dlg.open) tut.tick(dt, clock);
-  else main.tick(dt, clock);
+  else if (place === 'ai') main.tick(dt, clock);
   requestAnimationFrame(frame);
 }
 void route().then(() => requestAnimationFrame(frame));

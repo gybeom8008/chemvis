@@ -203,11 +203,78 @@ code {
 }
 
 .scene-title {
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--muted);
   font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Three screens: 배우기, 실험실, AI 장면. */
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--track);
+}
+
+.tabs button {
+  border: 0;
+  padding: 5px 13px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.tabs button:hover {
+  color: var(--ink);
+}
+
+.tabs button[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(20, 20, 20, 0.08);
+}
+
+/* The script, view and link tools belong to a scene: not on the lab screen. */
+body[data-tab='lab'] .tools,
+body[data-tab='lab'] .scene-title {
+  visibility: hidden;
+}
+
+/* ================================================================ lab (to come) */
+
+.lab {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 24px;
+}
+
+.lab[hidden] {
+  display: none;
+}
+
+.lab-empty {
+  max-width: 420px;
+  text-align: center;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+
+.lab-empty .lab-name {
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .tools {
@@ -340,6 +407,10 @@ code {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   min-height: 0;
+}
+
+.work[hidden] {
+  display: none;
 }
 
 .viewer-host {
@@ -1608,4 +1679,76 @@ code {
     max-height: calc(100dvh - 80px);
     overflow: auto;
   }
+}
+
+/* Narrow screens: the tabs keep their place; the name of the app and of the scene give way. */
+@media (max-width: 640px) {
+  .brand,
+  .scene-title {
+    display: none;
+  }
+
+  .tabs button {
+    padding: 5px 9px;
+  }
+}
+
+/* Legend of the electron-pair drawing: pictures of one height, a column of their own. */
+.legend-pop .lg-pairs svg {
+  flex: none;
+  width: 52px;
+  height: 26px;
+}
+
+.legend-pop .lg-pairs li > svg + svg {
+  margin-left: -16px;
+}
+
+.legend-pop .lg-law {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* The small legends in the lesson texts, for the electron-pair drawing (body[data-style='pairs']):
+   a moving pair is a tinted pouch with its two electrons, one electron half of one, a charge a light. */
+body[data-style='pairs'] .g-arrow,
+body[data-style='pairs'] .g-hook {
+  width: 20px;
+  height: 10px;
+  border: 0;
+  border-radius: 5px;
+  background:
+    radial-gradient(circle at 13px 3px, #17233a 1.6px, transparent 2px),
+    radial-gradient(circle at 13px 7px, #17233a 1.6px, transparent 2px),
+    rgba(47, 125, 246, 0.34);
+}
+
+body[data-style='pairs'] .g-hook {
+  width: 14px;
+  height: 7px;
+  background: radial-gradient(circle at 9px 3.5px, #17233a 1.6px, transparent 2px), rgba(47, 125, 246, 0.34);
+}
+
+body[data-style='pairs'] .g-hook::after {
+  content: none;
+}
+
+body[data-style='pairs'] .g-bond {
+  height: 8px;
+  border-radius: 4px;
+  background:
+    radial-gradient(circle at 8px 2px, #17233a 1.5px, transparent 1.9px),
+    radial-gradient(circle at 8px 6px, #17233a 1.5px, transparent 1.9px),
+    rgba(70, 78, 96, 0.2);
+}
+
+body[data-style='pairs'] .g-charge {
+  border-color: transparent;
+  box-shadow: 0 0 0 3px rgba(255, 75, 62, 0.35), 0 0 8px 3px rgba(255, 75, 62, 0.45);
+}
+
+body[data-style='pairs'][data-palette='red-negative'] .g-charge {
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.35), 0 0 8px 3px rgba(47, 125, 246, 0.45);
 }

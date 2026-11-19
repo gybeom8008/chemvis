@@ -2,6 +2,7 @@
  * Draws one moment of a timeline into an SVG element: atoms, bonds, lone
  * pairs, charges, electron arrows, moving electrons, notes and so on.
  */
+import { prettyFormula, prettyText } from '../chem/format';
 import { METALS, bondLength, element } from '../chem/elements';
 import { electronDomains, lonePairAngles } from '../chem/geometry';
 import { plateSlot, tallyBox, type ArrowAnim, type Keyframe, type NoteTarget, type StepAnim, type Timeline } from '../engine/timeline';
@@ -1628,17 +1629,6 @@ function keyOf(a: string, b: string): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
-const SUB = '₀₁₂₃₄₅₆₇₈₉';
-const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹';
-
-/** "H2" → "H₂", "Ca2+" → "Ca²⁺". */
-function prettyFormula(f: string): string {
-  const m = f.match(/^(.*?)(\d*[+-])?$/)!;
-  const body = m[1].replace(/\d/g, (d) => SUB[+d]);
-  const charge = (m[2] ?? '').replace(/\d/g, (d) => SUP[+d]).replace('+', '⁺').replace('-', '⁻');
-  return body + charge;
-}
-
 /** Lithium in each electrode and in the SEI film, with the share that can still carry charge. */
 function batteryCount(tl: Timeline, w: World): string {
   const count = (world: World, region: string) => world.sites.filter((x) => x.region === region && x.occupant).length;
@@ -1945,6 +1935,8 @@ function textWidth(s: string, size: number): number {
 }
 
 function noteBox(text: string, fs: number): { w: number; h: number; size: number; lines: string[] } {
+  // Its formulas set as printed (H3O+ → H₃O⁺), measured as they will be drawn.
+  text = prettyText(text);
   const size = 17 * fs;
   const lines = wrapText(text, 15);
   const w = Math.max(...lines.map((l) => textWidth(l, size))) + 22 * fs;

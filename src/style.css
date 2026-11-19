@@ -46,7 +46,14 @@
   --canvas: #fbfaf7;
   --grid-dot: rgba(24, 25, 27, 0.13);
 
+  /* The screen around the stage: paper and ink, straight edges, two roundings. Circles, glows and
+     colour belong to the stage. Things move when they are pressed, quickly, and never on their own. */
+  --r-sm: 4px;
+  --r: 8px;
+  --dur: 0.12s;
+
   --sans: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
+  --serif: 'Noto Serif KR', 'Nanum Myeongjo', 'AppleMyungjo', 'Batang', serif;
   --mono: 'JetBrains Mono', 'D2Coding', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   color-scheme: light;
 }
@@ -156,9 +163,9 @@ code {
   place-items: center;
   width: 38px;
   height: 38px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   color: var(--ink-2);
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--dur), color var(--dur);
 }
 
 .icon:hover {
@@ -175,7 +182,7 @@ code {
 .icon.sm {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
 }
 
 /* ================================================================ top bar */
@@ -212,36 +219,44 @@ code {
   text-overflow: ellipsis;
 }
 
-/* Three screens: 학습, 시연, 실험실. */
+/* Three screens: 학습, 시연, 실험실. Words, with a line of ink under the one shown. */
 .tabs {
   display: flex;
-  gap: 2px;
+  gap: 4px;
   flex: none;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--track);
 }
 
 .tabs button {
+  position: relative;
   border: 0;
-  padding: 5px 13px;
-  border-radius: 7px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
   background: transparent;
-  color: var(--ink-2);
+  color: var(--muted);
   font: inherit;
-  font-size: 14px;
-  font-weight: 560;
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
+  transition: background var(--dur), color var(--dur);
 }
 
 .tabs button:hover {
   color: var(--ink);
+  background: var(--hover);
 }
 
 .tabs button[aria-selected='true'] {
-  background: var(--surface);
   color: var(--ink);
-  box-shadow: 0 1px 2px rgba(20, 20, 20, 0.08);
+}
+
+.tabs button[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 2px;
+  background: var(--ink);
 }
 
 /* The script, view and link tools belong to a scene: not on the lab screen. */
@@ -312,7 +327,7 @@ body[data-tab='lab'] .tools {
   padding: 6px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--r);
   box-shadow: var(--shadow);
 }
 
@@ -328,7 +343,7 @@ body[data-tab='lab'] .tools {
   justify-content: space-between;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   font-size: 14px;
   cursor: pointer;
 }
@@ -344,61 +359,66 @@ body[data-tab='lab'] .tools {
 .sw input {
   appearance: none;
   -webkit-appearance: none;
-  margin: 0;
-  width: 32px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--track);
   position: relative;
-  cursor: pointer;
-  transition: background 0.15s;
   flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--ink-2);
+  border-radius: 3px;
+  background: var(--surface);
+  cursor: pointer;
 }
 
 .sw input::before {
   content: '';
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  transition: transform 0.15s;
+  left: 4px;
+  top: 0.5px;
+  width: 4px;
+  height: 8.5px;
+  border: solid var(--surface);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  opacity: 0;
 }
 
 .sw input:checked {
+  border-color: var(--ink);
   background: var(--ink);
 }
 
 .sw input:checked::before {
-  transform: translateX(14px);
+  opacity: 1;
 }
 
+/* A choice of a few (speed, charge colours): as many equal buttons as there are choices. */
 .speed {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 2px;
   margin: 4px 6px 6px;
-  padding: 2px;
-  background: var(--surface-2);
-  border-radius: 9px;
 }
 
 .speed button {
   padding: 5px 0;
-  border-radius: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   font-size: 13px;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
 
+.speed button:hover {
+  background: var(--hover);
+}
+
 .speed button[aria-checked='true'] {
-  background: var(--surface);
-  color: var(--ink);
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 /* ================================================================ workspace */
@@ -421,17 +441,38 @@ body[data-tab='learn'] .work {
   display: none;
 }
 
+/* Not wide enough for the list, the stage and the script at once: opening the script closes the
+   list (closing the script brings it back), so the stage keeps a size one can read. */
+@media (min-width: 821px) and (max-width: 1120px) {
+  body[data-tab='learn'].drawer-open .work {
+    grid-template-columns: 0px minmax(0, 1fr) auto;
+  }
+  body[data-tab='learn'].drawer-open .tut-nav {
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s 0.2s;
+  }
+}
+
 .viewer-host {
   min-width: 0;
   min-height: 0;
 }
 
-/* The stage, with the legend beside it where there is room; under them the caption and the bar. */
+/*
+ * One column under the title, every part with the same edges: the stage, and under it the caption
+ * and the controls as one panel. The legend stands beside them where there is room; narrower than
+ * that it is behind its button, which sits on the stage at its bottom left.
+ */
 .viewer {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  row-gap: 8px;
+  box-sizing: border-box;
   height: 100%;
+  padding: 6px 24px 20px;
   container-type: inline-size;
 }
 
@@ -441,23 +482,22 @@ body[data-tab='learn'] .work {
 }
 
 .viewer > .dock {
-  grid-column: 1 / -1;
+  grid-column: 1;
   grid-row: 2;
 }
 
-/* The legend beside the stage: shown from a width on (narrower than that, it is behind the button). */
+/* The legend beside the stage and its panel, from a width on. */
 .legend-side {
   display: none;
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 1 / span 2;
   box-sizing: border-box;
   min-height: 0;
-  margin: 6px 24px 0 0;
   padding: 10px 14px 12px;
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--r);
 }
 
 @container (min-width: 760px) {
@@ -466,11 +506,8 @@ body[data-tab='learn'] .work {
     /* As the screen narrows, so does the legend; its rows wrap. */
     width: clamp(184px, 24cqw, 280px);
   }
-  .viewer > .stage-box {
-    padding-right: 12px;
-  }
   .legend-wrap {
-    visibility: hidden;
+    display: none;
   }
 }
 
@@ -479,8 +516,8 @@ body[data-tab='learn'] .work {
 }
 
 .stage-box {
+  position: relative;
   min-height: 0;
-  padding: 6px 24px 0;
 }
 
 /* The stage is a canvas: a dotted sheet that is always there, scene or not. */
@@ -488,7 +525,7 @@ body[data-tab='learn'] .work {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 16px;
+  border-radius: var(--r);
   overflow: hidden;
   background-color: var(--canvas);
   background-image: radial-gradient(circle, var(--grid-dot) 1.1px, transparent 1.5px);
@@ -499,36 +536,25 @@ body[data-tab='learn'] .work {
 }
 
 .dock {
-  position: relative;
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 48px;
-  align-items: end;
-  gap: 8px;
-  padding: 6px 16px 20px;
-}
-
-.dock-main {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 10px;
   min-width: 0;
 }
 
-.dock-side {
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
+/* The legend button: on the stage, at its bottom left; the panel opens above it. */
+.legend-wrap {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 5;
 }
 
-/* Legend: a round button at the bottom left, the panel opens above it. */
 .legend-btn {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r);
   background: var(--surface);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow);
 }
 
 .legend-btn[aria-expanded='true'] {
@@ -560,7 +586,7 @@ body[data-tab='learn'] .work {
   color: var(--ink);
   background: none;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
 
@@ -580,10 +606,6 @@ body[data-tab='learn'] .work {
   color: var(--muted);
 }
 
-.legend-wrap {
-  position: relative;
-}
-
 /* The panel opens right above its button, from the same left edge. */
 .legend-pop {
   position: absolute;
@@ -596,8 +618,8 @@ body[data-tab='learn'] .work {
   padding: 10px 14px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
 }
 
 :is(.legend-pop, .legend-side) .lg-title {
@@ -708,7 +730,7 @@ body[data-tab='learn'] .work {
   color: var(--ink-2);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
 
@@ -723,7 +745,6 @@ body[data-tab='learn'] .work {
 
 .viewer.is-empty .pill {
   opacity: 0.5;
-  box-shadow: none;
 }
 
 .pill button:disabled {
@@ -738,18 +759,20 @@ body[data-tab='learn'] .work {
   cursor: default;
 }
 
-/* The caption: a framed box under the stage, as wide as the bar, as tall as the longest caption. */
+/* The caption: the top of a framed panel under the stage, as wide as the stage, as tall as the
+   longest caption of the scene; the controls are the bottom of the same panel. */
 .caption {
   display: grid;
   align-items: center;
   box-sizing: border-box;
-  width: min(720px, 100%);
+  width: 100%;
   min-height: 3.2em;
   margin: 0;
-  padding: 10px 18px;
+  padding: 11px 18px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-bottom: 0;
+  border-radius: var(--r) var(--r) 0 0;
   font-size: 16.5px;
   line-height: 1.55;
   word-break: keep-all;
@@ -777,12 +800,12 @@ body[data-tab='learn'] .work {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: min(720px, 100%);
-  padding: 5px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 6px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 999px;
-  box-shadow: var(--shadow);
+  border-radius: 0 0 var(--r) var(--r);
 }
 
 .pill .pg,
@@ -806,7 +829,7 @@ body[data-tab='learn'] .work {
 .pill .icon {
   width: 38px;
   height: 38px;
-  border-radius: 50%;
+  border-radius: var(--r-sm);
 }
 
 .pill .count {
@@ -825,12 +848,12 @@ body[data-tab='learn'] .work {
   gap: 5px;
   height: 38px;
   padding: 0 13px 0 10px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   font-size: 14px;
   font-weight: 600;
   color: var(--ink-2);
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s, opacity 0.15s;
+  transition: background var(--dur), color var(--dur), opacity var(--dur);
 }
 
 .pill .lbl:hover {
@@ -844,7 +867,7 @@ body[data-tab='learn'] .work {
 }
 
 .pill .primary {
-  height: 42px;
+  height: 38px;
   padding: 0 12px 0 18px;
   background: var(--ink);
   color: var(--surface);
@@ -871,20 +894,38 @@ body[data-tab='learn'] .work {
   align-items: center;
   gap: 4px;
   height: 38px;
-  padding: 0 10px 0 16px;
+  padding: 0 10px 0 12px;
   cursor: pointer;
   touch-action: none;
-  border-radius: 999px;
 }
 
 .seg {
   position: relative;
   flex: 1;
   height: 4px;
-  border-radius: 2px;
+  border-radius: 1px;
   background: var(--track);
   overflow: hidden;
-  transition: height 0.15s;
+  transition: height var(--dur);
+}
+
+/* A narrow stage: the controls take two rows (where one is in the scene, then what to do next),
+   so every button keeps its words. */
+@container (max-width: 540px) {
+  .pill {
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  .pill .pg {
+    flex: 1 1 100%;
+  }
+  .pill .nav {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    padding: 4px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
 }
 
 .seg.on {
@@ -1014,7 +1055,7 @@ body[data-tab='learn'] .work {
   color: var(--ink);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-sm);
   resize: none;
   tab-size: 2;
   white-space: pre;
@@ -1047,7 +1088,7 @@ body[data-tab='learn'] .work {
   gap: 8px;
   align-items: baseline;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   margin-top: 6px;
   cursor: pointer;
 }
@@ -1057,7 +1098,7 @@ body[data-tab='learn'] .work {
   font-family: var(--mono);
   font-size: 11px;
   padding: 1px 6px;
-  border-radius: 6px;
+  border-radius: 3px;
   background: rgba(0, 0, 0, 0.08);
 }
 
@@ -1073,19 +1114,18 @@ body[data-tab='learn'] .work {
 
 /* ================================================================ 학습 (lessons): a screen of its own, like 시연 and 실험실 */
 
-/* The list of lessons: only in 학습. In 시연 it waits off the left edge (the column is closed). */
+/* The list of lessons: only in 학습, a contents page with a line between it and the stage. In 시연
+   it waits off the left edge (the column is closed). */
 .tut-nav {
   box-sizing: border-box;
-  width: 236px;
+  width: 252px;
   min-height: 0;
-  margin: 8px 0 16px 16px;
-  transform: translateX(calc(-100% - 16px));
+  margin: 0;
+  transform: translateX(-100%);
   visibility: hidden;
   transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s 0.2s;
-  padding: 16px 12px;
-  border-radius: 16px;
-  background: var(--surface-2);
-  box-shadow: inset 0 0 0 1px var(--line);
+  padding: 10px 10px 20px 14px;
+  border-right: 1px solid var(--line);
   overflow: auto;
   font-size: 14px;
 }
@@ -1130,7 +1170,7 @@ body[data-tab='learn'] .tut-nav {
   display: flex;
   gap: 10px;
   padding: 7px 10px;
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   color: var(--ink-2);
   text-decoration: none;
 }
@@ -1146,11 +1186,13 @@ body[data-tab='learn'] .tut-nav {
   background: var(--hover);
 }
 
+/* The lesson shown: in ink, with a line of ink at its left, like the step being played in the script. */
 .tut-nav li a.on {
-  background: var(--surface);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--hl);
+  box-shadow: inset 2px 0 0 var(--ink);
   color: var(--ink);
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  font-weight: 650;
 }
 
 .tut-nav .guide {
@@ -1202,9 +1244,10 @@ body[data-tab='learn'] .tut-nav {
 .tut-title {
   min-height: 1.35em;
   margin: 2px 0 0;
-  font-size: 22px;
+  font-family: var(--serif);
+  font-size: 23px;
   font-weight: 700;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
 }
 
 .tut-tools {
@@ -1222,7 +1265,7 @@ body[data-tab='learn'] .tut-nav {
 .tryit code {
   background: var(--hl);
   padding: 1px 5px;
-  border-radius: 5px;
+  border-radius: 3px;
 }
 
 .legend {
@@ -1468,13 +1511,13 @@ body[data-tab='learn'] .tut-nav {
   z-index: 50;
   transform: translate(-50%, 8px);
   padding: 8px 14px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--ink);
   color: var(--surface);
   font-size: 13px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.18s, transform 0.18s;
+  transition: opacity var(--dur), transform var(--dur);
 }
 
 .toast.show {
@@ -1488,20 +1531,8 @@ body[data-tab='learn'] .tut-nav {
   .bar {
     padding: 8px 8px 2px 16px;
   }
-  .stage-box {
-    padding: 4px 8px 0;
-  }
-  .dock {
-    grid-template-columns: 40px minmax(0, 1fr);
-    gap: 6px;
+  .viewer {
     padding: 4px 10px 14px;
-  }
-  .dock-side:empty {
-    display: none;
-  }
-  .legend-btn {
-    width: 40px;
-    height: 40px;
   }
   .caption {
     font-size: 15.5px;
@@ -1516,7 +1547,7 @@ body[data-tab='learn'] .tut-nav {
     height: 58dvh;
     border-left: 0;
     border-top: 1px solid var(--line);
-    border-radius: 18px 18px 0 0;
+    border-radius: var(--r) var(--r) 0 0;
     box-shadow: var(--shadow-lg);
   }
   /* The list of lessons opens over the page from the list button, instead of taking a column. */
@@ -1537,6 +1568,7 @@ body[data-tab='learn'] .tut-nav {
     transform: none;
     visibility: visible;
     padding: 10px 14px 24px;
+    border-right: 0;
     border-radius: 0;
     box-shadow: none;
     background: var(--surface);
@@ -1603,54 +1635,14 @@ body[data-tab='learn'] .tut-nav {
   }
 }
 
-/* Phones: the scene gets the screen. The legend button sits inside the canvas frame at its
-   bottom left; under the canvas come the caption and the bar, which takes two rows (scene above,
-   step below) so every button keeps its words. Popovers span the screen instead of hanging off it. */
+/* Phones: the scene gets the screen; popovers span the screen instead of hanging off it. */
 @media (max-width: 560px) {
   .viewer {
-    grid-template-rows: minmax(0, 1fr) auto auto;
-    grid-template-areas: 'stage' 'caption' 'pill';
-  }
-  .viewer > .stage-box {
-    grid-area: stage;
-  }
-  .dock,
-  .dock-main {
-    display: contents;
-  }
-  .legend-wrap {
-    grid-area: stage;
-    align-self: end;
-    justify-self: start;
-    z-index: 5;
-    margin: 0 0 10px 18px;
+    padding: 4px 8px 12px;
   }
   .legend-btn {
     width: 38px;
     height: 38px;
-  }
-  .caption {
-    grid-area: caption;
-    width: auto;
-    margin: 8px 10px 0;
-  }
-  .pill {
-    grid-area: pill;
-    width: auto;
-    margin: 10px 10px 14px;
-    flex-wrap: wrap;
-    gap: 2px;
-    border-radius: 24px;
-  }
-  .pill .pg {
-    flex: 1 1 100%;
-  }
-  .pill .nav {
-    flex: 1 1 100%;
-    justify-content: space-between;
-    padding: 4px 0 0;
-    border-left: 0;
-    border-top: 1px solid var(--line);
   }
   .popover,
   .popover.examples {

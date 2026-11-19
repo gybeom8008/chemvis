@@ -2,6 +2,7 @@
  * A stage with its caption and playback controls. The main workspace and the
  * tutorial popup each own one.
  */
+import { prettyText } from '../chem/format';
 import { compile, type CompileOptions, type CompileResult } from '../engine/compile';
 import type { Timeline } from '../engine/timeline';
 import type { Lens } from '../engine/world';
@@ -67,28 +68,27 @@ export class Viewer {
     this.settings = settings;
     host.innerHTML = `
       <div class="viewer is-empty">
-        <div class="stage-box"><svg class="stage" role="img" aria-label="장면"></svg></div>
-        <aside class="legend-side" aria-label="범례"></aside>
-        <div class="dock">
-          <div class="dock-side legend-wrap">
+        <div class="stage-box">
+          <svg class="stage" role="img" aria-label="장면"></svg>
+          <div class="legend-wrap">
             <button class="icon legend-btn" aria-label="범례" title="범례" aria-expanded="false">${icon('legend')}</button>
             <div class="legend-pop" role="dialog" aria-label="범례" hidden></div>
           </div>
-          <div class="dock-main">
-            <p class="caption" aria-live="polite"><span class="text"></span><span class="sizer" aria-hidden="true"></span></p>
-            <div class="pill">
-              <div class="pg">
-                <div class="segs" role="slider" aria-label="단계" title="눌러서 원하는 순간 보기" tabindex="0"></div>
-                <span class="count"></span>
-              </div>
-              <div class="nav">
-                <button class="icon" data-act="prev" aria-label="이전 단계" title="이전 단계 (←)">${icon('prev')}</button>
-                <button class="lbl" data-act="replay" aria-label="다시 보기" title="이 단계 다시 보기 (R)">${icon('replay')}<span>다시 보기</span></button>
-                <button class="lbl primary" data-act="next" aria-label="다음 단계" title="다음 단계 (→, 스페이스)"><span>다음</span>${icon('next')}</button>
-              </div>
+        </div>
+        <aside class="legend-side" aria-label="범례"></aside>
+        <div class="dock">
+          <p class="caption" aria-live="polite"><span class="text"></span><span class="sizer" aria-hidden="true"></span></p>
+          <div class="pill">
+            <div class="pg">
+              <div class="segs" role="slider" aria-label="단계" title="눌러서 원하는 순간 보기" tabindex="0"></div>
+              <span class="count"></span>
+            </div>
+            <div class="nav">
+              <button class="icon" data-act="prev" aria-label="이전 단계" title="이전 단계 (←)">${icon('prev')}</button>
+              <button class="lbl" data-act="replay" aria-label="다시 보기" title="이 단계 다시 보기 (R)">${icon('replay')}<span>다시 보기</span></button>
+              <button class="lbl primary" data-act="next" aria-label="다음 단계" title="다음 단계 (→, 스페이스)"><span>다음</span>${icon('next')}</button>
             </div>
           </div>
-          <div class="dock-side"></div>
         </div>
       </div>`;
     this.root = host.querySelector('.viewer')!;
@@ -247,8 +247,8 @@ export class Viewer {
     const n = this.tl?.steps.length ?? 0;
     // Every caption of the scene laid over one another, unseen: the box is as tall as the tallest,
     // so it does not grow and shrink (and the stage with it) from one step to the next.
-    this.caption.querySelector('.sizer')!.innerHTML = (this.tl?.steps ?? []).map((s) => `<span>${esc(s.text)}</span>`).join('');
-    this.segs.innerHTML = Array.from({ length: n }, (_, i) => `<span class="seg" title="${i + 1}. ${esc(this.tl!.steps[i].text)}"><i></i></span>`).join('');
+    this.caption.querySelector('.sizer')!.innerHTML = (this.tl?.steps ?? []).map((s) => `<span>${esc(prettyText(s.text))}</span>`).join('');
+    this.segs.innerHTML = Array.from({ length: n }, (_, i) => `<span class="seg" title="${i + 1}. ${esc(prettyText(this.tl!.steps[i].text))}"><i></i></span>`).join('');
   }
 
   private paintSegs(): void {
@@ -294,7 +294,7 @@ export class Viewer {
     const step = this.tl?.steps[p.k];
     const text = this.caption.querySelector('.text')!;
     this.count.textContent = step ? `${p.k + 1} / ${p.n}` : '';
-    text.textContent = step ? step.text : (this.tl?.title ?? '');
+    text.textContent = prettyText(step ? step.text : (this.tl?.title ?? ''));
     this.segs.setAttribute('aria-valuetext', step ? `${p.n}단계 중 ${p.k + 1}단계` : '');
 
     // There is no step before the first one: the button rests instead of repeating the step.

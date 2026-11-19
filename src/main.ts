@@ -1,5 +1,6 @@
 import './style.css';
 import './render/stage.css';
+import { prettyText } from './chem/format';
 import { compile } from './engine/compile';
 import type { Diag } from './dsl/parser';
 import type { Timeline } from './engine/timeline';
@@ -139,18 +140,18 @@ function paintHead(tl: Timeline | null): void {
   if (place === 'learn') {
     const n = CHAPTERS.indexOf(chapter) + 1;
     $('tut-part').innerHTML = `<span class="pt">${esc(PARTS.find((p) => p.id === chapter.part)?.title ?? '')}</span><span class="cnt">${n} / ${CHAPTERS.length}</span>`;
-    $('tut-title').textContent = chapter.title;
+    $('tut-title').textContent = prettyText(chapter.title);
     $('tryit').innerHTML = chapter.tryIt;
     $('tryit').hidden = false;
   } else {
     $('tut-part').innerHTML = '';
-    $('tut-title').textContent = tl?.title ?? '';
+    $('tut-title').textContent = prettyText(tl?.title ?? '');
     $('tryit').hidden = true;
   }
 }
 
 main.onLoad = (tl) => {
-  document.title = tl ? `${tl.title} · chemvis` : 'chemvis';
+  document.title = tl ? `${prettyText(tl.title)} · chemvis` : 'chemvis';
   renderCode(codeView, main.src, tl, (k) => main.player.go(k));
   paintHead(tl);
   syncSettings();
@@ -355,7 +356,7 @@ bindPopover('btn-view', 'view-pop');
 function buildExamples(pop: HTMLElement): void {
   pop.innerHTML =
     `<p class="pop-title">예시</p>` +
-    EXAMPLES.map((e) => `<button class="ex" data-ex="${e.id}"><b>${esc(e.title)}</b><span>${esc(e.summary)}</span></button>`).join('');
+    EXAMPLES.map((e) => `<button class="ex" data-ex="${e.id}"><b>${esc(prettyText(e.title))}</b><span>${esc(prettyText(e.summary))}</span></button>`).join('');
   pop.querySelectorAll<HTMLButtonElement>('[data-ex]').forEach((b) =>
     b.addEventListener('click', () => {
       pop.hidden = true;
@@ -386,7 +387,7 @@ function renderNav(): void {
   for (const part of PARTS) {
     html += `<p class="part">${esc(part.title)}</p><ol>`;
     for (const c of CHAPTERS.filter((x) => x.part === part.id)) {
-      html += `<li><a href="#/t/${c.id}" data-ch="${c.id}">${esc(c.title)}</a></li>`;
+      html += `<li><a href="#/t/${c.id}" data-ch="${c.id}">${esc(prettyText(c.title))}</a></li>`;
     }
     html += '</ol>';
   }

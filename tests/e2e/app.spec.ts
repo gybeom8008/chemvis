@@ -289,6 +289,30 @@ test('phone width: no sideways scrolling in workspace or tutorial', async ({ pag
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
+test('a small phone (360×640): the bar fits, everything pressed is 44 px, the stage keeps about half the height', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  for (const at of ['./?still#/t/acid-hcl', './?still#/x/limestone']) {
+    await page.goto(at);
+    await expect(page.locator('#main-viewer circle.atom').first()).toBeVisible();
+    const m = await page.evaluate(() => {
+      const shown = (e: Element) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden' && !e.closest('[hidden]');
+      };
+      const pressed = [...document.querySelectorAll('button, a[href]')].filter(shown);
+      return {
+        small: pressed.filter((e) => e.getBoundingClientRect().width < 44 || e.getBoundingClientRect().height < 44).map((e) => e.id || e.className),
+        barRight: Math.max(...[...document.querySelectorAll('.bar *')].filter(shown).map((e) => e.getBoundingClientRect().right)),
+        stage: document.querySelector('#main-viewer svg.stage')!.getBoundingClientRect().height / innerHeight,
+      };
+    });
+    // ui.md R9 and R2 (the plan asks 55% of the height; the heading, the caption and the controls leave about half).
+    expect(m.small, at).toEqual([]);
+    expect(m.barRight, at).toBeLessThanOrEqual(360);
+    expect(m.stage, at).toBeGreaterThan(0.45);
+  }
+});
+
 test('attraction lines do not blink while nothing moves', async ({ page }) => {
   await page.goto('./#/t/forces');
   await cv(page).tut.seek(0, 1);

@@ -1683,7 +1683,7 @@ body[data-tab='learn'] .tut-nav {
    row (the list button and the title), so the stage keeps as much of the height as it can. */
 @media (max-width: 560px) {
   .bar {
-    padding: 4px 4px 0 8px;
+    padding: 4px 2px 0 6px;
   }
   .tabs {
     gap: 0;
@@ -1691,7 +1691,7 @@ body[data-tab='learn'] .tut-nav {
   .tabs button {
     min-width: 44px;
     height: 44px;
-    padding: 0 7px;
+    padding: 0 6px;
   }
   .tabs button[aria-selected='true']::after {
     left: 8px;

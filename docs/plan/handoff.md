@@ -1,6 +1,8 @@
 # 다음 주부터 Opus에게 맡기는 방법
 
-상태: 안 · 2026-11-10 · [기획안 개요](README.md)
+상태: 지난 계획 · 2026-11-10 · [기획안 개요](README.md)
+
+> 이 계획 가운데 실제로 만든 것은 CLAUDE.md, 단위 검사와 화면 검사, 움직임 검사(`npm run flicker`, `npm run cross`), 캡처 도구(`npm run shot`)다. `npm run check`, `npm run shots`, `.claude/skills/`, `docs/backlog.md`는 만들지 않았다. 남은 일은 [인계서](handover.md) 8절에 적는다(2026-11-19).
 
 ## 1. 생각
 

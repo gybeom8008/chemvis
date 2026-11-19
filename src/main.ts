@@ -79,6 +79,10 @@ let place: Tab = 'demo';
 
 const main = new Viewer($('main-viewer'), settings);
 main.endAction = () => (place === 'learn' && CHAPTERS[CHAPTERS.indexOf(chapter) + 1] ? 'nextChapter' : 'restart');
+// A term in a caption leads to the lesson that teaches it (the address does the rest: route()).
+main.openLesson = (id) => {
+  location.hash = `#/t/${id}`;
+};
 
 // What each of the two keeps while the other is shown.
 let chapter: Chapter = CHAPTERS[0];
@@ -205,6 +209,8 @@ function focusLine(line: number): void {
 
 /** Load a script onto the stage. Returns false if it had errors. */
 function loadMain(src: string, play = false): boolean {
+  // In 학습 the lesson's own terms are not linked to it.
+  main.lessonShown = place === 'learn' ? chapter.id : null;
   const res = main.load(src);
   if (!res.timeline) main.src = src;
   showDiags(res.errors, res.warnings);

@@ -3,6 +3,7 @@
  * tutorial popup each own one.
  */
 import { prettyText } from '../chem/format';
+import { findTerms, lessonTitle, type TermMatch } from '../tutorial/glossary';
 import { compile, type CompileOptions, type CompileResult } from '../engine/compile';
 import type { Timeline } from '../engine/timeline';
 import type { Lens } from '../engine/world';
@@ -63,6 +64,15 @@ export class Viewer {
   private legendPop: HTMLElement;
   /** The legend beside the stage, where there is room for it (else it is behind the button). */
   private legendSide: HTMLElement;
+  /** What a term in the caption means, shown when it is pressed (docs/plan/ui.md R15). */
+  private termCard: HTMLElement;
+  private terms: TermMatch[] = [];
+  /** The caption as last written, so that it is written again only when it changes. */
+  private captionKey = '';
+  /** The lesson on the stage (in 학습): its own terms are not linked to it. */
+  lessonShown: string | null = null;
+  /** Go to a lesson (from a term's card). */
+  openLesson: ((id: string) => void) | null = null;
 
   constructor(host: HTMLElement, settings: Settings) {
     this.settings = settings;
@@ -77,6 +87,7 @@ export class Viewer {
         </div>
         <aside class="legend-side" aria-label="범례"></aside>
         <div class="dock">
+          <div class="term-card" role="dialog" aria-label="용어" hidden></div>
           <p class="caption" aria-live="polite"><span class="text"></span><span class="sizer" aria-hidden="true"></span></p>
           <div class="pill">
             <div class="pg">
@@ -101,6 +112,26 @@ export class Viewer {
     this.legendBtn = host.querySelector('.legend-btn')!;
     this.legendPop = host.querySelector('.legend-pop')!;
     this.legendSide = host.querySelector('.legend-side')!;
+    this.termCard = host.querySelector('.term-card')!;
+    this.caption.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('.term');
+      if (!b) return;
+      if (b.getAttribute('aria-expanded') === 'true') return this.hideTerm();
+      this.showTerm(+b.dataset.i!, b);
+    });
+    this.termCard.addEventListener('click', (e) => {
+      if (!(e.target as HTMLElement).closest('.tc-go')) return;
+      const lesson = this.termCard.dataset.lesson;
+      this.hideTerm();
+      if (lesson) this.openLesson?.(lesson);
+    });
+    document.addEventListener('pointerdown', (e) => {
+      const t = e.target as Element;
+      if (!this.termCard.hidden && !this.termCard.contains(t) && !t.closest?.('.caption .term')) this.hideTerm();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.termCard.hidden) this.hideTerm();
+    });
     this.legendBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.showLegend(this.legendPop.hidden !== false);
@@ -197,6 +228,8 @@ export class Viewer {
   clear(): void {
     this.tl = null;
     this.src = '';
+    this.captionKey = '';
+    this.hideTerm();
     this.caption.querySelector('.sizer')!.innerHTML = '';
     this.view.clear();
     this.player.unload();
@@ -289,12 +322,53 @@ export class Viewer {
     this.segs.addEventListener('pointercancel', stop);
   }
 
+  /** The caption, with its terms as buttons; written again only when it changes. */
+  private writeCaption(shown: string): void {
+    const key = `${this.lessonShown}|${shown}`;
+    if (key === this.captionKey) return;
+    this.captionKey = key;
+    this.hideTerm();
+    this.terms = findTerms(shown, this.lessonShown);
+    let html = '';
+    let at = 0;
+    this.terms.forEach((m, i) => {
+      html += esc(shown.slice(at, m.start));
+      html += `<button type="button" class="term" data-i="${i}" aria-expanded="false" title="뜻 보기">${esc(shown.slice(m.start, m.end))}</button>`;
+      at = m.end;
+    });
+    this.caption.querySelector('.text')!.innerHTML = html + esc(shown.slice(at));
+  }
+
+  /** What the term means and the lesson that teaches it, in a card above the caption. */
+  private showTerm(i: number, b: HTMLButtonElement): void {
+    const m = this.terms[i];
+    if (!m) return;
+    const e = m.entry;
+    this.caption.querySelectorAll('.term[aria-expanded="true"]').forEach((x) => x.setAttribute('aria-expanded', 'false'));
+    b.setAttribute('aria-expanded', 'true');
+    this.termCard.dataset.lesson = e.lesson;
+    this.termCard.innerHTML =
+      `<p class="tc-term">${esc(e.term)}</p><p class="tc-meaning">${esc(e.meaning)}</p>` +
+      `<button type="button" class="tc-go"><span>배우는 수업: ${esc(lessonTitle(e.lesson))}</span>${icon('next')}</button>`;
+    this.termCard.hidden = false;
+    // Over the stage, from the term's left edge, as far as the panel allows.
+    const dock = this.termCard.parentElement!.getBoundingClientRect();
+    const r = b.getBoundingClientRect();
+    const w = this.termCard.offsetWidth;
+    this.termCard.style.left = `${Math.max(0, Math.min(r.left - dock.left - 14, dock.width - w))}px`;
+  }
+
+  private hideTerm(): void {
+    if (this.termCard.hidden) return;
+    this.termCard.hidden = true;
+    this.caption.querySelectorAll('.term[aria-expanded="true"]').forEach((x) => x.setAttribute('aria-expanded', 'false'));
+  }
+
   private update(): void {
     const p = this.player;
     const step = this.tl?.steps[p.k];
-    const text = this.caption.querySelector('.text')!;
     this.count.textContent = step ? `${p.k + 1} / ${p.n}` : '';
-    text.textContent = prettyText(step ? step.text : (this.tl?.title ?? ''));
+    this.writeCaption(prettyText(step ? step.text : (this.tl?.title ?? '')));
     this.segs.setAttribute('aria-valuetext', step ? `${p.n}단계 중 ${p.k + 1}단계` : '');
 
     // There is no step before the first one: the button rests instead of repeating the step.

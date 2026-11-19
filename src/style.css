@@ -536,9 +536,88 @@ body[data-tab='learn'] .work {
 }
 
 .dock {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* A term in a caption: dotted underline; pressed, its meaning and its lesson in a card above. */
+.caption .term {
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--muted);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+  transition: background var(--dur);
+}
+
+.caption .term:hover,
+.caption .term[aria-expanded='true'] {
+  background: var(--hl);
+  text-decoration-color: var(--ink);
+}
+
+.term-card {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 15;
+  box-sizing: border-box;
+  width: min(360px, 100%);
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+
+.term-card[hidden] {
+  display: none;
+}
+
+.term-card .tc-term {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.term-card .tc-meaning {
+  margin: 0 0 10px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+
+.term-card .tc-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  transition: background var(--dur);
+}
+
+.term-card .tc-go:hover {
+  background: var(--hover);
+}
+
+.term-card .tc-go .ico {
+  width: 16px;
+  height: 16px;
+  flex: none;
 }
 
 /* The legend button: on the stage, at its bottom left; the panel opens above it. */
@@ -1654,6 +1733,9 @@ body[data-tab='learn'] .tut-nav {
   .icon,
   .pill .icon {
     width: 44px;
+  }
+  .term-card .tc-go {
+    min-height: 44px;
   }
   .popover,
   .popover.examples {

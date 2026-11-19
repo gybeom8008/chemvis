@@ -299,7 +299,8 @@ test('a small phone (360×640): the bar fits, everything pressed is 44 px, the s
         const r = e.getBoundingClientRect();
         return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden' && !e.closest('[hidden]');
       };
-      const pressed = [...document.querySelectorAll('button, a[href]')].filter(shown);
+      // (A term inside a caption is a word in running text, the usual exception to the size.)
+      const pressed = [...document.querySelectorAll('button, a[href]')].filter((e) => shown(e) && !e.matches('.caption .term'));
       return {
         small: pressed.filter((e) => e.getBoundingClientRect().width < 44 || e.getBoundingClientRect().height < 44).map((e) => e.id || e.className),
         barRight: Math.max(...[...document.querySelectorAll('.bar *')].filter(shown).map((e) => e.getBoundingClientRect().right)),
@@ -534,4 +535,35 @@ test('the legend: beside the stage while there is room, behind its button when t
   await btn.click();
   await expect(pop).toContainText('지금 움직이는 전자쌍');
   await expect(pop).toContainText('열이 나올 때');
+});
+
+test('a term in a caption shows what it means and leads to the lesson that teaches it', async ({ page }) => {
+  await page.goto('./?still');
+  await cv(page).main.load('scene "용어"\nstage solution\nmol w = H2O at center\nstep "산화와 환원이 함께 일어난다."\n  wait\n');
+  const terms = page.locator('#main-viewer .caption .term');
+  await expect(terms).toHaveText(['산화', '환원']);
+  const card = page.locator('#main-viewer .term-card');
+  await expect(card).toBeHidden();
+  await terms.first().click();
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('원자가 전자를 잃는 것이다');
+  await expect(card.locator('.tc-go')).toContainText('산화와 환원');
+  // The card is over the stage, above the caption, inside the column.
+  const box = (await card.boundingBox())!;
+  const cap = (await page.locator('#main-viewer .caption').boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(cap.y);
+  // Pressing elsewhere puts it away; Escape too.
+  await page.mouse.click(5, 5);
+  await expect(card).toBeHidden();
+  await terms.nth(1).click();
+  await expect(card).toContainText('원자가 전자를 얻는 것이다');
+  await page.keyboard.press('Escape');
+  await expect(card).toBeHidden();
+  // Its lesson is one press away; in that lesson its own terms are plain words.
+  await terms.first().click();
+  await card.locator('.tc-go').click();
+  await expect(page).toHaveURL(/#\/t\/redox$/);
+  await expect(page.locator('body')).toHaveAttribute('data-tab', 'learn');
+  await expect(page.locator('#main-viewer .caption')).toContainText('산화');
+  await expect(page.locator('#main-viewer .caption .term', { hasText: '산화' })).toHaveCount(0);
 });

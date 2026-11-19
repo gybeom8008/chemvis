@@ -83,6 +83,13 @@ export function prettyText(s: string): string {
   return s
     .replace(IN_TEXT, (m: string, body: string, sign?: string) => {
       if (!/\d/.test(body) && !sign) return m;
+      // A bracket that closes after the formula without opening in it ("(탄산칼슘, CaCO3)") is the sentence's.
+      let after = '';
+      while (body.endsWith(')') && (body.match(/\)/g)!.length > (body.match(/\(/g) ?? []).length)) {
+        body = body.slice(0, -1);
+        after = ')' + after;
+      }
+      if (after) return prettyText(body) + after;
       // A bracket that opens before the formula and closes after it ("(HCO3-)") is the sentence's.
       if (body.startsWith('(') && !body.includes(')')) return `(${prettyFormula(body.slice(1) + (sign ?? ''))}`;
       return prettyFormula(body + (sign ?? ''));

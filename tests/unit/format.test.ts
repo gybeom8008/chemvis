@@ -43,6 +43,8 @@ describe('formulas in running text', () => {
     expect(prettyText('H+를 내준다')).toBe('H⁺를 내준다');
     expect(prettyText('Zn → Zn2+ + 2e-')).toBe('Zn → Zn²⁺ + 2e⁻');
     expect(prettyText('2H2O')).toBe('2H₂O');
+    expect(prettyText('석회암(탄산칼슘, CaCO3) 표면')).toBe('석회암(탄산칼슘, CaCO₃) 표면');
+    expect(prettyText('수산화 칼슘(Ca(OH)2)')).toBe('수산화 칼슘(Ca(OH)₂)');
   });
 
   it('leaves atoms, bonds, words and what is already set alone', () => {

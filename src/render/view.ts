@@ -107,6 +107,8 @@ interface Box {
 export class StageView {
   private svg: SVGSVGElement;
   private bg: SVGGElement;
+  /** Names of the stage's parts written at its left edge (물(액체), 공기): they keep inside the view. */
+  private edgeLabels: { el: SVGTextElement; x: number }[] = [];
   private dyn: SVGGElement;
   private tl: Timeline | null = null;
   private boxes: Box[] = [];
@@ -134,6 +136,7 @@ export class StageView {
     this.cam = null;
     this.notePlace.clear();
     this.bg.innerHTML = '';
+    this.edgeLabels = [];
     this.dyn.innerHTML = '';
   }
 
@@ -143,6 +146,7 @@ export class StageView {
     this.svg.setAttribute('viewBox', `0 0 ${st.width} ${st.height}`);
     this.svg.dataset.stage = st.name;
     this.bg.innerHTML = st.background();
+    this.edgeLabels = [...this.bg.querySelectorAll<SVGTextElement>('text.bg-label:not([text-anchor])')].map((el) => ({ el, x: +el.getAttribute('x')! }));
     this.collective = tl.steps.some((s) => s.tally.length > 0);
     this.actors = tl.steps.map((step) => stepActors(step));
     this.boxes = tl.steps.map((step, k) => this.stepBox(step, this.actors[k]));
@@ -259,6 +263,9 @@ export class StageView {
     this.cam = { x: lerp(from.x, to.x, u), y: lerp(from.y, to.y, u), w: lerp(from.w, to.w, u), h: lerp(from.h, to.h, u) };
     const c = this.cam;
     this.svg.setAttribute('viewBox', `${f1(c.x)} ${f1(c.y)} ${f1(c.w)} ${f1(c.h)}`);
+    // When the camera comes close, a name written at the stage's left edge would be cut by the
+    // frame: it stays at the left of what is seen instead.
+    for (const { el, x } of this.edgeLabels) el.setAttribute('x', f1(Math.max(x, c.x + c.w * 0.018)));
     return c;
   }
 

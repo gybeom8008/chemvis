@@ -17,9 +17,10 @@ export interface Chapter {
 
 export const PARTS = [
   { id: 0, title: '0부 · 화면 읽는 법' },
-  { id: 1, title: '1부 · 물리 변화: 물질은 그대로인 변화' },
-  { id: 2, title: '2부 · 화학 반응: 새 물질이 생기는 변화' },
-  { id: 3, title: '3부 · 에너지와 평형' },
+  { id: 1, title: '1부 · 화학 결합: 원자가 전자로 이어지는 방식' },
+  { id: 2, title: '2부 · 물리 변화: 물질은 그대로인 변화' },
+  { id: 3, title: '3부 · 화학 반응: 새 물질이 생기는 변화' },
+  { id: 4, title: '4부 · 에너지와 평형' },
 ];
 
 const s = (x: string) => x.replace(/^\n/, '');
@@ -119,8 +120,79 @@ step "다시 식히면 움직임도 느려진다."
   },
   // ------------------------------------------------------------------ part 1
   {
-    id: 'diffusion',
+    id: 'covalent',
     part: 1,
+    title: '공유 결합',
+    script: s(`
+scene "수소 원자 둘이 공유 결합을 할 때"
+stage gas
+mol a = H· at 340,310
+mol b = H· at 620,310
+
+step "두 원자가 전자쌍 하나를 함께 쓰면서 이어지는 것을 공유 결합이라고 한다. 수소 원자는 전자가 하나뿐이어서, 혼자 있을 때는 짝이 없는 전자(홑전자) 하나를 가진다."
+step "수소 원자마다 홑전자가 하나씩 있다."
+  note a.H "홑전자 하나"
+  note b.H "홑전자 하나"
+step "두 수소 원자가 서로 끌려 다가간다."
+  approach a.H b.H
+step "두 원자가 전자를 하나씩 내어 전자쌍 하나를 함께 쓴다. 이것이 공유 결합이다."
+  hop a.H -> a.H~b.H
+  hop b.H -> a.H~b.H
+step "이렇게 생긴 수소 분자(H2)의 두 원자는 전자쌍 하나로 이어져 있다."
+  note a.H~b.H "공유 결합: 전자쌍 하나"
+`),
+    tryIt: `<code>mol b = H· at 620,310</code>을 <code>mol b = Cl· at 620,310</code>으로, 아래의 <code>b.H</code>를 모두 <code>b.Cl</code>로 바꿔 보자. 수소 원자와 염소 원자도 같은 방식으로 HCl이 된다. 이때는 전자쌍이 Cl 쪽으로 치우쳐서 Cl은 조금 −, H는 조금 +가 된다.`,
+  },
+  {
+    id: 'multiple-bonds',
+    part: 1,
+    title: '이중 결합과 삼중 결합',
+    script: s(`
+scene "전자쌍을 둘, 셋 함께 쓰는 결합"
+stage gas
+mol o = O2 at 250,280
+mol n = N2 at 500,280
+mol c = CO2 at 750,280
+
+step "두 원자가 전자쌍 하나를 함께 쓰면 단일 결합, 둘을 함께 쓰면 이중 결합, 셋을 함께 쓰면 삼중 결합이다. 함께 쓰는 전자쌍이 많을수록 두 원자는 더 가깝고 단단하게 이어진다."
+step "산소 분자(O2)를 루이스 구조로 그리면 두 O가 전자쌍 두 개를 함께 쓴다."
+  note o.O1~o.O2 "이중 결합: 전자쌍 2개"
+step "질소 분자(N2)의 두 N은 전자쌍 세 개를 함께 쓴다."
+  note n.N1~n.N2 "삼중 결합: 전자쌍 3개"
+step "이산화탄소(CO2)에서는 C가 양쪽 O와 전자쌍을 두 개씩 함께 쓴다."
+  note c.C~c.O1 "이중 결합"
+  note c.C~c.O2 "이중 결합"
+`),
+    tryIt: `<code>mol c = CO2 at 750,280</code>을 <code>mol c = smiles:C#N at 750,280</code>으로 바꾸고, <code>note c.</code>로 시작하는 두 줄을 지워 보자. 사이안화 수소(HCN)의 C와 N 사이에 전자쌍 세 개가 보인다.`,
+  },
+  {
+    id: 'ionic',
+    part: 1,
+    title: '이온 결합',
+    script: s(`
+scene "나트륨과 염소가 이온 결합을 할 때"
+stage gas
+mol n = Na at 300,250
+mol c = Cl· at 520,250
+crystal s = NaCl at bottom 4x2
+
+step "전자를 잃은 원자는 양이온, 전자를 얻은 원자는 음이온이 된다. 양이온과 음이온은 전하가 반대여서 서로 당기는데, 이 당기는 힘으로 이어진 것을 이온 결합이라고 한다."
+step "나트륨(Na) 원자는 바깥 전자가 하나이고, 염소(Cl) 원자는 바깥 전자가 일곱 개다."
+  note n "나트륨 원자"
+  note c "염소 원자"
+step "두 원자가 서로 다가간다."
+  approach n.Na c.Cl
+step "Na의 전자 하나가 Cl로 건너간다. Na는 Na+, Cl은 Cl-가 된다."
+  hop n.Na -> c.Cl
+step "소금 결정에서는 Na+와 Cl-가 번갈아 늘어서 서로 당긴다. 이 당기는 힘이 이온 결합이다."
+  note s "소금(NaCl) 결정"
+`),
+    tryIt: `전자가 건너가기 전과 뒤에 Na와 Cl 둘레의 전자 점을 세어 보자. Na⁺는 바깥 전자를 하나도 갖지 않고, Cl⁻는 전자쌍 네 개, 곧 전자 여덟 개를 가진다.`,
+  },
+  // ------------------------------------------------------------------ part 2
+  {
+    id: 'diffusion',
+    part: 2,
     title: '확산',
     script: s(`
 scene "소금물 한 방울이 퍼질 때"
@@ -139,7 +211,7 @@ step "시간이 지나면서 이온은 제멋대로 움직이며 물 전체로 �
   },
   {
     id: 'evaporation',
-    part: 1,
+    part: 2,
     title: '증발과 응결',
     script: s(`
 scene "물이 증발하고 응결할 때"
@@ -164,7 +236,7 @@ step "반대로 공기 중에 있던 물 분자 하나는 수면 아래로 내�
   },
   {
     id: 'boiling',
-    part: 1,
+    part: 2,
     title: '끓음',
     script: s(`
 scene "물이 끓을 때"
@@ -184,7 +256,7 @@ step "다른 곳에서도 기포가 생겨 떠오른다."
   },
   {
     id: 'ice',
-    part: 1,
+    part: 2,
     title: '응고와 융해: 얼음이 얼고 녹을 때',
     script: s(`
 scene "물이 얼고 녹을 때"
@@ -205,7 +277,7 @@ step "다시 데우면 그물이 흐트러지면서 녹는다."
   },
   {
     id: 'dissolving',
-    part: 1,
+    part: 2,
     title: '용해',
     script: s(`
 scene "소금이 물에 녹을 때"
@@ -226,8 +298,31 @@ step "이어서 다른 이온 둘도 떨어져 나온다."
     tryIt: `<code>NaCl</code>을 <code>KBr</code>로 바꿔 보자.`,
   },
   {
+    id: 'gas-dissolve',
+    part: 2,
+    title: '기체가 물에 녹을 때',
+    script: s(`
+scene "이산화탄소가 물에 녹을 때"
+stage interface
+lens attract off
+crowd H2O in water 22
+mol c = CO2 at 480,110
+
+step "기체도 물에 녹는다. 기체 분자가 수면을 지나 물 분자 사이로 들어가는 것이다. 탄산음료에는 이산화탄소가 많이 녹아 있다가, 뚜껑을 열면 다시 공기 중으로 빠져나온다."
+step "이산화탄소(CO2) 분자가 수면 위의 공기 중에 있다."
+  note c "이산화탄소 분자"
+step "CO2 분자가 수면을 지나 물속으로 들어간다."
+  gas-in c
+step "물속에서도 이 분자는 그대로 CO2다. 분자 안의 결합은 바뀌지 않았다."
+  note c "물에 녹은 CO2"
+step "녹아 있던 CO2 분자가 다시 수면을 지나 공기 중으로 나온다."
+  gas-out c
+`),
+    tryIt: `보기 설정에서 원자 일련번호를 켜고, 수면을 지나기 전과 뒤에 같은 C와 O인지 확인해 보자. 물에 녹는 동안에도 분자 안의 결합은 그대로다.`,
+  },
+  {
     id: 'precipitation',
-    part: 1,
+    part: 2,
     title: '석출(침전)',
     script: s(`
 scene "질산은 용액과 소금물을 섞을 때"
@@ -251,7 +346,7 @@ step "나머지 Na+와 NO3-는 녹은 채로 남는다."
   },
   {
     id: 'exchange',
-    part: 1,
+    part: 2,
     title: '흡착과 이온 교환',
     script: s(`
 scene "점토 표면에서 일어나는 이온 교환"
@@ -271,7 +366,7 @@ step "빗물에 섞여 온 H+ 두 개가 Ca2+가 있던 부위를 차지한다. 
   },
   {
     id: 'leaching',
-    part: 1,
+    part: 2,
     title: '씻겨 내려감(용탈)',
     script: s(`
 scene "산성비가 내린 흙에서 칼슘이 씻겨 내려갈 때"
@@ -291,7 +386,7 @@ step "반면 점토에 흡착해 있는 K+는 그대로 남는다. 빗물에 씻
   },
   {
     id: 'membrane',
-    part: 1,
+    part: 2,
     title: '막 수송: 통로와 펌프',
     script: s(`
 scene "이온이 세포막을 지나갈 때"
@@ -319,7 +414,7 @@ step "펌프는 ATP 에너지를 써서 Na+ 세 개를 밖으로, K+ 두 개를 
   },
   {
     id: 'osmosis',
-    part: 1,
+    part: 2,
     title: '삼투',
     script: s(`
 scene "물이 소금 쪽으로 건너갈 때"
@@ -340,10 +435,10 @@ step "물이 계속 건너가 아래쪽이 묽어지면, 건너가는 속도도 
 `),
     tryIt: `소금 이온을 <code>in outside</code>로 옮겨 적으면 물이 위쪽으로 건너간다.`,
   },
-  // ------------------------------------------------------------------ part 2
+  // ------------------------------------------------------------------ part 3
   {
     id: 'acid-hcl',
-    part: 2,
+    part: 3,
     title: '산과 염기 ①: 산이 H⁺를 내줄 때',
     script: s(`
 scene "염화수소가 물에 녹을 때"
@@ -365,7 +460,7 @@ step "이렇게 해서 하이드로늄 이온(H3O+)과 염화 이온(Cl-)이 생
   },
   {
     id: 'base-nh3',
-    part: 2,
+    part: 3,
     title: '산과 염기 ②: 물이 산이 될 때',
     script: s(`
 scene "암모니아가 물속에서 염기가 될 때"
@@ -387,8 +482,35 @@ step "이렇게 해서 암모늄 이온(NH4+)과 수산화 이온(OH-)이 생긴
     tryIt: `마지막 단계에 <code>solvate all</code>을 더해 보자.`,
   },
   {
+    id: 'weak-acid',
+    part: 3,
+    title: '강한 산과 약한 산',
+    script: s(`
+scene "아세트산이 물에 녹을 때"
+stage solution
+crowd H2O in water 20
+mol a = CH3COOH at 420,300
+mol b = CH3COOH at 750,420
+mol w = H2O at 230,300
+
+step "산이 H+를 내주는 정도를 산의 세기라고 한다. 염화수소(HCl) 같은 강한 산은 물속에서 거의 모든 분자가 H+를 내주지만, 식초의 아세트산 같은 약한 산은 일부만 내주고, 내준 H+를 되찾기도 한다."
+step "물속에 아세트산(CH3COOH) 분자들이 있다."
+  note a "아세트산"
+  note b "아세트산"
+step "물 분자와 아세트산이 서로 끌려 다가간다. O의 비공유 전자쌍은 아세트산의 O–H에 있는 H 쪽을 향한다."
+  approach w.O a.H4
+step "아세트산 한 분자가 물에 H+를 내준다. 하이드로늄 이온(H3O+)과 아세트산 이온(CH3COO-)이 생긴다."
+  transfer a.H4 to w.O
+step "다른 아세트산 분자는 H+를 내주지 않고 그대로 있다. 실제로도 아세트산 분자 대부분은 이렇게 그대로 남는다."
+  note b "그대로 남은 아세트산"
+step "H3O+가 아세트산 이온에 H+를 돌려주기도 한다. 약한 산의 용액에서는 두 방향의 반응이 함께 일어난다."
+  transfer a.H4 to a.O2
+`),
+    tryIt: `보기 설정에서 원자 일련번호를 켜고 넷째 단계와 마지막 단계를 오가며, H₃O⁺로 갔던 H가 아세트산 이온의 어느 O로 돌아오는지 찾아보자.`,
+  },
+  {
     id: 'neutralization',
-    part: 2,
+    part: 3,
     title: '중화 반응',
     script: s(`
 scene "산과 염기가 섞여 물이 될 때"
@@ -414,7 +536,7 @@ step "결국 두 이온은 물 분자 두 개가 되고, 산성과 염기성이 
   },
   {
     id: 'redox',
-    part: 2,
+    part: 3,
     title: '산화와 환원: 전자 이동',
     script: s(`
 scene "아연이 구리 이온에 전자를 내줄 때"
@@ -440,8 +562,37 @@ step "전자를 잃은 아연은 Zn2+가 되고(산화), 전자를 얻은 구리
     tryIt: `<code>energy -212 kJ/mol</code> 뒤에 <code>barrier 60</code>을 더 적으면, 반응이 넘어야 하는 에너지 언덕(활성화 에너지)이 그려진다.`,
   },
   {
+    id: 'metal-reactivity',
+    part: 3,
+    title: '금속의 반응성',
+    script: s(`
+scene "아연 조각을 구리 이온 용액에 넣을 때"
+stage solution
+crowd H2O in water 24
+metal m = Zn at 430,320 3x2
+mol c = Cu2+ at 650,320
+place SO42- in water x1
+
+step "금속마다 전자를 내주는 정도가 다르다. 아연(Zn)은 구리(Cu)보다 전자를 잘 내준다. 그래서 아연 조각을 구리 이온이 녹아 있는 용액에 넣으면 아연의 전자가 구리 이온으로 옮겨 간다."
+step "아연 조각이 구리 이온(Cu2+)이 녹아 있는 용액에 잠겨 있다."
+  note m "아연 조각"
+  solvate all
+step "구리 이온이 아연 조각 표면에 닿는다."
+  land c on m3
+step "아연 원자의 전자 두 개가 구리 이온으로 건너간다. 구리 이온은 금속 구리가 되어 표면에 붙는다."
+  hop 2 m3.Zn -> c.Cu
+  join c to m
+step "전자를 내준 아연은 아연 이온(Zn2+)이 되어 물속으로 나온다."
+  leave m3 from m
+step "반대로 구리 조각을 아연 이온 용액에 넣으면 아무 일도 일어나지 않는다. 구리는 아연보다 전자를 내주기 어렵기 때문이다."
+  note m3 "아연 이온"
+  note c "금속 구리"
+`),
+    tryIt: `<code>hop 2</code>를 <code>hop 1</code>로 바꿔 보자. 전자가 하나만 건너가면 구리 이온은 아직 이온이어서 금속에 붙을 수 없다는 오류가 나온다. Cu²⁺가 금속 구리가 되려면 전자 두 개가 필요하다.`,
+  },
+  {
     id: 'cell',
-    part: 2,
+    part: 3,
     title: '전지: 산화·환원으로 전기를 만들 때',
     script: s(`
 scene "다니엘 전지: 아연에서 구리로 전자가 흐를 때"
@@ -474,7 +625,7 @@ step "이제 왼쪽 용액에는 양이온이 늘고, 오른쪽 용액에는 줄
   },
   {
     id: 'radical',
-    part: 2,
+    part: 3,
     title: '라디칼 반응',
     script: s(`
 scene "염소와 메테인의 라디칼 반응"
@@ -501,7 +652,7 @@ step "이렇게 해서 염화수소(HCl)와 메틸 라디칼(CH3·)이 생긴다
   },
   {
     id: 'substitution',
-    part: 2,
+    part: 3,
     title: '치환 반응',
     script: s(`
 scene "암모니아가 브로모메테인의 Br 대신 결합할 때"
@@ -527,7 +678,7 @@ step "결국 C에는 Br 대신 N이 결합해 있다. 이처럼 원자 하나가
   },
   {
     id: 'addition',
-    part: 2,
+    part: 3,
     title: '첨가 반응',
     script: s(`
 scene "에텐에 브로민화수소가 더해질 때"
@@ -555,7 +706,7 @@ step "이중 결합이 있던 두 C에 H와 Br이 하나씩 더해졌다. 이렇
   },
   {
     id: 'condensation',
-    part: 2,
+    part: 3,
     title: '축합과 가수분해',
     script: s(`
 scene "두 아미노산이 이어졌다가 다시 나뉠 때"
@@ -580,8 +731,37 @@ step "물 분자가 들어가면 펩타이드 결합이 깨지면서 두 아미�
     tryIt: `<code>Gly</code>를 <code>Ala</code>(알라닌)로 바꿔 보자. 원자 이름은 SMILES 순서(<code>CC(N)C(=O)O</code>)를 따르기 때문에 카복실 탄소가 <code>C3</code>가 된다.`,
   },
   {
+    id: 'polymer',
+    part: 3,
+    title: '고분자: 작은 분자가 길게 이어질 때',
+    script: s(`
+scene "작은 분자들이 이어져 고분자가 될 때"
+stage gas
+mol a = Gly at 200,290
+mol b = Gly at 450,290
+mol c = Gly at 740,420
+
+step "작은 분자가 수백, 수천 개 이어져 생긴 큰 분자를 고분자라고 한다. 단백질, 녹말, 나일론이 고분자다. 단백질은 아미노산이 축합으로 하나씩 이어져 생긴다."
+step "아미노산(글라이신)의 한쪽 끝에는 아미노기, 다른 쪽 끝에는 카복실기가 있다. 두 끝 모두 다른 분자와 이어질 수 있다."
+  note a.N "아미노기"
+  note a.C2 "카복실기"
+step "두 분자가 서로 끌려 다가간다."
+  approach b.N a.C2
+step "한 분자의 카복실기와 다른 분자의 아미노기가 이어지고, 물 한 분자가 빠져나온다."
+  condensation a.C2 b.N
+step "남은 끝에 다음 분자가 다가간다."
+  approach c.N b.C2
+step "다시 결합이 생기고 물 한 분자가 더 빠져나온다. 이렇게 계속 이어지면 긴 사슬이 된다."
+  condensation b.C2 c.N
+step "사슬의 양 끝에는 아직 이어질 수 있는 아미노기와 카복실기가 남아 있다."
+  note a.N "한쪽 끝"
+  note c.C2 "다른 쪽 끝"
+`),
+    tryIt: `<code>mol c = Gly at 740,420</code>을 <code>mol c = Ala at 740,420</code>으로 바꿔 보자. 다른 아미노산(알라닌)도 같은 방식으로 이어진다. 단백질은 스무 가지쯤의 아미노산이 이렇게 이어진 사슬이다.`,
+  },
+  {
     id: 'coordination',
-    part: 2,
+    part: 3,
     title: '배위 결합: 착이온',
     script: s(`
 scene "구리 이온과 암모니아가 착이온을 만들 때"
@@ -612,10 +792,10 @@ step "이렇게 해서 착이온 [Cu(NH3)4]2+가 만들어진다. 전자쌍은 �
 `),
     tryIt: `<code>NH3</code>를 <code>H2O</code>로, <code>.N</code>을 모두 <code>.O</code>로 바꿔 보자. 물 분자도 같은 방식으로 구리 이온과 결합한다.`,
   },
-  // ------------------------------------------------------------------ part 3
+  // ------------------------------------------------------------------ part 4
   {
     id: 'energy',
-    part: 3,
+    part: 4,
     title: '반응과 에너지',
     script: s(`
 scene "반응이 넘어야 하는 에너지 언덕"
@@ -642,7 +822,7 @@ step "반응이 끝나면 에너지가 처음보다 낮아지고, 낮아진 만�
   },
   {
     id: 'equilibrium',
-    part: 3,
+    part: 4,
     title: '화학 평형',
     script: s(`
 scene "수소와 아이오딘이 평형에 이를 때"

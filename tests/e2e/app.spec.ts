@@ -311,6 +311,8 @@ test('examples open in the workspace like ready-made documents and play through'
 });
 
 test('the old drawing (?style=lines): the legend button lists the marks of the current scene', async ({ page }) => {
+  // (Narrow enough that the legend is behind its button.)
+  await page.setViewportSize({ width: 700, height: 720 });
   await page.goto('./?still&style=lines');
   const btn = page.locator('#main-viewer .legend-btn');
   const pop = page.locator('#main-viewer .legend-pop');
@@ -368,21 +370,21 @@ test('the old drawing (?style=lines): electrons light up, travel drawing the arr
   const v = page.locator('#main-viewer');
   // Before the change: the lone pair about to move is marked where it sits; no arrow yet.
   await c.tut.seekScene(2, 0.08);
-  await expect(v.locator('circle.e.cue')).toHaveCount(2);
-  await expect(v.locator('g.arrow')).toHaveCount(0);
+  await expect(v.locator('svg.stage circle.e.cue')).toHaveCount(2);
+  await expect(v.locator('svg.stage g.arrow')).toHaveCount(0);
   // On the way: the pair travels and the arrow is drawn behind it, the new bond growing.
   await c.tut.seekScene(2, 0.3);
-  await expect(v.locator('circle.e.fly')).toHaveCount(2);
-  await expect(v.locator('g.arrow')).toHaveCount(1);
-  await expect(v.locator('g.arrow polygon')).toHaveCount(0);
+  await expect(v.locator('svg.stage circle.e.fly')).toHaveCount(2);
+  await expect(v.locator('svg.stage g.arrow')).toHaveCount(1);
+  await expect(v.locator('svg.stage g.arrow polygon')).toHaveCount(0);
   // Arrived: the arrow has its head; the electrons have become the bond.
   await c.tut.seekScene(2, 0.6);
-  await expect(v.locator('g.arrow polygon')).toHaveCount(1);
-  await expect(v.locator('circle.e.fly')).toHaveCount(0);
+  await expect(v.locator('svg.stage g.arrow polygon')).toHaveCount(1);
+  await expect(v.locator('svg.stage circle.e.fly')).toHaveCount(0);
   // Settled: only the new structure remains.
   await c.tut.seekScene(2, 1);
-  await expect(v.locator('g.arrow')).toHaveCount(0);
-  await expect(v.locator('line.bond.hot')).toHaveCount(0);
+  await expect(v.locator('svg.stage g.arrow')).toHaveCount(0);
+  await expect(v.locator('svg.stage line.bond.hot')).toHaveCount(0);
 });
 
 test('phone 학습: the list of lessons opens over the page from its button', async ({ page }) => {
@@ -406,7 +408,7 @@ test('electron pairs are the drawing; the heat of a reaction can be turned off a
   await c.tut.seekScene(2, 0.5);
   await expect(v.locator('svg.stage')).toHaveAttribute('data-look', 'glow');
   expect(await v.locator('line.pouch').count()).toBeGreaterThan(4);
-  await expect(v.locator('g.arrow')).toHaveCount(0);
+  await expect(v.locator('svg.stage g.arrow')).toHaveCount(0);
   // The heat comes at the moment the H crosses: find a moment where the ring is drawn.
   const ringSeen = async () => {
     for (let i = 0; i <= 40; i++) {
@@ -467,17 +469,30 @@ test('three tabs in a row, each a screen of its own: 학습, 시연, 실험실',
   await shows('학습');
 });
 
-test('the legend of the electron-pair drawing: light for charge, pouches for pairs, the heat while it is shown', async ({ page }) => {
+test('the legend: beside the stage while there is room, behind its button when the screen is narrow', async ({ page }) => {
   await page.goto('./?still&heat=on');
+  const side = page.locator('#main-viewer .legend-side');
   const btn = page.locator('#main-viewer .legend-btn');
   const pop = page.locator('#main-viewer .legend-pop');
-  await btn.click();
-  await expect(pop).toContainText('전자가 모자란 곳(+)');
-  await expect(pop).toContainText('두 원자가 함께 가진 전자쌍(결합)');
-  await expect(pop).toContainText('열이 나올 때');
-  await page.keyboard.press('Escape');
-  await page.goto('./?still&heat=off');
+  await expect(side).toBeVisible();
+  await expect(btn).toBeHidden();
+  await expect(side).toContainText('전자가 모자란 곳(+)');
+  await expect(side).toContainText('두 원자가 함께 가진 전자쌍(결합)');
+  await expect(side).toContainText('열이 나올 때');
+  // It narrows with the screen before it goes.
+  const wide = (await side.boundingBox())!.width;
+  await page.setViewportSize({ width: 1000, height: 720 });
+  await expect.poll(async () => (await side.boundingBox())!.width).toBeLessThan(wide);
+  // Turning the heat off takes its rows out at once.
+  await page.locator('#btn-view').click();
+  await page.locator('#view-pop [data-heat]').uncheck();
+  await expect(side).not.toContainText('열이 나올 때');
+  await page.locator('#view-pop [data-heat]').check();
+  await page.mouse.click(5, 400);
+  // Narrow: behind the button.
+  await page.setViewportSize({ width: 700, height: 720 });
+  await expect(side).toBeHidden();
   await btn.click();
   await expect(pop).toContainText('지금 움직이는 전자쌍');
-  await expect(pop).not.toContainText('열이 나올 때');
+  await expect(pop).toContainText('열이 나올 때');
 });

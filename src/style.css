@@ -403,12 +403,18 @@ body[data-tab='lab'] .tools {
 
 /* ================================================================ workspace */
 
-/* 학습 and 시연: [list of lessons, in 학습] [title, text, stage] [script, when open]. */
+/* 학습 and 시연: [list of lessons, in 학습] [title, stage] [script, when open]. Going to 학습 the
+   list slides in from the left, quickly, and the rest closes up to make room for it. */
 .work {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 0px minmax(0, 1fr) auto;
   min-height: 0;
+  transition: grid-template-columns 0.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+body[data-tab='learn'] .work {
+  grid-template-columns: 252px minmax(0, 1fr) auto;
 }
 
 .work[hidden] {
@@ -420,10 +426,56 @@ body[data-tab='lab'] .tools {
   min-height: 0;
 }
 
+/* The stage, with the legend beside it where there is room; under them the caption and the bar. */
 .viewer {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   height: 100%;
+  container-type: inline-size;
+}
+
+.viewer > .stage-box {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.viewer > .dock {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+/* The legend beside the stage: shown from a width on (narrower than that, it is behind the button). */
+.legend-side {
+  display: none;
+  grid-column: 2;
+  grid-row: 1;
+  box-sizing: border-box;
+  min-height: 0;
+  margin: 6px 24px 0 0;
+  padding: 10px 14px 12px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+@container (min-width: 760px) {
+  .legend-side {
+    display: block;
+    /* As the screen narrows, so does the legend; its rows wrap. */
+    width: clamp(184px, 24cqw, 280px);
+  }
+  .viewer > .stage-box {
+    padding-right: 12px;
+  }
+  .legend-wrap {
+    visibility: hidden;
+  }
+}
+
+.viewer.is-empty .legend-side:empty {
+  display: none;
 }
 
 .stage-box {
@@ -548,30 +600,30 @@ body[data-tab='lab'] .tools {
   box-shadow: var(--shadow-lg);
 }
 
-.legend-pop .lg-title {
+:is(.legend-pop, .legend-side) .lg-title {
   margin: 2px 0 6px;
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
 }
 
-.legend-pop .lg-list li {
+:is(.legend-pop, .legend-side) .lg-list li {
   cursor: default;
 }
 
-.legend-pop .lg-list li:hover {
+:is(.legend-pop, .legend-side) .lg-list li:hover {
   color: var(--ink);
 }
 
-.legend-pop .arrow polyline {
+:is(.legend-pop, .legend-side) .arrow polyline {
   stroke-width: 1.6;
 }
 
-.legend-pop .lg-dot {
+:is(.legend-pop, .legend-side) .lg-dot {
   fill: var(--ink-2);
 }
 
-.legend-pop .lg-group {
+:is(.legend-pop, .legend-side) .lg-group {
   margin: 10px 0 4px;
   font-size: 12px;
   font-weight: 700;
@@ -580,13 +632,13 @@ body[data-tab='lab'] .tools {
 }
 
 
-.legend-pop ul {
+:is(.legend-pop, .legend-side) ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.legend-pop .lg-list li {
+:is(.legend-pop, .legend-side) .lg-list li {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -596,22 +648,22 @@ body[data-tab='lab'] .tools {
   color: var(--ink-2);
 }
 
-.legend-pop li span {
+:is(.legend-pop, .legend-side) li span {
   word-break: keep-all;
 }
 
-.legend-pop .lg-sw {
+:is(.legend-pop, .legend-side) .lg-sw {
   flex: none;
   overflow: visible;
 }
 
-.legend-pop .lg-els {
+:is(.legend-pop, .legend-side) .lg-els {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 14px;
 }
 
-.legend-pop .lg-els li {
+:is(.legend-pop, .legend-side) .lg-els li {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -619,36 +671,36 @@ body[data-tab='lab'] .tools {
   color: var(--ink-2);
 }
 
-.legend-pop .lg-list li.lg-off,
-.legend-pop p.lg-off {
+:is(.legend-pop, .legend-side) .lg-list li.lg-off,
+:is(.legend-pop, .legend-side) p.lg-off {
   display: none;
 }
 
-.legend-pop.show-all .lg-list li.lg-off {
+:is(.legend-pop, .legend-side).show-all .lg-list li.lg-off {
   display: flex;
   opacity: 0.45;
 }
 
-.legend-pop.show-all p.lg-off {
+:is(.legend-pop, .legend-side).show-all p.lg-off {
   display: block;
 }
 
-.legend-pop .lg-line {
+:is(.legend-pop, .legend-side) .lg-line {
   fill: none;
   stroke: var(--ink-2);
   stroke-width: 2;
   stroke-linejoin: round;
 }
 
-.legend-pop .lg-line.s0 {
+:is(.legend-pop, .legend-side) .lg-line.s0 {
   stroke: var(--s0);
 }
 
-.legend-pop .lg-line.s2 {
+:is(.legend-pop, .legend-side) .lg-line.s2 {
   stroke: var(--s2);
 }
 
-.legend-pop .lg-more {
+:is(.legend-pop, .legend-side) .lg-more {
   margin-top: 10px;
   padding: 6px 10px;
   font: inherit;
@@ -660,7 +712,7 @@ body[data-tab='lab'] .tools {
   cursor: pointer;
 }
 
-.legend-pop .lg-more:hover {
+:is(.legend-pop, .legend-side) .lg-more:hover {
   background: var(--hover);
 }
 
@@ -1021,12 +1073,15 @@ body[data-tab='lab'] .tools {
 
 /* ================================================================ 학습 (lessons): a screen of its own, like 시연 and 실험실 */
 
-/* The list of lessons: only in 학습. */
+/* The list of lessons: only in 학습. In 시연 it waits off the left edge (the column is closed). */
 .tut-nav {
-  display: none;
+  box-sizing: border-box;
   width: 236px;
   min-height: 0;
   margin: 8px 0 16px 16px;
+  transform: translateX(calc(-100% - 16px));
+  visibility: hidden;
+  transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s 0.2s;
   padding: 16px 12px;
   border-radius: 16px;
   background: var(--surface-2);
@@ -1036,7 +1091,17 @@ body[data-tab='lab'] .tools {
 }
 
 body[data-tab='learn'] .tut-nav {
-  display: block;
+  transform: none;
+  visibility: visible;
+  transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work,
+  .tut-nav,
+  body[data-tab='learn'] .tut-nav {
+    transition: none;
+  }
 }
 
 .tut-nav .part {
@@ -1455,6 +1520,10 @@ body[data-tab='learn'] .tut-nav {
     box-shadow: var(--shadow-lg);
   }
   /* The list of lessons opens over the page from the list button, instead of taking a column. */
+  body[data-tab='learn'] .work {
+    grid-template-columns: 0px minmax(0, 1fr) auto;
+  }
+  .tut-nav,
   body[data-tab='learn'] .tut-nav {
     display: none;
   }
@@ -1465,6 +1534,8 @@ body[data-tab='learn'] .tut-nav {
     z-index: 40;
     width: auto;
     margin: 0;
+    transform: none;
+    visibility: visible;
     padding: 10px 14px 24px;
     border-radius: 0;
     box-shadow: none;
@@ -1606,17 +1677,17 @@ body[data-tab='learn'] .tut-nav {
 }
 
 /* Legend of the electron-pair drawing: pictures of one height, a column of their own. */
-.legend-pop .lg-pairs svg {
+:is(.legend-pop, .legend-side) .lg-pairs svg {
   flex: none;
   width: 52px;
   height: 26px;
 }
 
-.legend-pop .lg-pairs li > svg + svg {
+:is(.legend-pop, .legend-side) .lg-pairs li > svg + svg {
   margin-left: -16px;
 }
 
-.legend-pop .lg-law {
+:is(.legend-pop, .legend-side) .lg-law {
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 12.5px;

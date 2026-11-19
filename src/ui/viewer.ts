@@ -60,12 +60,15 @@ export class Viewer {
   private nextBtn: HTMLButtonElement;
   private legendBtn: HTMLButtonElement;
   private legendPop: HTMLElement;
+  /** The legend beside the stage, where there is room for it (else it is behind the button). */
+  private legendSide: HTMLElement;
 
   constructor(host: HTMLElement, settings: Settings) {
     this.settings = settings;
     host.innerHTML = `
       <div class="viewer is-empty">
         <div class="stage-box"><svg class="stage" role="img" aria-label="장면"></svg></div>
+        <aside class="legend-side" aria-label="범례"></aside>
         <div class="dock">
           <div class="dock-side legend-wrap">
             <button class="icon legend-btn" aria-label="범례" title="범례" aria-expanded="false">${icon('legend')}</button>
@@ -97,27 +100,30 @@ export class Viewer {
     this.nextBtn = host.querySelector('[data-act="next"]')!;
     this.legendBtn = host.querySelector('.legend-btn')!;
     this.legendPop = host.querySelector('.legend-pop')!;
+    this.legendSide = host.querySelector('.legend-side')!;
     this.legendBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.showLegend(this.legendPop.hidden !== false);
     });
-    this.legendPop.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const more = (e.target as HTMLElement).closest('.lg-more');
-      if (!more) return;
-      const all = this.legendPop.classList.toggle('show-all');
-      more.setAttribute('aria-pressed', String(all));
-      more.textContent = all ? '이 장면 범례만 보기' : '전체 범례 보기';
-    });
-    // Marks that move on the stage move in their swatch while the pointer is on the row.
-    this.legendPop.addEventListener('pointerover', (e) => {
-      const row = (e.target as Element).closest('.lg-list li');
-      if (row && !row.contains(e.relatedTarget as Node)) playSwatch(row, true);
-    });
-    this.legendPop.addEventListener('pointerout', (e) => {
-      const row = (e.target as Element).closest('.lg-list li');
-      if (row && !row.contains(e.relatedTarget as Node)) playSwatch(row, false);
-    });
+    for (const box of [this.legendPop, this.legendSide]) {
+      box.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const more = (e.target as HTMLElement).closest('.lg-more');
+        if (!more) return;
+        const all = box.classList.toggle('show-all');
+        more.setAttribute('aria-pressed', String(all));
+        more.textContent = all ? '이 장면 범례만 보기' : '전체 범례 보기';
+      });
+      // Marks that move on the stage move in their swatch while the pointer is on the row.
+      box.addEventListener('pointerover', (e) => {
+        const row = (e.target as Element).closest('.lg-list li');
+        if (row && !row.contains(e.relatedTarget as Node)) playSwatch(row, true);
+      });
+      box.addEventListener('pointerout', (e) => {
+        const row = (e.target as Element).closest('.lg-list li');
+        if (row && !row.contains(e.relatedTarget as Node)) playSwatch(row, false);
+      });
+    }
     // Any press outside the panel closes it (some buttons stop their clicks from spreading).
     document.addEventListener('pointerdown', (e) => {
       const t = e.target as Node;
@@ -138,6 +144,7 @@ export class Viewer {
     this.bindScrub();
     this.setEnabled(false);
     this.segs.innerHTML = '<span class="seg"><i></i></span>';
+    this.paintLegend();
     this.player.onChange = () => this.update();
     this.player.onStepEnter = (k) => {
       const step = this.tl?.steps[k];
@@ -160,16 +167,27 @@ export class Viewer {
       this.buildSegs();
       this.update();
       if (!this.legendPop.hidden) this.showLegend(true);
+      this.paintLegend();
       this.onLoad?.(res.timeline);
     }
     return res;
   }
 
-  /** Open or close the legend; it is rebuilt from the current scene each time it opens. */
+  private legendNow(): string {
+    const s = this.settings;
+    return s.style === 'lines' ? legendHtml(this.tl, s.lens) : pairsLegendHtml(s.palette ?? 'red-positive', s.heat !== false);
+  }
+
+  /** The legend beside the stage, for the scene and settings as they are now. */
+  paintLegend(): void {
+    this.legendSide.innerHTML = this.legendNow();
+    this.legendSide.classList.remove('show-all');
+  }
+
+  /** Open or close the legend behind the button; it is rebuilt from the current scene each time it opens. */
   showLegend(open: boolean): void {
     if (open) {
-      const s = this.settings;
-      this.legendPop.innerHTML = s.style === 'lines' ? legendHtml(this.tl, s.lens) : pairsLegendHtml(s.palette ?? 'red-positive', s.heat !== false);
+      this.legendPop.innerHTML = this.legendNow();
       this.legendPop.classList.remove('show-all');
     }
     this.legendPop.hidden = !open;
@@ -185,6 +203,7 @@ export class Viewer {
     this.root.classList.add('is-empty');
     this.setEnabled(false);
     this.segs.innerHTML = '<span class="seg"><i></i></span>';
+    this.paintLegend();
     this.onLoad?.(null);
   }
 
@@ -208,6 +227,8 @@ export class Viewer {
   /** Draw the current moment again (after a setting changed while paused). */
   redraw(): void {
     if (this.tl) this.seek(this.player.k, this.player.t);
+    this.paintLegend();
+    if (!this.legendPop.hidden) this.showLegend(true);
   }
 
   private drawn() {

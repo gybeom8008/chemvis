@@ -301,6 +301,7 @@ function buildSettings(pop: HTMLElement): void {
     settings.heat = (e.target as HTMLInputElement).checked;
     keep('heat', settings.heat ? 'on' : 'off');
     syncSettings();
+    main.redraw();
   });
   pop.querySelectorAll<HTMLButtonElement>('[data-palette]').forEach((b) =>
     b.addEventListener('click', () => {

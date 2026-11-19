@@ -919,6 +919,9 @@ body[data-tab='learn'] .work {
   .pill .pg {
     flex: 1 1 100%;
   }
+  .pill .segs {
+    height: 30px;
+  }
   .pill .nav {
     flex: 1 1 100%;
     justify-content: space-between;
@@ -1029,7 +1032,8 @@ body[data-tab='learn'] .work {
 }
 
 .ln.head .k {
-  color: var(--electron);
+  color: var(--ink);
+  font-weight: 750;
 }
 
 .ln .s {
@@ -1635,14 +1639,21 @@ body[data-tab='learn'] .tut-nav {
   }
 }
 
-/* Phones: the scene gets the screen; popovers span the screen instead of hanging off it. */
+/* Phones: the scene gets the screen; popovers span the screen instead of hanging off it. Everything
+   pressed is at least 44 px each way (docs/plan/ui.md R9). */
 @media (max-width: 560px) {
   .viewer {
     padding: 4px 8px 12px;
   }
-  .legend-btn {
-    width: 38px;
-    height: 38px;
+  .icon,
+  .pill .icon,
+  .pill .lbl,
+  .pill .primary {
+    height: 44px;
+  }
+  .icon,
+  .pill .icon {
+    width: 44px;
   }
   .popover,
   .popover.examples {
@@ -1665,6 +1676,48 @@ body[data-tab='learn'] .tut-nav {
 
   .tabs button {
     padding: 5px 9px;
+  }
+}
+
+/* Phones: the bar fits the tabs and the four tools at 44 px on a 360 px screen; the heading is one
+   row (the list button and the title), so the stage keeps as much of the height as it can. */
+@media (max-width: 560px) {
+  .bar {
+    padding: 4px 4px 0 8px;
+  }
+  .tabs {
+    gap: 0;
+  }
+  .tabs button {
+    min-width: 44px;
+    height: 44px;
+    padding: 0 7px;
+  }
+  .tabs button[aria-selected='true']::after {
+    left: 8px;
+    right: 8px;
+    bottom: 4px;
+  }
+  .tools {
+    gap: 0;
+  }
+  .tools-sep {
+    display: none;
+  }
+  .tut-head {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'menu title';
+  }
+  .tut-part {
+    display: none;
+  }
+  .tut-title {
+    margin: 0 4px;
+    font-size: 18px;
+  }
+  .caption {
+    padding: 8px 14px;
+    font-size: 15px;
   }
 }
 

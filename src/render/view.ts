@@ -146,7 +146,8 @@ export class StageView {
     this.svg.setAttribute('viewBox', `0 0 ${st.width} ${st.height}`);
     this.svg.dataset.stage = st.name;
     this.bg.innerHTML = st.background();
-    this.edgeLabels = [...this.bg.querySelectorAll<SVGTextElement>('text.bg-label:not([text-anchor])')].map((el) => ({ el, x: +el.getAttribute('x')! }));
+    // (A stage drawn without a page, as in the unit tests, has no elements to look through.)
+    this.edgeLabels = [...(this.bg.querySelectorAll?.<SVGTextElement>('text.bg-label:not([text-anchor])') ?? [])].map((el) => ({ el, x: +el.getAttribute('x')! }));
     this.collective = tl.steps.some((s) => s.tally.length > 0);
     this.actors = tl.steps.map((step) => stepActors(step));
     this.boxes = tl.steps.map((step, k) => this.stepBox(step, this.actors[k]));

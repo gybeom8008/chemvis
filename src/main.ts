@@ -228,8 +228,14 @@ function clearMain(): void {
 function applyEdit(): void {
   if (!loadMain(codeEdit.value, true)) return;
   setEditing(false);
-  // An edited example is no longer the example the address names.
-  if (place === 'demo' && location.hash.startsWith('#/x/')) history.replaceState(null, '', location.pathname + location.search);
+  // An edited scene is no longer the one the address names.
+  if (place === 'demo') forgetDemoAddress();
+}
+
+/** 시연 now shows a script of one's own: the address no longer names it. */
+function forgetDemoAddress(): void {
+  demoHash = '';
+  if (/^#(z=|s=|\/x\/)/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
 }
 
 $('btn-script').addEventListener('click', () => setDrawer(!document.body.classList.contains('drawer-open')));
@@ -447,7 +453,8 @@ function showPlace(p: Tab): void {
   if (place === 'demo') {
     demoSrc = editing ? codeEdit.value : main.src;
     demoK = main.player.k;
-    if (p !== 'demo') demoHash = /^#(z=|s=|\/x\/|\/edit)/.test(location.hash) ? location.hash : demoHash && location.hash === demoHash ? demoHash : '';
+    // (Its address is kept until a script of one's own replaces what the address names: applyEdit.)
+    if (p !== 'demo' && /^#(z=|s=|\/x\/|\/edit)/.test(location.hash)) demoHash = location.hash;
   } else if (place === 'learn') {
     lessonSrc = editing ? codeEdit.value : main.src;
     lessonK = main.player.k;
@@ -487,6 +494,7 @@ document.querySelectorAll<HTMLButtonElement>('.tabs [data-tab]').forEach((b) =>
     if (t === place) return;
     if (t === 'learn') return openTutorial();
     showPlace(t);
+    fillDemo();
   }),
 );
 
@@ -523,9 +531,19 @@ async function route(): Promise<void> {
     }
     return;
   }
-  if (h.startsWith('#/edit')) setDrawer(true);
+  // A new script is written on an empty stage, the editor open beside it.
+  if (h.startsWith('#/edit')) return setDrawer(true);
+  fillDemo();
 }
 window.addEventListener('hashchange', () => void route());
+
+/**
+ * 시연 is never an empty stage: with nothing named it plays the first example. (A link whose script
+ * cannot be read leaves the stage empty, with the toast saying why, rather than show something else.)
+ */
+function fillDemo(): void {
+  if (place === 'demo' && !main.tl) openExample(EXAMPLES[0].id);
+}
 
 document.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement).tagName;
@@ -585,6 +603,7 @@ window.chemvis = {
     ...api,
     load: (src: string) => {
       if (place !== 'demo') showPlace('demo');
+      forgetDemoAddress();
       return loadMain(src);
     },
   },

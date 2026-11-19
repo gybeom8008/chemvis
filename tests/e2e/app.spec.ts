@@ -40,8 +40,23 @@ function collectErrors(page: Page): string[] {
   return errors;
 }
 
-test('the workspace opens as an empty canvas with controls waiting', async ({ page }) => {
+test('시연 never opens on an empty stage: with nothing named it plays the first example', async ({ page }) => {
   await page.goto('./?still');
+  const ids = await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.examples);
+  await expect(page).toHaveURL(new RegExp(`#/x/${ids[0]}$`));
+  await expect(page.locator('body')).toHaveAttribute('data-tab', 'demo');
+  await expect(page.locator('#main-viewer .viewer')).not.toHaveClass(/is-empty/);
+  await expect(page.locator('#main-viewer circle.atom').first()).toBeVisible();
+  await expect(page.locator('#main-viewer [data-act="next"]')).toBeEnabled();
+  // Coming to 시연 from 학습 for the first time finds the example too.
+  await page.goto('./?still#/t/atoms');
+  await page.locator('.tabs [data-tab="demo"]').click();
+  await expect(page).toHaveURL(new RegExp(`#/x/${ids[0]}$`));
+  await expect(page.locator('#main-viewer circle.atom').first()).toBeVisible();
+});
+
+test('a new script is written on an empty canvas, its controls waiting', async ({ page }) => {
+  await page.goto('./?still#/edit');
   await expect(page.locator('#main-viewer .viewer')).toHaveClass(/is-empty/);
   await expect(page.locator('#main-viewer circle.atom')).toHaveCount(0);
   const canvas = page.locator('#main-viewer svg.stage');
@@ -223,8 +238,8 @@ test('script errors open the script drawer with line numbers', async ({ page }) 
 });
 
 test('writing and applying a script from the empty workspace', async ({ page }) => {
-  await page.goto('./?still');
-  await page.locator('#btn-script').click();
+  await page.goto('./?still#/edit');
+  await expect(page.locator('#btn-script')).toHaveAttribute('aria-pressed', 'true');
   const ta = page.locator('#code-edit');
   await expect(ta).toBeVisible();
   await ta.fill('scene "고친 장면"\nstage solution\nmol w = H2O at center\nstep "물"\n  note w.O "산소"\n');
@@ -293,9 +308,9 @@ test('examples open in the workspace like ready-made documents and play through'
   const items = page.locator('#examples-pop [data-ex]');
   const ids = await page.evaluate(() => (window as unknown as { chemvis: Api }).chemvis.examples);
   await expect(items).toHaveCount(ids.length);
-  await items.first().click();
+  await items.nth(1).click();
   await expect(page.locator('#examples-pop')).toBeHidden();
-  await expect(page).toHaveURL(new RegExp(`#/x/${ids[0]}$`));
+  await expect(page).toHaveURL(new RegExp(`#/x/${ids[1]}$`));
   await expect(page.locator('body')).toHaveAttribute('data-tab', 'demo');
   const c = cv(page);
   for (const id of ids) {

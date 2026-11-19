@@ -5,7 +5,7 @@ import { formationEnthalpy, stepEnthalpy, FORMATION_ENTHALPIES, UNAVAILABLE_FORM
 import { LIBRARY } from '../../src/chem/library';
 import { CHAPTERS, sceneOf } from '../../src/tutorial/chapters';
 import { EXAMPLES } from '../../src/tutorial/examples';
-import compareSource from '../../src/next/compare.ts?raw';
+import compareSource from '../../src/compare/compare.ts?raw';
 
 const timeline = (script: string) => {
   const result = compile(script);
